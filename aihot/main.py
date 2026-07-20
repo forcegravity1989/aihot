@@ -1,0 +1,78 @@
+"""CLI 入口:fetch(HN + arXiv) → filter_and_score → dedupe → render。
+
+顺序说明:先打分排序,再去重——`dedupe` 保留"第一次出现"的那条,打分排序过的
+输入意味着同一事件的多个来源里,分数最高的那条被保留(而不是随机哪条先来)。
+"""
+
+import argparse
+import datetime
+import json
+import sys
+from pathlib import Path
+
+from aihot.dedup import dedupe
+from aihot.filter import filter_and_score
+from aihot.render import write_digest
+from aihot.sources import arxiv, hackernews
+
+DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "config.json"
+DEFAULT_DIGESTS_DIR = Path(__file__).resolve().parent.parent / "digests"
+
+
+def load_config(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def build_digest(cfg, date_str):
+    hn_cfg = cfg.get("hackernews", {})
+    ax_cfg = cfg.get("arxiv", {})
+
+    print(f"[main] 拉取 Hacker News({hn_cfg.get('story_lists', ['topstories'])})…", file=sys.stderr)
+    hn_items = hackernews.fetch(
+        story_lists=hn_cfg.get("story_lists", ["topstories"]),
+        fetch_limit=hn_cfg.get("fetch_limit", 200),
+    )
+    print(f"[main] 拉取 arXiv({ax_cfg.get('categories', ['cs.AI'])})…", file=sys.stderr)
+    ax_items = arxiv.fetch(
+        categories=ax_cfg.get("categories", ["cs.AI"]),
+        max_results=ax_cfg.get("max_results", 40),
+    )
+    raw_count = len(hn_items) + len(ax_items)
+    print(f"[main] 原始条目:{raw_count}(HN={len(hn_items)} arXiv={len(ax_items)})", file=sys.stderr)
+
+    scored = filter_and_score(hn_items + ax_items, cfg["keywords"], cfg.get("min_score", 1))
+    deduped = dedupe(scored)
+    max_items = cfg.get("max_items_per_source")
+    if max_items:
+        deduped = deduped[: max_items * 2]  # 粗略上限,两源合计
+    print(f"[main] 命中并去重后:{len(deduped)} 条", file=sys.stderr)
+
+    return deduped, raw_count
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="生成 AI 热点日报")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG))
+    parser.add_argument("--out", default=str(DEFAULT_DIGESTS_DIR))
+    parser.add_argument("--date", default=None, help="覆盖日期(测试用),默认今天真实日期")
+    args = parser.parse_args(argv)
+
+    cfg = load_config(args.config)
+    date_str = args.date or datetime.date.today().isoformat()
+
+    items, raw_count = build_digest(cfg, date_str)
+    if not items:
+        print(
+            f"[main] 今天(0 条真实来源可达或 0 条命中关注面,原始条目={raw_count})没有生成日报——"
+            "如实不写空文件冒充有内容",
+            file=sys.stderr,
+        )
+        return 1
+
+    out_path = write_digest(items, date_str, cfg["keywords"], args.out)
+    print(f"[main] 日报已生成:{out_path}({len(items)} 条)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
