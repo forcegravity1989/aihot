@@ -19,8 +19,23 @@ DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "config.json"
 DEFAULT_DIGESTS_DIR = Path(__file__).resolve().parent.parent / "digests"
 
 
+class ConfigError(Exception):
+    """配置有问题(路径不存在/不是合法 JSON/缺必需字段)——友好报错,不是裸
+    traceback(2026-07-20 破坏性演练 #17 真实发现原来会崩,当场修)。"""
+
+
 def load_config(path):
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    try:
+        raw = Path(path).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise ConfigError(f"配置文件不存在:{path}") from None
+    try:
+        cfg = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ConfigError(f"{path} 不是合法 JSON:{e}") from None
+    if "keywords" not in cfg or not isinstance(cfg["keywords"], list):
+        raise ConfigError(f"{path} 缺少必需字段 keywords(字符串数组)")
+    return cfg
 
 
 def build_digest(cfg, date_str):
@@ -58,7 +73,11 @@ def main(argv=None):
     parser.add_argument("--date", default=None, help="覆盖日期(测试用),默认今天真实日期")
     args = parser.parse_args(argv)
 
-    cfg = load_config(args.config)
+    try:
+        cfg = load_config(args.config)
+    except ConfigError as e:
+        print(f"[main] 配置错误:{e}", file=sys.stderr)
+        return 2
     date_str = args.date or datetime.date.today().isoformat()
 
     items, raw_count = build_digest(cfg, date_str)
