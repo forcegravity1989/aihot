@@ -9,7 +9,7 @@ python3 -m aihot.main            # 生成今天的日报到 digests/YYYY-MM-DD.m
 python3 -m http.server -d digests 8765   # 在浏览器里看(http://localhost:8765/)
 ```
 
-零 pip 依赖——只用 Python 3 标准库(`urllib`/`json`/`xml.etree`),开箱即跑。
+零 pip 依赖——只用 Python 3 标准库(`urllib`/`json`/`xml.etree`),开箱即跑。需要 Python ≥3.9(`render.py` 用了 `str.removesuffix`)。
 
 ## 关注面配置
 
