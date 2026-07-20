@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from aihot.dedup import dedupe
-from aihot.filter import filter_and_score
+from aihot.filter import cap_per_source, filter_and_score
 from aihot.render import write_digest
 from aihot.sources import arxiv, hackernews
 
@@ -42,12 +42,13 @@ def build_digest(cfg, date_str):
 
     scored = filter_and_score(hn_items + ax_items, cfg["keywords"], cfg.get("min_score", 1))
     deduped = dedupe(scored)
-    max_items = cfg.get("max_items_per_source")
-    if max_items:
-        deduped = deduped[: max_items * 2]  # 粗略上限,两源合计
-    print(f"[main] 命中并去重后:{len(deduped)} 条", file=sys.stderr)
+    capped = cap_per_source(deduped, cfg.get("max_items_per_source"))
+    print(
+        f"[main] 命中={len(scored)} 去重后={len(deduped)} 按源限量后={len(capped)}",
+        file=sys.stderr,
+    )
 
-    return deduped, raw_count
+    return capped, raw_count
 
 
 def main(argv=None):

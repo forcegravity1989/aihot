@@ -1,6 +1,6 @@
 import unittest
 
-from aihot.filter import filter_and_score, score
+from aihot.filter import cap_per_source, filter_and_score, score
 
 
 class TestScore(unittest.TestCase):
@@ -40,6 +40,27 @@ class TestFilterAndScore(unittest.TestCase):
         items = [{"title": "Anything at all"}]
         out = filter_and_score(items, [], min_score=1)
         self.assertEqual(out, [])
+
+
+class TestCapPerSource(unittest.TestCase):
+    def test_caps_each_source_independently(self):
+        items = (
+            [{"source": "hackernews", "title": f"hn{i}"} for i in range(5)]
+            + [{"source": "arxiv", "title": f"ax{i}"} for i in range(2)]
+        )
+        out = cap_per_source(items, max_per_source=3)
+        self.assertEqual(sum(1 for i in out if i["source"] == "hackernews"), 3)
+        self.assertEqual(sum(1 for i in out if i["source"] == "arxiv"), 2)  # 不足 cap 的来源不受影响
+
+    def test_zero_or_none_means_uncapped(self):
+        items = [{"source": "hackernews", "title": f"hn{i}"} for i in range(5)]
+        self.assertEqual(len(cap_per_source(items, None)), 5)
+        self.assertEqual(len(cap_per_source(items, 0)), 5)
+
+    def test_preserves_input_order_within_source(self):
+        items = [{"source": "hackernews", "title": t} for t in ["first", "second", "third"]]
+        out = cap_per_source(items, max_per_source=2)
+        self.assertEqual([i["title"] for i in out], ["first", "second"])
 
 
 if __name__ == "__main__":
