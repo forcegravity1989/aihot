@@ -12,7 +12,7 @@ from pathlib import Path
 
 from aihot.dedup import dedupe
 from aihot.filter import cap_per_source, filter_and_score
-from aihot.render import write_digest
+from aihot.render import consecutive_days, write_digest, write_telemetry
 from aihot.sources import arxiv, hackernews
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "config.json"
@@ -63,7 +63,7 @@ def build_digest(cfg, date_str):
         file=sys.stderr,
     )
 
-    return capped, raw_count
+    return capped, raw_count, len(scored), len(deduped)
 
 
 def main(argv=None):
@@ -80,16 +80,40 @@ def main(argv=None):
         return 2
     date_str = args.date or datetime.date.today().isoformat()
 
-    items, raw_count = build_digest(cfg, date_str)
+    items, raw_count, hit_count, deduped_count = build_digest(cfg, date_str)
     if not items:
         print(
             f"[main] 今天(0 条真实来源可达或 0 条命中关注面,原始条目={raw_count})没有生成日报——"
             "如实不写空文件冒充有内容",
             file=sys.stderr,
         )
+        # 命中数为 0 也是一次真实运行——如实记进 telemetry(命中率=0%),不是
+        # 悄悄留着上一次的旧快照冒充"今天也正常"。
+        write_telemetry(
+            {
+                "date": date_str,
+                "raw": raw_count,
+                "hit": hit_count,
+                "deduped": deduped_count,
+                "items": 0,
+                "days": consecutive_days(date_str, args.out),
+            },
+            args.out,
+        )
         return 1
 
     out_path = write_digest(items, date_str, cfg["keywords"], args.out)
+    write_telemetry(
+        {
+            "date": date_str,
+            "raw": raw_count,
+            "hit": hit_count,
+            "deduped": deduped_count,
+            "items": len(items),
+            "days": consecutive_days(date_str, args.out),
+        },
+        args.out,
+    )
     print(f"[main] 日报已生成:{out_path}({len(items)} 条)")
     return 0
 

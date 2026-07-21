@@ -68,14 +68,23 @@ class TestMainExitCodes(unittest.TestCase):
         code = main(["--config", "/tmp/definitely-does-not-exist-aihot.json"])
         self.assertEqual(code, 2)
 
-    def test_main_exits_1_and_writes_nothing_on_zero_hits(self):
+    def test_main_exits_1_and_writes_no_digest_on_zero_hits(self):
+        # AC-16 是"不写日报文件"(.md/.html),不是"什么都不写"——2026-07-21
+        # 加了 telemetry.json 真实快照后,0 命中也是一次真实运行,如实记
+        # 命中率=0%,不是悄悄留着上一次的旧快照冒充"今天也正常"。
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = _write_config(tmpdir)
             out_dir = Path(tmpdir) / "digests"
             with mock_fetch(hn_items=[], ax_items=[]):
-                code = main(["--config", config_path, "--out", str(out_dir)])
+                code = main(["--config", config_path, "--out", str(out_dir), "--date", "2026-07-21"])
             self.assertEqual(code, 1)
-            self.assertFalse(out_dir.exists() and any(out_dir.iterdir()))
+            self.assertFalse((out_dir / "2026-07-21.md").exists())
+            self.assertFalse((out_dir / "2026-07-21.html").exists())
+            telemetry = json.loads((out_dir / "telemetry.json").read_text(encoding="utf-8"))
+            self.assertEqual(telemetry["date"], "2026-07-21")
+            self.assertEqual(telemetry["hit"], 0)
+            self.assertEqual(telemetry["items"], 0)
+            self.assertEqual(telemetry["days"], 0)
 
     def test_main_exits_0_and_writes_digest_on_hits(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -97,6 +106,53 @@ class TestMainExitCodes(unittest.TestCase):
             self.assertTrue((out_dir / "2026-07-21.md").exists())
             self.assertTrue((out_dir / "2026-07-21.html").exists())
             self.assertTrue((out_dir / "index.html").exists())
+
+    def test_telemetry_json_matches_real_run_counts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = _write_config(tmpdir)
+            out_dir = Path(tmpdir) / "digests"
+            hn_items = [
+                {
+                    "source": "hackernews",
+                    "id": str(i),
+                    "title": f"LLM story {i}" if i < 3 else f"unrelated story {i}",
+                    "url": f"https://example.com/{i}",
+                    "score": 100,
+                    "time": 1700000000,
+                }
+                for i in range(5)
+            ]
+            with mock_fetch(hn_items=hn_items, ax_items=[]):
+                code = main(["--config", config_path, "--out", str(out_dir), "--date", "2026-07-21"])
+            self.assertEqual(code, 0)
+            telemetry = json.loads((out_dir / "telemetry.json").read_text(encoding="utf-8"))
+            self.assertEqual(telemetry["date"], "2026-07-21")
+            self.assertEqual(telemetry["raw"], 5)
+            self.assertEqual(telemetry["hit"], 3)  # 只有 3 条标题含 "LLM"
+            self.assertEqual(telemetry["items"], 3)
+            self.assertEqual(telemetry["days"], 1)  # 前一天(07-20)没有真实文件,不连续
+
+    def test_telemetry_days_counts_real_consecutive_streak_not_total(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = _write_config(tmpdir)
+            out_dir = Path(tmpdir) / "digests"
+            hn_items = [
+                {
+                    "source": "hackernews",
+                    "id": "1",
+                    "title": "LLM streak test",
+                    "url": "https://example.com/1",
+                    "score": 100,
+                    "time": 1700000000,
+                }
+            ]
+            with mock_fetch(hn_items=hn_items, ax_items=[]):
+                main(["--config", config_path, "--out", str(out_dir), "--date", "2026-07-19"])
+                main(["--config", config_path, "--out", str(out_dir), "--date", "2026-07-20"])
+                # 中间断一天(没有 07-21),07-22 应该只算 1 天连续,不是 3
+                main(["--config", config_path, "--out", str(out_dir), "--date", "2026-07-22"])
+            telemetry = json.loads((out_dir / "telemetry.json").read_text(encoding="utf-8"))
+            self.assertEqual(telemetry["days"], 1)
 
     def test_date_override_controls_output_filename(self):
         with tempfile.TemporaryDirectory() as tmpdir:

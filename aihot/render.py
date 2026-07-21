@@ -3,7 +3,9 @@ HTML 日报(2026-07-20 growth 实验 #14 新增——修复 #13 发现的真实�
 打开 .md 只看到源码,不是网页)+ 静态 index.html 汇总页。
 """
 
+import datetime
 import html
+import json
 import re
 from pathlib import Path
 
@@ -132,3 +134,27 @@ def rebuild_index(digests_dir):
 </html>
 """
     (digests_dir / "index.html").write_text(page, encoding="utf-8")
+
+
+def consecutive_days(date_str, digests_dir):
+    """从 date_str 真实往前数,逐天检查 <date>.md 是否存在,断了就停——真实
+    连续产出天数,不是历史文件总数(有缺口的那些天不计入连续)。"""
+    digests_dir = Path(digests_dir)
+    d = datetime.date.fromisoformat(date_str)
+    streak = 0
+    while (digests_dir / f"{d.isoformat()}.md").exists():
+        streak += 1
+        d -= datetime.timedelta(days=1)
+    return streak
+
+
+def write_telemetry(stats, digests_dir):
+    """本次真实运行的快照(BW 侧引领/滞后指标真喂的来源,见 plan/10 K4):
+    {date, raw, hit, deduped, items, days}。每次跑完覆盖写这一个文件——不追加、
+    不建历史版本,它就是"最新一次真实运行"的快照,不是时序存档。
+    """
+    digests_dir = Path(digests_dir)
+    digests_dir.mkdir(parents=True, exist_ok=True)
+    path = digests_dir / "telemetry.json"
+    path.write_text(json.dumps(stats, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
