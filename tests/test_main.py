@@ -1,9 +1,30 @@
+import contextlib
+import datetime
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from aihot.main import ConfigError, load_config
+from aihot.main import ConfigError, load_config, main
+
+
+@contextlib.contextmanager
+def mock_fetch(hn_items=(), ax_items=()):
+    """复用的 mock fetch helper(T5):patch `aihot.sources.hackernews.fetch`
+    /`aihot.sources.arxiv.fetch`,让 main() 端到端测试脱离真实网络。"""
+    with patch("aihot.main.hackernews.fetch", return_value=list(hn_items)), patch(
+        "aihot.main.arxiv.fetch", return_value=list(ax_items)
+    ):
+        yield
+
+
+def _write_config(tmpdir, **overrides):
+    cfg = {"keywords": ["LLM"], "min_score": 1}
+    cfg.update(overrides)
+    path = Path(tmpdir) / "config.json"
+    path.write_text(json.dumps(cfg), encoding="utf-8")
+    return str(path)
 
 
 class TestLoadConfig(unittest.TestCase):
@@ -40,6 +61,66 @@ class TestLoadConfig(unittest.TestCase):
             self.assertEqual(cfg["keywords"], ["LLM"])
         finally:
             Path(path).unlink()
+
+
+class TestMainExitCodes(unittest.TestCase):
+    def test_main_exits_2_on_config_error(self):
+        code = main(["--config", "/tmp/definitely-does-not-exist-aihot.json"])
+        self.assertEqual(code, 2)
+
+    def test_main_exits_1_and_writes_nothing_on_zero_hits(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = _write_config(tmpdir)
+            out_dir = Path(tmpdir) / "digests"
+            with mock_fetch(hn_items=[], ax_items=[]):
+                code = main(["--config", config_path, "--out", str(out_dir)])
+            self.assertEqual(code, 1)
+            self.assertFalse(out_dir.exists() and any(out_dir.iterdir()))
+
+    def test_main_exits_0_and_writes_digest_on_hits(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = _write_config(tmpdir)
+            out_dir = Path(tmpdir) / "digests"
+            hn_items = [
+                {
+                    "source": "hackernews",
+                    "id": "1",
+                    "title": "New LLM breaks benchmarks",
+                    "url": "https://example.com/1",
+                    "score": 100,
+                    "time": 1700000000,
+                }
+            ]
+            with mock_fetch(hn_items=hn_items, ax_items=[]):
+                code = main(["--config", config_path, "--out", str(out_dir), "--date", "2026-07-21"])
+            self.assertEqual(code, 0)
+            self.assertTrue((out_dir / "2026-07-21.md").exists())
+            self.assertTrue((out_dir / "2026-07-21.html").exists())
+            self.assertTrue((out_dir / "index.html").exists())
+
+    def test_date_override_controls_output_filename(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = _write_config(tmpdir)
+            out_dir = Path(tmpdir) / "digests"
+            hn_items = [
+                {
+                    "source": "hackernews",
+                    "id": "1",
+                    "title": "LLM overrides the calendar",
+                    "url": "https://example.com/1",
+                    "score": 100,
+                    "time": 1700000000,
+                }
+            ]
+            override_date = "2020-01-01"
+            with mock_fetch(hn_items=hn_items, ax_items=[]):
+                code = main(["--config", config_path, "--out", str(out_dir), "--date", override_date])
+            self.assertEqual(code, 0)
+            digest_path = out_dir / f"{override_date}.md"
+            self.assertTrue(digest_path.exists())
+            content = digest_path.read_text(encoding="utf-8")
+            self.assertIn(override_date, content)
+            self.assertNotIn(datetime.date.today().isoformat(), content)
 
 
 if __name__ == "__main__":
