@@ -12,6 +12,10 @@ from pathlib import Path
 _SOURCE_LABELS = {"hackernews": "Hacker News · 社区热度", "arxiv": "arXiv · 学术前沿"}
 
 
+def _truncate(text, limit):
+    return text[:limit] + ("…" if len(text) > limit else "")
+
+
 def _grouped(items):
     by_source = {}
     for it in items:
@@ -32,8 +36,7 @@ def render_markdown(items, date_str, keywords):
             kw = "、".join(it.get("matched_keywords", []))
             lines.append(f"- **[{it['title']}]({it['url']})** _(命中: {kw})_")
             if it.get("summary"):
-                snippet = it["summary"][:160]
-                lines.append(f"  > {snippet}{'…' if len(it['summary']) > 160 else ''}")
+                lines.append(f"  > {_truncate(it['summary'], 160)}")
         lines.append("")
     return "\n".join(lines)
 
@@ -48,8 +51,7 @@ def render_html(items, date_str, keywords):
             url = html.escape(it["url"])
             summary_html = ""
             if it.get("summary"):
-                snippet = html.escape(it["summary"][:220])
-                summary_html = f'<p class="summary">{snippet}{"…" if len(it["summary"]) > 220 else ""}</p>'
+                summary_html = f'<p class="summary">{html.escape(_truncate(it["summary"], 220))}</p>'
             cards.append(
                 f'<li class="card"><a class="title" href="{url}" target="_blank" rel="noopener">{title}</a>'
                 f'<span class="kw">命中: {kw}</span>{summary_html}</li>'
