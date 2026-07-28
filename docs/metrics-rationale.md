@@ -8,6 +8,14 @@
 
 - **`docs/competitive-analysis.md` 不存在**——本轮无竞品分析报告输入,北
   极星推导仅基于项目自身意图(`PROJECT.md`)与真实运行记录,不假装读过。
+- **`docs/metrics-toml-format.md` 在本仓库全部历史中同样不存在**(真实核
+  查:`git log --all --diff-filter=A -- docs/metrics-toml-format.md` 无任何
+  提交命中)——Skill 文档称其为「`.bw/metrics.toml` 唯一契约」,但工作区
+  内从未真实落过这份文件。`.bw/metrics.toml` 的结构因此只能对照 Skill 正
+  文内嵌的样例(`schema_version` / `[north_star]` / `[[lagging]]` /
+  `[[leading]]` / `collect = { kind, query }`)校验,已用 Python 的 `toml`
+  库真实解析通过、字段与样例逐一对应,但"是否与 BW 引擎解析器完全一致"
+  这一点无法核实,如实标注为**未验证**。
 - **项目意图**(`PROJECT.md`):AI 热点圈信息**过多**,目标是按用户自定义
   关注面,从 HN(社区热度)+ arXiv(学术前沿)聚合、去重、过滤,生成一份
   **可读**的日报。对标 Feedly(需自己订阅、无 AI 相关性过滤)与人工编辑
