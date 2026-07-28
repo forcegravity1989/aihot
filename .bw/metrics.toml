@@ -1,0 +1,46 @@
+schema_version = 1
+
+# 本文件是 aihot 项目指标定义的正本(docs/metrics-toml-format.md 定义的格式)。
+# 推导过程见 docs/metrics-rationale.md——本轮(Issue: 找指标)重新审视了
+# PROJECT.md 现行北极星,判定它落在"供给"段而非"使用/价值"段,予以替换。
+
+[north_star]
+name = "连续『真实读完且有收获』天数"
+def = "以用户当天打开当日摘要后,自行确认『读完了,且其中至少 1 条是命中我实际关注、事前不知道的真实信息』为准——不是 digests/YYYY-MM-DD.md 文件是否存在,也不是命中关键词的条目数字段。按此口径逐日记录,统计连续满足的天数。这条对齐 PROJECT.md 机会段里真正要验证的东西(信息过多时,用户能否省下时间、看到真正相关的内容),而不是文件有没有被生产出来。"
+collect = { kind = "manual", query = "" }
+
+[[lagging]]
+name = "单份日报条目数(可读体量)"
+def = "当日 digests/YYYY-MM-DD.md 实际渲染的条目总数(即 telemetry.json 的 items 字段)——是『愿意读完』的必要条件:太多则读完门槛升高,太少则命中不足。docs/regression.md 记录过从 111 条降到 30 条才『达到日报应有的可读体量』的真实教训,本条卡的是上限而非下限。"
+target = "≤35"
+collect = { kind = "manual", query = "" }
+
+[[lagging]]
+name = "关键词误判率(人工抽样)"
+def = "从当周产出摘要中抽样,人工判断标题与关键词库的匹配是否为真实语义相关(而非仅字符串子串命中,如 RAG 命中 average)的误判比例——误判越多,读者要自己甄别真假命中,等同于要手动修正,直接对立于北极星『无需手动修正』。"
+target = "≤1%"
+collect = { kind = "manual", query = "" }
+
+[[lagging]]
+name = "断源仍出日报的模拟测试通过率"
+def = "docs/SLO.md 明确记录『单源不可达时,另一源仍能出日报』这条红线当前『未测』。HN 或 arXiv 任一源真实故障时,若日报因此开天窗,当天的『连续天数』直接断掉——这是北极星能否稳定达成的滞后风险。"
+target = "100%"
+collect = { kind = "manual", query = "" }
+
+[[leading]]
+name = "单次生成总耗时"
+def = "python3 -m aihot.main 从拉取到渲染完成的真实墙钟耗时,HN fetch 主导——耗时越长,用户越可能拖延或跳过当天的运行,间接拖累北极星的连续天数。docs/SLO.md 记录当前值 49.7s,docs/regression.md 优化后记录 46.22s。"
+target = "≤90s"
+collect = { kind = "manual", query = "" }
+
+[[leading]]
+name = "每周合并 PR 数"
+def = "过去 7 天内 merge 进 main 的 PR 数——研发节奏的先行信号,驱动上面三条滞后指标(体量控制、误判率、断源韧性)的收敛速度。真实核查:截至本轮该仓库尚无历史合并 PR(gh pr list 结果为空),此目标是起步猜测,非历史校准值,需下一轮据真实数据回调。"
+target = "≥1"
+collect = { kind = "github", query = "repo:{owner}/{repo} is:pr is:merged merged:>=@{7d}" }
+
+[[leading]]
+name = "队友结算 Issue 数"
+def = "过去 7 天内被合并关闭(settle)的 Issue 数——BW 交付节奏的先行信号。同样是起步猜测(真实核查:仓库当前仅 1 条 open issue,无历史结算记录可供校准)。"
+target = "≥1"
+collect = { kind = "bw", query = "issue.settled_at within 7d" }
