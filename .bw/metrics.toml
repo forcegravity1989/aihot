@@ -1,46 +1,52 @@
 schema_version = 1
 
-# 本文件是 aihot 项目指标定义的正本(docs/metrics-toml-format.md 定义的格式)。
-# 推导过程见 docs/metrics-rationale.md——本轮(Issue: 找指标)重新审视了
-# PROJECT.md 现行北极星,判定它落在"供给"段而非"使用/价值"段,予以替换。
+# aihot 日报 · 指标正本(格式见 BW 的 docs/metrics-toml-format.md)
+#
+# 本轮(2026-08-05)由升级后的「找指标」skill 重推:北极星判据打分改编自
+# amplitude/builder-skills,引领/滞后强制判定与成对反指标改编自
+# mohitagw15856/pm-claude-skills。推导过程、6 判据得分、被拒的坏候选、
+# 成对反指标、0-40 质量门实际得分,全部在 docs/metrics-rationale.md。
+#
+# 与上一版(PR #2)的差异及理由见 rationale §6,摘要:
+#   · 北极星由「连续天数」改为「每周天数」——连续口径会被供给中断误伤
+#   · 「单份日报条目数」由滞后改判为引领(参数直接可拧,过强制判定题)
+#   · 删掉「每周合并 PR 数」「队友结算 Issue 数」两条 BW/GitHub 自有记账
+#     指标:项目已有自己的过程指标,不再把 buddy 概念当成项目真实指标
+#   · 「单次生成总耗时」整条删除:过不了「对北极星有预测性」这一关
 
 [north_star]
-name = "连续『真实读完且有收获』天数"
-def = "以用户当天打开当日摘要后,自行确认『读完了,且其中至少 1 条是命中我实际关注、事前不知道的真实信息』为准——不是 digests/YYYY-MM-DD.md 文件是否存在,也不是命中关键词的条目数字段。按此口径逐日记录,统计连续满足的天数。这条对齐 PROJECT.md 机会段里真正要验证的东西(信息过多时,用户能否省下时间、看到真正相关的内容),而不是文件有没有被生产出来。"
+name = "每周「读完且有收获」天数"
+def  = "过去 7 个自然日中,构建者本人在 docs/usage-log.md 逐日记录为「今天打开了当日日报 + 读完了 + 其中至少 1 条是我事前不知道、且确实命中我关注面的真实信息」的天数(0-7)。判定人=构建者本人;当天记录缺失计为「否」,不计中性(沿用 docs/hypothesis.md 自定的「沉默即没有真实使用」规则)。口径落在价值段:量的不是日报文件有没有被生产出来,而是有没有人真的因此省下时间、拿到原本会错过的信息。"
 collect = { kind = "manual", query = "" }
 
+# ── 滞后指标(结果性:只能事后测,当下拧不动) ─────────────────────────
 [[lagging]]
-name = "单份日报条目数(可读体量)"
-def = "当日 digests/YYYY-MM-DD.md 实际渲染的条目总数(即 telemetry.json 的 items 字段)——是『愿意读完』的必要条件:太多则读完门槛升高,太少则命中不足。docs/regression.md 记录过从 111 条降到 30 条才『达到日报应有的可读体量』的真实教训,本条卡的是上限而非下限。"
-target = "≤35"
-collect = { kind = "manual", query = "" }
-
-[[lagging]]
-name = "关键词误判率(人工抽样)"
-def = "从当周产出摘要中抽样,人工判断标题与关键词库的匹配是否为真实语义相关(而非仅字符串子串命中,如 RAG 命中 average)的误判比例——误判越多,读者要自己甄别真假命中,等同于要手动修正,直接对立于北极星『无需手动修正』。"
+name   = "关键词误判率(人工抽样)"
+def    = "从当周产出的日报中抽样,人工判断标题/摘要与关键词库的匹配是否为真实语义相关(而非仅字符串子串命中,如 RAG 命中 average),误判条目占抽样条目的比例。误判越多,读者要自己甄别真假命中,等同于要手动修正,直接对立于 PROJECT.md 机会陈述里的「无需手动修正即可读」。真实基线:docs/retro.md round #19 真实抽样 238 条、1 处假阳性 = 0.4%。"
 target = "≤1%"
 collect = { kind = "manual", query = "" }
 
 [[lagging]]
-name = "断源仍出日报的模拟测试通过率"
-def = "docs/SLO.md 明确记录『单源不可达时,另一源仍能出日报』这条红线当前『未测』。HN 或 arXiv 任一源真实故障时,若日报因此开天窗,当天的『连续天数』直接断掉——这是北极星能否稳定达成的滞后风险。"
+name   = "断源仍出日报演练通过率"
+def    = "对「单源不可达时,另一源仍能出日报」这条 SLO 红线做真实断源演练,通过次数 ÷ 演练次数。真实基线:docs/incident-drill.md(2026-07-20)已真实执行过一次「HN 源域名不可达」演练,结果为该源返回空列表 + stderr 警告、不影响另一源 → 1/1 通过;docs/SLO.md 里这条红线仍写着「未测」,该表述已过期,以 incident-drill.md 为准。诚实缺口:那次演练只覆盖了「另一源仍返回条目」,没记录当天是否真的落出了完整日报文件——下次演练必须把「digests/ 当日文件是否生成」一并记录,否则这条 100% 是虚的。"
 target = "100%"
 collect = { kind = "manual", query = "" }
 
+# ── 引领指标(过程性:当下可直接影响 + 对北极星有预测性) ───────────────
 [[leading]]
-name = "单次生成总耗时"
-def = "python3 -m aihot.main 从拉取到渲染完成的真实墙钟耗时,HN fetch 主导——耗时越长,用户越可能拖延或跳过当天的运行,间接拖累北极星的连续天数。docs/SLO.md 记录当前值 49.7s,docs/regression.md 优化后记录 46.22s。"
-target = "≤90s"
+name   = "过去 7 天有真实日报产出的天数"
+def    = "过去 7 个自然日中,digests/YYYY-MM-DD.md 真实存在的天数(0-7)。北极星乘法链上的第一个因子——当天没有日报,当天就不可能「读完且有收获」。真实水位:近 30 天仅 4 天有产出(07-19/20/21/28),07-22~27 连空 6 天;全仓库无 .github/、无任何 yml/yaml,即无 CI 无定时任务,每一份日报都是有人手敲 python3 -m aihot.main 才产生的(docs/validation.md 已核实)。"
+target = "≥5"
 collect = { kind = "manual", query = "" }
 
 [[leading]]
-name = "每周合并 PR 数"
-def = "过去 7 天内 merge 进 main 的 PR 数——研发节奏的先行信号,驱动上面三条滞后指标(体量控制、误判率、断源韧性)的收敛速度。真实核查:截至本轮该仓库尚无历史合并 PR(gh pr list 结果为空),此目标是起步猜测,非历史校准值,需下一轮据真实数据回调。"
-target = "≥1"
-collect = { kind = "github", query = "repo:{owner}/{repo} is:pr is:merged merged:>=@{7d}" }
+name   = "使用记录覆盖率"
+def    = "过去 7 天里「构建者在 docs/usage-log.md 写下当日是/否判断」的天数 ÷ 「digests/ 里当日真实有日报产出」的天数。北极星乘法链上的第二个因子,也是当前整条测量链的断点:docs/validation.md 已核实,4 个有产出的日子里 0 天有任何使用记录,覆盖率 0%,北极星因此至今零观测点。这条不是「记录得越多产品越好」,而是「记录不发生,北极星连被证伪的机会都没有」。"
+target = "≥80%"
+collect = { kind = "manual", query = "" }
 
 [[leading]]
-name = "队友结算 Issue 数"
-def = "过去 7 天内被合并关闭(settle)的 Issue 数——BW 交付节奏的先行信号。同样是起步猜测(真实核查:仓库当前仅 1 条 open issue,无历史结算记录可供校准)。"
-target = "≥1"
-collect = { kind = "bw", query = "issue.settled_at within 7d" }
+name   = "单份日报条目数"
+def    = "当日 digests/YYYY-MM-DD.md 实际渲染的条目总数(即 digests/telemetry.json 的 items 字段)。卡的是上限不是下限——docs/regression.md 真实记录过输出从 111 条砍到 30 条才「达到日报应有的可读体量」,项目真实痛点在「太多读不完」这一侧。本轮由滞后改判为引领:cap_per_source 是配置里可直接拧的参数、改完下一次运行立刻生效(当下可影响),且体量直接决定「能不能读完」(对北极星有预测性),两条强制判定题都答「是」。真实水位:2026-07-28 telemetry.json items=27(raw 307 → 命中 93 → 去重 92 → 按源限量后 27)。"
+target = "≤35"
+collect = { kind = "manual", query = "" }
