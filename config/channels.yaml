@@ -1,0 +1,173 @@
+# channels.yaml —— 频道 match 规则（spec §8.2 + spec-v0.3 §15 唯一权威）
+#
+# 规则语义：
+#   * 一个频道一个 match 块，**块内字段之间是 AND**；
+#   * 可用字段：
+#       tags_any        item.tags 命中任一（大小写不敏感）
+#       tags_all        item.tags 命中全部
+#       sources_include 对 source_list 任一元素做大小写不敏感「子串」匹配
+#       keywords_any    title + summary casefold 后的子串匹配
+#       aihot_category  extra.category 命中任一
+#       categories      extra.category / extra.source_category 命中任一（源类目，spec-v0.3 §15）
+#       formats         extra.format 命中任一（news/blog/video/talk/podcast/repo/paper/x，§12/§15）
+#       platforms       extra.platform 命中任一
+#       source_kinds    item.source_kind 命中任一
+#   * 需要 OR 时用 any_of: [块, 块, ...]，任一子块整体命中即算命中。
+#
+# 频道字段：name（英文标识，同时是 channels/<name>.md 的文件名）、
+#           title（中文显示名）、limit（默认取 defaults.limit）。
+#
+# 一条 item 可同时进入多个频道；频道内按 hotness 降序并截断 limit。
+#
+# spec-v0.3 §15 重构：以 format + tag 收敛、凸显用户关切（头条 / models / claude-code /
+# practices / talks / podcasts / trending / papers / builders-live / company-internal）；
+# 同时保留 model-dev / plugins / x-watch / releases / research 等既有频道（向后兼容）。
+
+defaults:
+  limit: 30
+
+channels:
+  # —— 头条：跨源热榜（热度 + 交叉验证），聚官方/模型/大会/blog 的高信号条目 ——
+  - name: headlines
+    title: 头条
+    limit: 20
+    match:
+      any_of:
+        - tags_any: [official, models, claude-code]
+        - formats: [news, blog, video, talk]
+        - categories: [models, industry, claude-code]
+
+  # —— 模型发布 ——
+  - name: models
+    title: 模型发布
+    limit: 30
+    match:
+      any_of:
+        - tags_any: [models, model]
+        - categories: [models]
+        - aihot_category: [llm]
+        - keywords_any:
+            ["claude", "gpt-", "chatgpt", "gemini", "llama", "qwen", "deepseek",
+             "mistral", "grok", "kimi", "glm", "大模型"]
+
+  # —— Claude Code 动态 ——
+  - name: claude-code
+    title: Claude Code 动态
+    limit: 30
+    match:
+      any_of:
+        - tags_any: [claude-code, claude_code]
+        - categories: [claude-code]
+        - keywords_any: ["claude code", "claude-code", "claude cli", "cc plugin"]
+
+  # —— 方法论 / 工程实践（loop、AI-native SDLC、agent harness…）——
+  - name: practices
+    title: 方法论
+    limit: 30
+    match:
+      any_of:
+        - tags_any: [practices]
+        - categories: [practices]
+        - keywords_any: [loop, sdlc, eval, harness, workflow, agent]
+
+  # —— 演讲 / 大会（Claude 大会、官方频道演讲）——
+  - name: talks
+    title: 演讲大会
+    limit: 30
+    match:
+      formats: [video, talk]
+
+  # —— 播客 ——
+  - name: podcasts
+    title: 播客
+    limit: 30
+    match:
+      formats: [podcast]
+
+  # —— GitHub Trending / 业界资产演进 ——
+  - name: trending
+    title: 趋势项目
+    limit: 30
+    match:
+      formats: [repo]
+
+  # —— 变更情报（spec-v0.3 §19）：提示词 changelog + 官方插件 bump ——
+  - name: change-intel
+    title: 变更情报
+    limit: 30
+    match:
+      any_of:
+        - formats: [changelog]
+        - tags_any: [changelog]
+
+  # —— 论文前沿（format=paper）——
+  - name: papers
+    title: 论文
+    limit: 30
+    match:
+      any_of:
+        - formats: [paper]
+        - categories: [papers]
+
+  # —— 模型研发（既有频道，向后兼容）——
+  - name: model-dev
+    title: 模型研发
+    limit: 30
+    match:
+      any_of:
+        - tags_any: [research, arxiv, paper, training, eval]
+        - aihot_category: [research, dev]
+        - keywords_any:
+            ["pretrain", "post-train", "fine-tune", "finetune", "rlhf", "benchmark",
+             "scaling law", "distill", "quantization", "推理优化", "强化学习"]
+
+  # —— 插件生态（既有频道，向后兼容）——
+  - name: plugins
+    title: 插件生态
+    limit: 30
+    match:
+      any_of:
+        - tags_any: [plugins, insights, mcp, skills]
+        - source_kinds: [insights]
+        - keywords_any: ["plugin", "mcp server", "marketplace", "skill", "插件"]
+
+  # —— 大牛动态（builders）——
+  - name: builders-live
+    title: 大牛动态
+    limit: 40
+    match:
+      any_of:
+        - source_kinds: [builders]
+        - tags_any: [builders]
+
+  # —— X 观察（既有频道，向后兼容）——
+  - name: x-watch
+    title: X 观察
+    limit: 40
+    match:
+      any_of:
+        - platforms: [x, twitter]
+        - tags_any: [x, twitter]
+
+  # —— 版本发布（既有频道，向后兼容）——
+  - name: releases
+    title: 版本发布
+    limit: 20
+    match:
+      tags_any: [release]
+
+  # —— 论文（既有频道 research，向后兼容 sources_include: arxiv）——
+  - name: research
+    title: 论文前沿
+    limit: 20
+    match:
+      any_of:
+        - tags_any: [arxiv, paper]
+        - sources_include: [arxiv]
+
+  # —— 公司内网（保留槽位，company 眼未联调）——
+  - name: company-internal
+    title: 公司内网
+    limit: 30
+    match:
+      source_kinds: [company]

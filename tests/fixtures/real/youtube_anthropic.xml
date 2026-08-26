@@ -1,0 +1,441 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <link rel="self" href="http://www.youtube.com/feeds/videos.xml?channel_id=UCrDwWp7EBBv4NwvScIpBDOA"/>
+ <id>yt:channel:rDwWp7EBBv4NwvScIpBDOA</id>
+ <yt:channelId>rDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+ <title>Anthropic</title>
+ <link rel="alternate" href="https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA"/>
+ <author>
+  <name>Anthropic</name>
+  <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+ </author>
+ <published>2023-06-15T22:02:43+00:00</published>
+ <entry>
+  <id>yt:video:iF5IWjOWcA4</id>
+  <yt:videoId>iF5IWjOWcA4</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>How Icelanders are thinking about AI</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=iF5IWjOWcA4"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-08-10T14:30:52+00:00</published>
+  <updated>2026-08-19T12:42:51+00:00</updated>
+  <media:group>
+   <media:title>How Icelanders are thinking about AI</media:title>
+   <media:content url="https://www.youtube.com/v/iF5IWjOWcA4?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i2.ytimg.com/vi/iF5IWjOWcA4/hqdefault.jpg" width="480" height="360"/>
+   <media:description>In late 2025, Iceland’s government launched one of the world’s first national AI education pilots, giving teachers who volunteered access to AI tools.
+
+We visited Iceland to find out how people are thinking about AI. 
+
+More information about the pilot: https://www.anthropic.com/news/anthropic-and-iceland-announce-one-of-the-world-s-first-national-ai-education-pilots</media:description>
+   <media:community>
+    <media:starRating count="1295" average="5.00" min="1" max="5"/>
+    <media:statistics views="97161"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:rKV5JcALQoQ</id>
+  <yt:videoId>rKV5JcALQoQ</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>The different levels of how Claude thinks</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=rKV5JcALQoQ"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-07-06T16:59:51+00:00</published>
+  <updated>2026-07-08T04:12:52+00:00</updated>
+  <media:group>
+   <media:title>The different levels of how Claude thinks</media:title>
+   <media:content url="https://www.youtube.com/v/rKV5JcALQoQ?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/rKV5JcALQoQ/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Out of everything happening in your brain right now, only a tiny fraction is consciously accessible — thoughts you can describe, hold in mind, and reason with. We found a strikingly similar divide inside our AI model, Claude.
+
+Our experiments were inspired by a leading theory in neuroscience: the global workspace theory. It holds that a thought becomes consciously accessible when it enters a shared &quot;workspace&quot; that's broadcast across the brain. We found a set of representations in Claude’s neural activity that play a similar role.
+
+Read more about the research here: https://www.anthropic.com/research/global-workspace
+
+0:00 The mind as an ocean
+0:47 Meet the J-space
+1:52 Silent math
+2:22 Don't think about the bridge
+3:12 Claude's automatic processing
+3:42 Catching hidden thoughts
+4:34 The question of consciousness</media:description>
+   <media:community>
+    <media:starRating count="19419" average="5.00" min="1" max="5"/>
+    <media:statistics views="437007"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:Y9Wz2PV404E</id>
+  <yt:videoId>Y9Wz2PV404E</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>Introducing Claude Fable 5</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=Y9Wz2PV404E"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-06-09T17:00:05+00:00</published>
+  <updated>2026-06-16T20:28:40+00:00</updated>
+  <media:group>
+   <media:title>Introducing Claude Fable 5</media:title>
+   <media:content url="https://www.youtube.com/v/Y9Wz2PV404E?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i2.ytimg.com/vi/Y9Wz2PV404E/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Claude Fable 5 is our most capable model yet, now generally available. It’s a Mythos-class model with safeguards that let us share it broadly without compromising on safety.
+
+It can stay with complex tasks and hard problems for days, handling ambitious work across coding, research, analysis, finance, law, and beyond. 
+
+Learn more: https://www.anthropic.com/news/claude-fable-5-mythos-5</media:description>
+   <media:community>
+    <media:starRating count="23954" average="5.00" min="1" max="5"/>
+    <media:statistics views="802703"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:j2knrqAzYVY</id>
+  <yt:videoId>j2knrqAzYVY</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>Translating Claude’s thoughts into language</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=j2knrqAzYVY"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-05-07T17:01:21+00:00</published>
+  <updated>2026-05-17T00:20:47+00:00</updated>
+  <media:group>
+   <media:title>Translating Claude’s thoughts into language</media:title>
+   <media:content url="https://www.youtube.com/v/j2knrqAzYVY?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/j2knrqAzYVY/hqdefault.jpg" width="480" height="360"/>
+   <media:description>AI models like Claude talk in words but think in numbers. These numbers, called activations, encode Claude’s thoughts, but not in a language we can read.
+
+We are introducing Natural Language Autoencoders, or NLAs, which translate AI models’ activations into readable text. NLAs have already helped us improve how we test our models for safety and better understand why they do what they do.
+
+Read more about this research on our blog: https://www.anthropic.com/research/natural-language-autoencoders</media:description>
+   <media:community>
+    <media:starRating count="7985" average="5.00" min="1" max="5"/>
+    <media:statistics views="153697"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:INGOC6-LLv0</id>
+  <yt:videoId>INGOC6-LLv0</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>An initiative to secure the world's software | Project Glasswing</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=INGOC6-LLv0"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-04-07T18:03:51+00:00</published>
+  <updated>2026-08-12T15:41:50+00:00</updated>
+  <media:group>
+   <media:title>An initiative to secure the world's software | Project Glasswing</media:title>
+   <media:content url="https://www.youtube.com/v/INGOC6-LLv0?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i2.ytimg.com/vi/INGOC6-LLv0/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Project Glasswing is a new initiative that brings together Amazon Web Services, Anthropic, Apple, Broadcom, Cisco, CrowdStrike, Google, JPMorganChase, the Linux Foundation, Microsoft, NVIDIA, and Palo Alto Networks in an effort to secure the world’s most critical software.
+
+We formed Project Glasswing because of capabilities we’ve observed in a new frontier model trained by Anthropic that we believe could reshape cybersecurity. Claude Mythos Preview is a general-purpose, unreleased frontier model that reveals a stark fact: AI models have reached a level of coding capability where they can surpass all but the most skilled humans at finding and exploiting software vulnerabilities.
+
+Read more: https://anthropic.com/glasswing</media:description>
+   <media:community>
+    <media:starRating count="13250" average="5.00" min="1" max="5"/>
+    <media:statistics views="432710"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:D4XTefP3Lsc</id>
+  <yt:videoId>D4XTefP3Lsc</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>When AIs act emotional</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=D4XTefP3Lsc"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-04-02T16:06:59+00:00</published>
+  <updated>2026-05-04T21:19:08+00:00</updated>
+  <media:group>
+   <media:title>When AIs act emotional</media:title>
+   <media:content url="https://www.youtube.com/v/D4XTefP3Lsc?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i1.ytimg.com/vi/D4XTefP3Lsc/hqdefault.jpg" width="480" height="360"/>
+   <media:description>AI models sometimes act like they have emotions—why? 
+
+We studied one of our recent models and found that it draws on emotion concepts learned from text to inhabit its role as Claude, the AI assistant. These representations influence its behavior the way emotions might influence a human. 
+
+And that has real consequences, affecting how Claude answers chats, writes code, and makes decisions.
+
+Read more about this research: https://www.anthropic.com/research/emotion-concepts-function</media:description>
+   <media:community>
+    <media:starRating count="18062" average="5.00" min="1" max="5"/>
+    <media:statistics views="318145"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:dPn3GBI8lII</id>
+  <yt:videoId>dPn3GBI8lII</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>Introducing Claude Opus 4.6</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=dPn3GBI8lII"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-02-05T17:45:22+00:00</published>
+  <updated>2026-06-17T16:35:58+00:00</updated>
+  <media:group>
+   <media:title>Introducing Claude Opus 4.6</media:title>
+   <media:content url="https://www.youtube.com/v/dPn3GBI8lII?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i1.ytimg.com/vi/dPn3GBI8lII/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Our smartest model got an upgrade. 
+
+Claude Opus 4.6 plans more carefully, stays on task longer, and works more autonomously, so you can do more with less back-and-forth.
+
+Read more: https://anthropic.com/news/claude-opus-4-6</media:description>
+   <media:community>
+    <media:starRating count="6697" average="5.00" min="1" max="5"/>
+    <media:statistics views="394706"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:kYJO0y8fVTA</id>
+  <yt:videoId>kYJO0y8fVTA</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>Claude on Mars</title>
+  <link rel="alternate" href="https://www.youtube.com/shorts/kYJO0y8fVTA"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-01-30T19:09:11+00:00</published>
+  <updated>2026-06-17T16:39:29+00:00</updated>
+  <media:group>
+   <media:title>Claude on Mars</media:title>
+   <media:content url="https://www.youtube.com/v/kYJO0y8fVTA?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i4.ytimg.com/vi/kYJO0y8fVTA/hqdefault.jpg" width="480" height="360"/>
+   <media:description>On December 8, the Perseverance rover safely trundled across the surface of Mars.
+
+This was the first AI-planned drive on another planet. And it was planned by Claude.
+
+Engineers at NASA Jet Propulsion Laboratory used Claude to plot out the route for Perseverance to navigate an approximately four-hundred-meter path on the Martian surface. 
+
+Read the full story: https://www.anthropic.com/mars</media:description>
+   <media:community>
+    <media:starRating count="1815" average="5.00" min="1" max="5"/>
+    <media:statistics views="60723"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:bluAmTHoEow</id>
+  <yt:videoId>bluAmTHoEow</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>Your tools are now interactive in Claude</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=bluAmTHoEow"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-01-26T19:06:25+00:00</published>
+  <updated>2026-04-30T03:34:08+00:00</updated>
+  <media:group>
+   <media:title>Your tools are now interactive in Claude</media:title>
+   <media:content url="https://www.youtube.com/v/bluAmTHoEow?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/bluAmTHoEow/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Your connected tools are now interactive inside Claude. Manage projects in Asana, draft messages in Slack, build charts in Amplitude, and create diagrams in Figma—without switching tabs.</media:description>
+   <media:community>
+    <media:starRating count="2619" average="5.00" min="1" max="5"/>
+    <media:statistics views="167171"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:N5yJJA0NCU0</id>
+  <yt:videoId>N5yJJA0NCU0</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>AI on campus</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=N5yJJA0NCU0"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-01-12T22:41:27+00:00</published>
+  <updated>2026-04-22T00:48:06+00:00</updated>
+  <media:group>
+   <media:title>AI on campus</media:title>
+   <media:content url="https://www.youtube.com/v/N5yJJA0NCU0?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/N5yJJA0NCU0/hqdefault.jpg" width="480" height="360"/>
+   <media:description>AI is ubiquitous on college campuses. We sat down with students to hear what's going well, what isn't, and how students, professors, and universities alike are navigating it in real time.
+
+0:00 - Introduction
+0:22 - Meet the panel
+1:06 - Vibes on campus
+6:28 - What are students building? 
+11:27 - AI as tool vs. crutch 
+16:44 - Are professors keeping up? 
+20:15 - Downsides 
+25:55 - AI and the job market 
+34:23 - Rapid-fire questions</media:description>
+   <media:community>
+    <media:starRating count="823" average="5.00" min="1" max="5"/>
+    <media:statistics views="39471"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:UAmKyyZ-b9E</id>
+  <yt:videoId>UAmKyyZ-b9E</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>Introducing Cowork: Claude Code for the rest of your work</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=UAmKyyZ-b9E"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-01-12T20:02:22+00:00</published>
+  <updated>2026-05-05T01:41:47+00:00</updated>
+  <media:group>
+   <media:title>Introducing Cowork: Claude Code for the rest of your work</media:title>
+   <media:content url="https://www.youtube.com/v/UAmKyyZ-b9E?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i2.ytimg.com/vi/UAmKyyZ-b9E/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Claude Cowork lets you hand off your most time-consuming tasks to Claude, and come back to finished outputs. Describe what you need, point Claude at your sources, and walk away.
+
+Cowork pulls from your local files, cloud tools, and the web, then synthesizes everything into polished deliverables: spreadsheets, presentations, documents, PDFs, and more.
+
+Run multiple tasks at once. Let Cowork handle the busywork while you focus on what matters. 
+
+Cowork:
+Meets you where your work happens — local files and apps, cloud tools, or the browser
+Pulls from disparate sources, analyzes, and delivers finished outputs
+Run tasks in parallel, not one at a time
+
+Available now on Desktop for all paid subscribers.
+
+Try Cowork today → https://claude.com/product/cowork</media:description>
+   <media:community>
+    <media:starRating count="7090" average="5.00" min="1" max="5"/>
+    <media:statistics views="903805"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:mM9TY91FECI</id>
+  <yt:videoId>mM9TY91FECI</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>AI's limited self-knowledge</title>
+  <link rel="alternate" href="https://www.youtube.com/shorts/mM9TY91FECI"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2026-01-08T16:07:44+00:00</published>
+  <updated>2026-04-22T20:58:59+00:00</updated>
+  <media:group>
+   <media:title>AI's limited self-knowledge</media:title>
+   <media:content url="https://www.youtube.com/v/mM9TY91FECI?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i2.ytimg.com/vi/mM9TY91FECI/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Anthropic researcher Amanda Askell discusses the self-knowledge problem that AI models face.</media:description>
+   <media:community>
+    <media:starRating count="777" average="5.00" min="1" max="5"/>
+    <media:statistics views="25546"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:nvbq39yVYRk</id>
+  <yt:videoId>nvbq39yVYRk</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>What is sycophancy in AI models?</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=nvbq39yVYRk"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2025-12-18T20:30:14+00:00</published>
+  <updated>2026-04-23T00:48:17+00:00</updated>
+  <media:group>
+   <media:title>What is sycophancy in AI models?</media:title>
+   <media:content url="https://www.youtube.com/v/nvbq39yVYRk?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/nvbq39yVYRk/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Learn what AI researchers mean when they talk about sycophancy, when it's more likely to show up in conversations, and tactics you can use to steer AI towards truth.</media:description>
+   <media:community>
+    <media:starRating count="5431" average="5.00" min="1" max="5"/>
+    <media:statistics views="125969"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:rBJnWMD0Pho</id>
+  <yt:videoId>rBJnWMD0Pho</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>Let Claude handle work in your browser</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=rBJnWMD0Pho"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2025-12-18T18:52:03+00:00</published>
+  <updated>2026-04-30T04:22:50+00:00</updated>
+  <media:group>
+   <media:title>Let Claude handle work in your browser</media:title>
+   <media:content url="https://www.youtube.com/v/rBJnWMD0Pho?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/rBJnWMD0Pho/hqdefault.jpg" width="480" height="360"/>
+   <media:description>See Claude for Chrome handle three complete workflows in your browser.
+Pull data from dashboards into one analysis doc
+Address slide comments automatically
+Build with Claude Code, test in Chrome
+Claude for Chrome is a browser extension that lets Claude see, click, type, and navigate web pages.
+Try it: claude.com/chrome</media:description>
+   <media:community>
+    <media:starRating count="3672" average="5.00" min="1" max="5"/>
+    <media:statistics views="583715"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:5KTHvKCrQ00</id>
+  <yt:videoId>5KTHvKCrQ00</yt:videoId>
+  <yt:channelId>UCrDwWp7EBBv4NwvScIpBDOA</yt:channelId>
+  <title>Claude ran a business in our office</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=5KTHvKCrQ00"/>
+  <author>
+   <name>Anthropic</name>
+   <uri>https://www.youtube.com/channel/UCrDwWp7EBBv4NwvScIpBDOA</uri>
+  </author>
+  <published>2025-12-18T12:04:53+00:00</published>
+  <updated>2026-04-29T02:23:05+00:00</updated>
+  <media:group>
+   <media:title>Claude ran a business in our office</media:title>
+   <media:content url="https://www.youtube.com/v/5KTHvKCrQ00?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i2.ytimg.com/vi/5KTHvKCrQ00/hqdefault.jpg" width="480" height="360"/>
+   <media:description>For a large part of 2025, we ran Project Vend: an experiment where we let Claude manage a small business in the Anthropic office. We learned a lot from how close it was to success—and the curious ways that it failed—about the plausible, strange, not-too-distant future in which AI models might autonomously run things in the real economy.
+
+The shopkeeper (who we named Claudius) had to source products, set prices, manage inventory, and deal with customers. Things got really, really weird.
+
+Read more about the experiment: https://www.anthropic.com/research/project-vend-2 
+
+0:00 Background on Project Vend
+0:35 How a transaction works
+1:27 Claudius's naïveté
+2:29 An identity crisis
+3:57 The CEO agent
+5:04 Conclusion</media:description>
+   <media:community>
+    <media:starRating count="17278" average="5.00" min="1" max="5"/>
+    <media:statistics views="660640"/>
+   </media:community>
+  </media:group>
+ </entry>
+</feed>

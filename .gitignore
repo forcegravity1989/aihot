@@ -1,4 +1,26 @@
-/target
+# 虚拟环境与构建产物
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Python 缓存
 __pycache__/
-*.pyc
+*.py[cod]
+*.so
+
+# 测试与工具缓存
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 个人路径覆盖（团队默认见 config/paths.team.json）
+paths.local.json
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,154 @@
+{% if not embed %}<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="qianliyan deep">
+<title>{{ page_title }} · 深读</title>
+</head>
+<body>{% endif %}
+<style>
+.qly-deep {
+  --d-bg: #f5f7fb; --d-card: #ffffff; --d-ink: #171a21; --d-muted: #6b7280;
+  --d-faint: #9aa1ad; --d-line: #e5e8f0; --d-brand: #2f6df6; --d-brand-soft: #eaf1ff;
+  --d-hot: #ff6a3d; --d-thesis: #7c3aed; --d-thesis-soft: #f1e9ff; --d-star: #d97706;
+  background: var(--d-bg); color: var(--d-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  font-size: 15px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+  padding: 20px 20px 72px; max-width: 820px; margin: 0 auto;
+}
+@media (prefers-color-scheme: dark) {
+  .qly-deep {
+    --d-bg: #12151c; --d-card: #1b1f28; --d-ink: #e8ebf2; --d-muted: #9aa1ad;
+    --d-faint: #6b7280; --d-line: #2a2f3a; --d-brand: #6ea0ff; --d-brand-soft: #22314f;
+    --d-thesis: #b794ff; --d-thesis-soft: #2c2350;
+  }
+}
+.qly-deep a { color: var(--d-brand); text-decoration: none; }
+.qly-deep a:hover { text-decoration: underline; }
+.deep-head { border-bottom: 2px solid var(--d-ink); padding-bottom: 10px; margin-bottom: 14px; }
+.deep-title { font-size: 20px; margin: 0; color: var(--d-ink); }
+.deep-sub { color: var(--d-muted); font-size: 13px; }
+.deep-card { background: var(--d-card); border: 1px solid var(--d-line); border-radius: 14px;
+  padding: 18px 20px; margin-top: 16px; box-shadow: 0 1px 2px rgba(23,26,33,.05), 0 8px 24px rgba(23,26,33,.05); }
+.deep-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.dfmt { font-size: 12.5px; color: var(--d-brand); background: var(--d-brand-soft);
+  border-radius: 999px; padding: 1px 10px; }
+.dbadge { font-size: 12.5px; color: var(--d-hot); }
+.deep-h2 { font-size: 18px; margin: 2px 0 8px; line-height: 1.4; }
+.deep-h2 a { color: var(--d-ink); }
+.deep-h2 a:hover { color: var(--d-brand); }
+.deep-thumb img, .deep-images img { max-width: 100%; height: auto; border-radius: 10px;
+  border: 1px solid var(--d-line); display: block; }
+.deep-thumb { margin: 8px 0; }
+.deep-images { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.deep-images img { max-width: 240px; }
+.deep-tag-line { font-size: 13px; color: var(--d-muted); margin: 6px 0; font-weight: 600; }
+.deep-repo { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0; font-size: 13.5px; }
+.repo-stars { color: var(--d-star); font-weight: 600; }
+.repo-delta { color: var(--d-hot); font-weight: 600; }
+.repo-lang { color: var(--d-muted); border: 1px solid var(--d-line); border-radius: 6px; padding: 0 8px; }
+.deep-summary { color: var(--d-ink); margin: 8px 0; }
+.deep-theses { background: var(--d-thesis-soft); border-left: 3px solid var(--d-thesis);
+  border-radius: 8px; padding: 10px 14px; margin: 12px 0; }
+.deep-theses .deep-block-title { color: var(--d-thesis); font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.deep-theses ul { margin: 0; padding-left: 20px; }
+.deep-theses li { margin: 3px 0; font-weight: 500; }
+.deep-corrob { border-radius: 8px; padding: 9px 14px; margin: 12px 0; font-size: 13.5px;
+  border-left: 3px solid var(--d-muted); background: var(--d-brand-soft); }
+.deep-corrob .corrob-badge { font-weight: 700; margin-right: 8px; }
+.deep-corrob .corrob-claim { color: var(--d-ink); }
+.deep-corrob .corrob-evidence { margin-top: 4px; color: var(--d-muted); }
+.deep-corrob-corroborated { border-left-color: #2e9c5a; }
+.deep-corrob-contradicted { border-left-color: var(--d-hot); }
+.deep-corrob-unverified { border-left-color: var(--d-star); }
+.deep-distill { display: grid; gap: 8px; margin: 12px 0; }
+.dsec { border: 1px solid var(--d-line); border-radius: 8px; padding: 8px 12px; }
+.dsec-k { display: inline-block; font-size: 12.5px; font-weight: 600; color: var(--d-brand);
+  background: var(--d-brand-soft); border-radius: 6px; padding: 0 8px; margin-bottom: 4px; }
+.dsec ul { margin: 4px 0 0; padding-left: 20px; }
+.dsec li { margin: 2px 0; }
+.dsec p { margin: 4px 0 0; color: var(--d-muted); }
+.deep-cross { margin-top: 10px; border-top: 1px dashed var(--d-line); padding-top: 8px; }
+.deep-cross summary { cursor: pointer; font-size: 13.5px; color: var(--d-muted); }
+.cross-list { margin: 8px 0; padding-left: 20px; font-size: 13.5px; }
+.cross-list li { margin: 2px 0; }
+.deep-original { display: inline-block; margin-top: 6px; font-weight: 600; }
+.deep-empty { color: var(--d-faint); padding: 24px 4px; }
+</style>
+<div class="qly-deep qly-view-inner" id="view-deep-inner">
+  <div class="deep-head">
+    <h1 class="deep-title">📖 深读精读</h1>
+    <div class="deep-sub">{{ date }} · 共 {{ total }} 条 · 全文重点研读，突出图片与论点</div>
+  </div>
+  {% for card in cards %}
+  <article class="deep-card" data-sig="{{ card.sig }}" data-format="{{ card.format }}">
+    <div class="deep-card-head">
+      <span class="dfmt">{{ card.icon }} {{ card.label }}</span>
+      {% for badge in card.badges %}<span class="dbadge">{{ badge }}</span>{% endfor %}
+    </div>
+    <h2 class="deep-h2"><a href="{{ card.url }}" target="_blank" rel="noopener noreferrer">{{ card.title }}</a></h2>
+
+    {% if card.is_video %}
+    <div class="deep-tag-line">🎤 演讲要点{% if card.has_transcript %} · 已读字幕全文{% endif %}</div>
+    {% if card.thumbnail %}<div class="deep-thumb"><img src="{{ card.thumbnail }}" alt="{{ card.title }}" loading="lazy"></div>{% endif %}
+    {% endif %}
+    {% if card.is_repo %}
+    <div class="deep-repo">
+      {% if card.stars %}<span class="repo-stars">⭐ {{ card.stars }}</span>{% endif %}
+      {% if card.stars_period %}<span class="repo-delta">本期 +{{ card.stars_period }}</span>{% endif %}
+      {% if card.language %}<span class="repo-lang">{{ card.language }}</span>{% endif %}
+    </div>
+    {% endif %}
+    {% if card.is_paper %}
+    <div class="deep-tag-line">📄 论文摘要{% if card.arxiv_url %} · <a href="{{ card.arxiv_url }}" target="_blank" rel="noopener noreferrer">arXiv</a>{% endif %}</div>
+    {% endif %}
+
+    {% if card.has_images %}
+    <div class="deep-images">
+      {% for img in card.images %}<img src="{{ img }}" alt="配图" loading="lazy">{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if card.summary %}<p class="deep-summary">{{ card.summary }}</p>{% endif %}
+
+    {% if card.theses %}
+    <div class="deep-theses">
+      <div class="deep-block-title">💡 关键论点</div>
+      <ul>{% for t in card.theses %}<li>{{ t }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    {% if card.corroboration %}
+    <div class="deep-corrob deep-corrob-{{ card.corroboration.verdict }}">
+      <span class="corrob-badge">{{ card.corroboration.label }}</span>
+      {% if card.corroboration.claim %}<span class="corrob-claim">{{ card.corroboration.claim }}</span>{% endif %}
+      {% if card.corroboration.evidence %}<div class="corrob-evidence">证据 · {{ card.corroboration.evidence }}</div>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="deep-distill">
+      <div class="dsec">
+        <span class="dsec-k">要点</span>
+        {% if card.kp %}<ul>{% for k in card.kp %}<li>{{ k }}</li>{% endfor %}</ul>{% endif %}
+        {% if not card.kp %}<p>—</p>{% endif %}
+      </div>
+      <div class="dsec"><span class="dsec-k">脉络</span><p>{% if card.chain %}{{ card.chain }}{% endif %}{% if not card.chain %}—{% endif %}</p></div>
+      <div class="dsec"><span class="dsec-k">影响</span><p>{% if card.pull %}{{ card.pull }}{% endif %}{% if not card.pull %}—{% endif %}</p></div>
+      <div class="dsec"><span class="dsec-k">局限</span><p>{% if card.limits %}{{ card.limits }}{% endif %}{% if not card.limits %}—{% endif %}</p></div>
+    </div>
+
+    <details class="deep-cross">
+      <summary>🔎 交叉验证 · {{ card.source_count }} 源</summary>
+      <ul class="cross-list">
+        {% for s in card.source_list %}<li>{{ s.name }}</li>{% endfor %}
+      </ul>
+      <a class="deep-original" href="{{ card.url }}" target="_blank" rel="noopener noreferrer">阅读原文 →</a>
+    </details>
+  </article>
+  {% endfor %}
+  {% if not cards %}<p class="deep-empty">今日暂无条目。</p>{% endif %}
+</div>
+{% if not embed %}</body>
+</html>{% endif %}

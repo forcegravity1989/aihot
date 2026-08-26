@@ -1,0 +1,27 @@
+{
+  "data": [
+    {
+      "title": "GPT-6 rumored to ship with native tool use",
+      "url": "https://aihot.virxact.com/news/gpt6-tool-use",
+      "summary": "Leaked roadmap suggests native tool calling by default.",
+      "date": "2026-08-20T08:00:00Z"
+    },
+    {
+      "name": "Agent frameworks converge on MCP",
+      "link": "https://aihot.virxact.com/news/mcp-convergence",
+      "desc": "Most major agent frameworks now speak MCP out of the box.",
+      "publish_time": "2026-08-19 12:00:00"
+    },
+    {
+      "name": "New dev tool: instant repo indexing",
+      "link": "https://aihot.virxact.com/news/repo-indexing",
+      "description": "A new CLI tool indexes large repos in seconds.",
+      "created_at": "2026-08-18"
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "缺标题缺链接，应被丢弃"
+    }
+  ]
+}

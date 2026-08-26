@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qianliyan"
+version = "0.2.0"
+description = "千里眼 — 五眼并行的 AI 情报采集、去重打分与日报流水线"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "pyyaml>=5.4",
+    "requests>=2.25",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.100", "uvicorn>=0.20"]
+browser = ["playwright>=1.40"]
+dev = ["pytest>=7.0", "httpx>=0.24"]
+
+[tool.setuptools.packages.find]
+include = ["qianliyan*"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra"
