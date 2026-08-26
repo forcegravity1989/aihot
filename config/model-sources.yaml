@@ -1,0 +1,70 @@
+# model-sources.yaml —— 模型信源 tier 路由（spec §8.3 / §9.4）
+#
+# tiers：tier 名 → 权威度权重，用于区分「官方口径」与「二手转述」。
+# mapping：信源名或其子串 → tier；匹配大小写不敏感，同时命中多条时取**最长 key**
+#          （更具体的规则胜出），未命中默认落到 community。
+
+tiers:
+  official: 1.0
+  vendor: 0.9
+  dev: 0.8
+  kol: 0.7
+  community: 0.5
+
+mapping:
+  # ---- official：模型厂商自己的发布口径 ----
+  Anthropic: official
+  Claude Code: official
+  OpenAI: official
+  Google DeepMind: official
+  DeepMind: official
+  Google AI: official
+  Meta AI: official
+  Microsoft Research: official
+  xAI: official
+  Mistral AI: official
+  DeepSeek: official
+  Moonshot: official
+  Zhipu: official
+  智谱: official
+  阿里通义: official
+  Qwen: official
+  百度文心: official
+  字节豆包: official
+  腾讯混元: official
+
+  # ---- vendor：平台/工具厂商 ----
+  HuggingFace: vendor
+  Hugging Face: vendor
+  Together: vendor
+  Groq: vendor
+  Replicate: vendor
+  Ollama: vendor
+  LangChain: vendor
+  LlamaIndex: vendor
+  vLLM: vendor
+  ModelScope: vendor
+  魔搭: vendor
+
+  # ---- dev：工程/开源社区一手 ----
+  GitHub: dev
+  Releases: dev
+  Papers with Code: dev
+  Hacker News: dev
+  InfoQ: dev
+
+  # ---- kol：个人与播客 ----
+  Simon Willison: kol
+  Latent Space: kol
+  Andrej Karpathy: kol
+  karpathy: kol
+  swyx: kol
+  Import AI: kol
+  The Batch: kol
+  机器之心: kol
+  量子位: kol
+
+  # ---- community：论文与聚合站（默认档，显式列出便于查阅） ----
+  arXiv: community
+  Reddit: community
+  Medium: community

@@ -1,0 +1,21 @@
+# config/x-follows.yaml —— X(Twitter) 关注/静音/模式表。
+# mode: all=全量收录 | highlights=仅高光（渲染/路由层可选用）。
+# mute: true 的 handle 会被 eyes/builders.py 从右眼结果中剔除，即便在 follow-builders feed 内。
+# follows 对齐 zarazhangrui/follow-builders 的 feed-x.json 当前 13 位 builder。
+
+follows:
+  - {handle: thsottiaux,   mode: all,        mute: false}   # Thibault Sottiaux · Codex & ChatGPT @OpenAI
+  - {handle: petergyang,   mode: all,        mute: false}   # Peter Yang
+  - {handle: thenanyu,     mode: all,        mute: false}   # Nan Yu
+  - {handle: realmadhuguru, mode: all,       mute: false}   # Madhu
+  - {handle: amasad,       mode: all,        mute: false}   # Amjad Masad (Replit)
+  - {handle: rauchg,       mode: all,        mute: false}   # Guillermo Rauch (Vercel)
+  - {handle: levie,        mode: highlights, mute: false}   # Aaron Levie (Box)
+  - {handle: garrytan,     mode: all,        mute: false}   # Garry Tan (YC)
+  - {handle: zarazhangrui, mode: all,        mute: false}   # Zara Zhang (本仓维护者)
+  - {handle: nikunj,       mode: all,        mute: false}   # Nikunj
+  - {handle: steipete,     mode: all,        mute: false}   # Peter Steinberger
+  - {handle: danshipper,   mode: all,        mute: false}   # Dan Shipper (Every)
+  - {handle: adityaag,     mode: all,        mute: false}   # Aditya Agarwal
+  # --- mute 示例：白名单外/噪声账号可在此静音（不在当前 feed，仅示范）---
+  - {handle: elonmusk,     mode: highlights, mute: true}

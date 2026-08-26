@@ -1,0 +1,10 @@
+{
+  "wireMagic": "pb3",
+  "events": [
+    {"tStartMs": 0, "dDurationMs": 4200, "segs": [{"utf8": "In late 2025, Iceland launched "}, {"utf8": "one of the world's first national"}]},
+    {"tStartMs": 4200, "dDurationMs": 3800, "segs": [{"utf8": " AI language initiatives."}]},
+    {"tStartMs": 8000, "dDurationMs": 5000, "segs": [{"utf8": "The core idea is that "}, {"utf8": "smaller languages need "}, {"utf8": "deliberate data stewardship."}]},
+    {"tStartMs": 13000, "dDurationMs": 4000, "segs": [{"utf8": "\n"}]},
+    {"tStartMs": 13000, "dDurationMs": 4500, "segs": [{"utf8": "Otherwise the models default "}, {"utf8": "to English patterns."}]}
+  ]
+}

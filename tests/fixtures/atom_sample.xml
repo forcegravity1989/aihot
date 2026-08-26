@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example AI Lab</title>
+  <link href="https://example.com/"/>
+  <entry>
+    <title>Introducing Foundation Model v3</title>
+    <link href="https://example.com/blog/foundation-v3" rel="alternate"/>
+    <summary>We are releasing Foundation Model v3 with a longer context window.</summary>
+    <published>2026-08-22T10:00:00Z</published>
+    <updated>2026-08-22T11:00:00Z</updated>
+  </entry>
+  <entry>
+    <title>Research notes: scaling laws revisited</title>
+    <link href="https://example.com/blog/scaling-laws-revisited" rel="alternate"/>
+    <content>A deep dive into how scaling laws hold up under new architectures.</content>
+    <updated>2026-08-21T08:00:00Z</updated>
+  </entry>
+</feed>

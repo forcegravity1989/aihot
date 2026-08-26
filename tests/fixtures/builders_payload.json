@@ -1,0 +1,28 @@
+{
+  "tweets": [
+    {
+      "handle": "@karpathy",
+      "text": "the best agent harness is the one you can debug end to end, every step inspectable",
+      "url": "https://x.com/karpathy/status/1001",
+      "created_at": "2026-08-24T10:00:00Z"
+    },
+    {
+      "user": "simonw",
+      "content": "Shipped a new plugin for datasette that talks to any LLM backend.",
+      "link": "https://x.com/simonw/status/1002",
+      "date": "2026-08-23T09:00:00Z"
+    },
+    {
+      "handle": "GaryMarcus",
+      "text": "This one should be filtered out because GaryMarcus is muted in x-follows.yaml.",
+      "url": "https://x.com/GaryMarcus/status/1003",
+      "created_at": "2026-08-22T09:00:00Z"
+    },
+    {
+      "handle": "some_random_person",
+      "text": "This one should be filtered out because it is not in the builders whitelist.",
+      "url": "https://x.com/some_random_person/status/1004",
+      "created_at": "2026-08-22T09:00:00Z"
+    }
+  ]
+}

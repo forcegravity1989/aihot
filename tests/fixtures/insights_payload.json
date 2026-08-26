@@ -1,0 +1,6 @@
+[
+  {"name": "auto-commit-helper", "installs": 4820, "description": "Auto-generates conventional commit messages."},
+  {"name": "context-compactor", "count": 3190, "description": "Compacts long agent context windows."},
+  {"name": "test-writer", "downloads": 2100, "description": "Generates unit tests from diffs."},
+  {"unrelated": "entry with no name should be skipped"}
+]

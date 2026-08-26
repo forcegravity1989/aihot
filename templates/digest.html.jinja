@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="qianliyan {{ version }}">
+<title>{{ page_title }}</title>
+<style>
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --ink: #171a21;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e5e8f0;
+  --brand: #2f6df6;
+  --brand-soft: #eaf1ff;
+  --hot: #ff6a3d;
+  --heavy: #b45309;
+  --heavy-soft: #fff3d6;
+  --flash: #7c3aed;
+  --flash-soft: #f1e9ff;
+  --shadow: 0 1px 2px rgba(23, 26, 33, .05), 0 8px 24px rgba(23, 26, 33, .05);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px 72px; }
+
+/* ---------- 页头 ---------- */
+.masthead {
+  position: sticky; top: 0; z-index: 30;
+  background: rgba(245, 247, 251, .92);
+  backdrop-filter: saturate(160%) blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+.masthead-inner { max-width: 1080px; margin: 0 auto; padding: 16px 20px 12px; }
+.brand-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0; letter-spacing: .5px; }
+.subtitle { color: var(--muted); font-size: 13px; }
+.stats { margin-left: auto; color: var(--muted); font-size: 13px; }
+.stats b { color: var(--ink); font-weight: 600; }
+
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.sortbar { display: inline-flex; gap: 6px; background: var(--card); border: 1px solid var(--line);
+           border-radius: 999px; padding: 4px; box-shadow: var(--shadow); }
+.sort-btn {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  font: inherit; font-size: 13px; padding: 5px 14px; border-radius: 999px;
+  transition: background .15s ease, color .15s ease;
+}
+.sort-btn:hover { background: var(--brand-soft); color: var(--brand); }
+.sort-btn[aria-pressed="true"] { background: var(--brand); color: #fff; }
+.palette-hint {
+  margin-left: auto; border: 1px solid var(--line); background: var(--card);
+  border-radius: 999px; padding: 5px 14px; font-size: 13px; color: var(--muted);
+  cursor: pointer;
+}
+.palette-hint:hover { border-color: var(--brand); color: var(--brand); }
+kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  background: #eef1f7; border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 5px; padding: 0 5px;
+}
+
+/* ---------- 版面导航 ---------- */
+.boardnav { display: flex; gap: 6px; flex-wrap: wrap; margin: 18px 0 6px; }
+.boardnav a {
+  font-size: 13px; color: var(--muted); background: var(--card);
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px;
+}
+.boardnav a:hover { color: var(--brand); border-color: var(--brand); text-decoration: none; }
+.boardnav .n { color: var(--faint); margin-left: 4px; }
+
+/* ---------- 版面 ---------- */
+.board { margin-top: 34px; scroll-margin-top: 120px; }
+.board-head { display: flex; align-items: baseline; gap: 10px; border-bottom: 2px solid var(--ink); padding-bottom: 8px; }
+.board-head h2 { font-size: 17px; margin: 0; }
+.board-head .n { color: var(--faint); font-size: 13px; }
+.board-head .desc { color: var(--muted); font-size: 13px; margin-left: auto; }
+.cards { list-style: none; margin: 0; padding: 0; }
+.card {
+  display: flex; gap: 12px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 14px 16px; margin-top: 10px; box-shadow: var(--shadow);
+  scroll-margin-top: 130px;
+}
+.card:hover { border-color: #cfd6e6; }
+.card.qly-flash-target { outline: 2px solid var(--brand); outline-offset: 2px; }
+.avatar {
+  width: 34px; height: 34px; border-radius: 50%; flex: 0 0 34px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 600; color: #fff; overflow: hidden; object-fit: cover;
+}
+.card-main { min-width: 0; flex: 1; }
+.card-title { margin: 0; font-size: 15.5px; font-weight: 600; line-height: 1.5; }
+.card-title a:hover { color: var(--brand); }
+.badge {
+  display: inline-block; font-size: 12px; font-weight: 600; border-radius: 6px;
+  padding: 1px 7px; margin-right: 6px; vertical-align: 1px;
+}
+.badge-heavy { background: var(--heavy-soft); color: var(--heavy); }
+.badge-flash { background: var(--flash-soft); color: var(--flash); }
+.card-summary {
+  margin: 6px 0 0; color: var(--muted); font-size: 13.5px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.card-meta { margin-top: 8px; color: var(--faint); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.card-meta .sources { color: var(--muted); }
+.card-meta .hotness { color: var(--hot); font-weight: 600; }
+.card-meta .tier { border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; }
+.card-meta .go { color: var(--brand); margin-left: auto; }
+.empty { color: var(--faint); font-size: 13.5px; padding: 18px 4px; }
+
+/* ---------- 特别版面：为你推荐 / 人物画像 ---------- */
+.special-board { margin-top: 34px; scroll-margin-top: 120px; }
+.special-board .board-head { border-bottom-color: var(--brand); }
+.reasons { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.reason-chip, .topic-chip {
+  display: inline-block; font-size: 12px; border-radius: 999px;
+  padding: 1px 9px; background: var(--brand-soft); color: var(--brand);
+  border: 1px solid var(--line);
+}
+.pscore { color: var(--flash); font-weight: 600; }
+
+.persona-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px; margin-top: 12px;
+}
+.persona-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px;
+}
+.persona-top { display: flex; align-items: center; gap: 10px; }
+.persona-top .avatar { width: 42px; height: 42px; flex: 0 0 42px; font-size: 16px; }
+.persona-name { font-size: 15px; font-weight: 600; line-height: 1.3; }
+.persona-handle { color: var(--faint); font-size: 12.5px; }
+.persona-bio { color: var(--muted); font-size: 13px; margin: 0; }
+.persona-focus { font-size: 13px; }
+.persona-focus b { color: var(--brand); font-weight: 600; }
+.persona-topics { display: flex; flex-wrap: wrap; gap: 6px; }
+.persona-tops { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.persona-tops li { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.persona-tops a:hover { color: var(--brand); }
+.persona-stats {
+  margin-top: auto; padding-top: 8px; border-top: 1px dashed var(--line);
+  color: var(--muted); font-size: 12.5px; display: flex; gap: 14px;
+}
+.persona-stats b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ---------- 命令面板 ---------- */
+.palette-mask {
+  display: none; position: fixed; inset: 0; z-index: 90;
+  background: rgba(23, 26, 33, .35); backdrop-filter: blur(2px);
+  padding: 12vh 16px 16px;
+}
+.palette-mask.open { display: block; }
+.palette {
+  max-width: 640px; margin: 0 auto; background: var(--card); border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(23, 26, 33, .28); overflow: hidden;
+}
+.palette input {
+  width: 100%; border: 0; border-bottom: 1px solid var(--line); outline: none;
+  font: inherit; font-size: 16px; padding: 16px 18px; color: var(--ink); background: transparent;
+}
+.palette-results { list-style: none; margin: 0; padding: 6px; max-height: 46vh; overflow-y: auto; }
+.palette-results li { padding: 9px 12px; border-radius: 9px; cursor: pointer; }
+.palette-results li.active { background: var(--brand-soft); }
+.palette-results .pt { font-size: 14px; }
+.palette-results .pm { font-size: 12px; color: var(--faint); margin-top: 2px; }
+.palette-foot {
+  display: flex; gap: 14px; padding: 9px 16px; border-top: 1px solid var(--line);
+  color: var(--faint); font-size: 12px;
+}
+.palette-empty { color: var(--faint); font-size: 13px; padding: 18px; text-align: center; }
+
+footer { margin-top: 46px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12.5px; }
+
+@media (max-width: 640px) {
+  .stats { margin-left: 0; width: 100%; }
+  .palette-hint { margin-left: 0; }
+  .board-head .desc { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="brand-row">
+      <h1>{{ page_title }}</h1>
+      <span class="subtitle">{{ subtitle }}</span>
+      <span class="stats">
+        生成于 <b>{{ generated_at }}</b> · 共 <b>{{ total_items }}</b> 条 ·
+        <b>{{ board_count }}</b> 个版面 · 📈 重磅 <b>{{ heavy_count }}</b> · ⚡ 一手速报 <b>{{ flash_count }}</b>
+      </span>
+    </div>
+    <div class="toolbar">
+      <span class="subtitle">排序：</span>
+      <div class="sortbar" role="group" aria-label="排序方式">
+        <button type="button" class="sort-btn" id="qly-sort-hot" data-sort="hot" aria-pressed="true">🔥 热度</button>
+        <button type="button" class="sort-btn" id="qly-sort-time" data-sort="time" aria-pressed="false">🕒 时间</button>
+        <button type="button" class="sort-btn" id="qly-sort-score" data-sort="score" aria-pressed="false">📈 得分</button>
+      </div>
+      <button type="button" class="palette-hint" id="qly-palette-open">🔍 搜索全部版面 <kbd>Ctrl</kbd> + <kbd>K</kbd></button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="boardnav" aria-label="版面导航">
+    {% if personalized %}<a href="#board-personalized">✨ 为你推荐<span class="n">{{ personalized_count }}</span></a>{% endif %}
+    {% if personas %}<a href="#board-personas">👥 人物画像<span class="n">{{ personas_count }}</span></a>{% endif %}
+    {% for board in boards %}<a href="#board-{{ board.name }}">{{ board.title }}<span class="n">{{ board.count }}</span></a>{% endfor %}
+  </nav>
+
+  <main>
+    {% if personalized %}
+    <section class="special-board" id="board-personalized" data-board="personalized">
+      <div class="board-head">
+        <h2>✨ 为你推荐</h2>
+        <span class="n">{{ personalized_count }} 条</span>
+        <span class="desc">按个性化得分降序 · 命中你的兴趣</span>
+      </div>
+      <ol class="cards">
+        {% for item in personalized %}
+        <li class="card" id="{{ item.anchor }}" data-sig="{{ item.sig }}">
+          {% if item.avatar_src %}<img class="avatar" src="{{ item.avatar_src }}" alt="{{ item.source }}" loading="lazy">{% endif %}
+          {% if not item.avatar_src %}<span class="avatar" style="background: {{ item.avatar_color }}" aria-hidden="true">{{ item.avatar_initial }}</span>{% endif %}
+          <div class="card-main">
+            <h3 class="card-title">
+              {% for badge in item.badges %}<span class="badge badge-{{ badge.kind }}">{{ badge.label }}</span>{% endfor %}
+              <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.display_title }}</a>
+            </h3>
+            {% if item.summary %}<p class="card-summary">{{ item.summary }}</p>{% endif %}
+            <div class="reasons">
+              <span class="pscore">✨ {{ item.personal_score }}</span>
+              {% for chip in item.personal_reasons %}<span class="reason-chip">{{ chip.text }}</span>{% endfor %}
+            </div>
+            <div class="card-meta">
+              <span class="sources">{{ item.sources_text }}</span>
+              <span title="{{ item.date_abs }}">🕒 {{ item.date_text }}</span>
+              <span class="hotness">🔥 {{ item.hotness }}</span>
+              <a class="go" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">阅读原文 →</a>
+            </div>
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endif %}
+
+    {% if personas %}
+    <section class="special-board" id="board-personas" data-board="personas">
+      <div class="board-head">
+        <h2>👥 人物画像</h2>
+        <span class="n">{{ personas_count }} 位</span>
+        <span class="desc">大牛影响力聚合 · 近期在关注</span>
+      </div>
+      <div class="persona-grid">
+        {% for p in personas %}
+        <div class="persona-card">
+          <div class="persona-top">
+            {% if p.avatar_src %}<img class="avatar" src="{{ p.avatar_src }}" alt="{{ p.handle }}" loading="lazy">{% endif %}
+            {% if not p.avatar_src %}<span class="avatar" style="background: {{ p.avatar_color }}" aria-hidden="true">{{ p.avatar_initial }}</span>{% endif %}
+            <div>
+              <div class="persona-name">{{ p.name }}</div>
+              <div class="persona-handle">@{{ p.handle }}</div>
+            </div>
+          </div>
+          {% if p.bio %}<p class="persona-bio">{{ p.bio }}</p>{% endif %}
+          {% if p.recent_focus %}<div class="persona-focus"><b>近期在关注：</b>{{ p.recent_focus }}</div>{% endif %}
+          {% if p.topics %}<div class="persona-topics">{% for t in p.topics %}<span class="topic-chip">{{ t.text }}</span>{% endfor %}</div>{% endif %}
+          {% if p.top_items %}
+          <ul class="persona-tops">
+            {% for it in p.top_items %}<li>· <a href="{{ it.url }}" target="_blank" rel="noopener noreferrer">{{ it.title }}</a></li>{% endfor %}
+          </ul>
+          {% endif %}
+          <div class="persona-stats">
+            <span>总互动 <b>{{ p.total_engagement }}</b></span>
+            <span>动态 <b>{{ p.item_count }}</b></span>
+            <span>均互动 <b>{{ p.avg_engagement }}</b></span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% for board in boards %}
+    <section class="board" id="board-{{ board.name }}" data-board="{{ board.name }}">
+      <div class="board-head">
+        <h2>{{ board.title }}</h2>
+        <span class="n">{{ board.count }} 条</span>
+        <span class="desc">{{ board.desc }}</span>
+      </div>
+      {% if board.is_empty %}<p class="empty">本版面暂无条目。</p>{% endif %}
+      <ol class="cards" data-sort-root="1">
+        {% for item in board.items %}
+        <li class="card" id="{{ item.anchor }}"
+            data-sig="{{ item.sig }}"
+            data-title="{{ item.display_title }}"
+            data-url="{{ item.url }}"
+            data-hotness="{{ item.hotness }}"
+            data-ts="{{ item.ts }}"
+            data-weight="{{ item.weight }}">
+          {% if item.avatar_src %}<img class="avatar" src="{{ item.avatar_src }}" alt="{{ item.source }}" loading="lazy">{% endif %}
+          {% if not item.avatar_src %}<span class="avatar" style="background: {{ item.avatar_color }}" aria-hidden="true">{{ item.avatar_initial }}</span>{% endif %}
+          <div class="card-main">
+            <h3 class="card-title">
+              {% for badge in item.badges %}<span class="badge badge-{{ badge.kind }}">{{ badge.label }}</span>{% endfor %}
+              <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.display_title }}</a>
+            </h3>
+            {% if item.summary %}<p class="card-summary">{{ item.summary }}</p>{% endif %}
+            <div class="card-meta">
+              <span class="sources">{{ item.sources_text }}</span>
+              <span title="{{ item.date_abs }}">🕒 {{ item.date_text }}</span>
+              <span class="hotness">🔥 {{ item.hotness }}</span>
+              <span>📈 {{ item.weight }}</span>
+              {% if item.tier %}<span class="tier">{{ item.tier }}</span>{% endif %}
+              <a class="go" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">阅读原文 →</a>
+            </div>
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endfor %}
+  </main>
+
+  <footer>
+    千里眼 qianliyan {{ version }} · 数据生成于 {{ generated_at }} ·
+    徽标说明：📈 重磅（≥3 家信源交叉报道）、⚡ 一手速报（高权威信源 24 小时内）。
+    本页为单文件自包含简报，可直接分享或离线打开。
+  </footer>
+</div>
+
+<div class="palette-mask" id="qly-palette" role="dialog" aria-modal="true" aria-label="命令面板">
+  <div class="palette">
+    <input type="text" id="qly-palette-input" placeholder="输入关键词，模糊过滤全部版面的条目…" autocomplete="off" spellcheck="false">
+    <ul class="palette-results" id="qly-palette-results"></ul>
+    <div class="palette-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
+      <span><kbd>Enter</kbd> 打开原文</span>
+      <span><kbd>Esc</kbd> 关闭</span>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="qly-data">{{ data_json|safe }}</script>
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- 数据 ---------- */
+  var INDEX = [];
+  try {
+    var node = document.getElementById("qly-data");
+    INDEX = JSON.parse(node.textContent || "[]") || [];
+  } catch (err) {
+    INDEX = [];
+  }
+
+  function num(el, name) {
+    var v = parseFloat(el.getAttribute("data-" + name));
+    return isNaN(v) ? 0 : v;
+  }
+
+  /* ---------- 三排序按钮：原地重排 ---------- */
+  var COMPARATORS = {
+    hot: function (a, b) { return num(b, "hotness") - num(a, "hotness"); },
+    time: function (a, b) { return num(b, "ts") - num(a, "ts"); },
+    score: function (a, b) { return num(b, "weight") - num(a, "weight"); }
+  };
+
+  function applySort(mode) {
+    var cmp = COMPARATORS[mode] || COMPARATORS.hot;
+    var roots = document.querySelectorAll("[data-sort-root]");
+    for (var i = 0; i < roots.length; i++) {
+      var root = roots[i];
+      var cards = Array.prototype.slice.call(root.children);
+      cards.sort(cmp);
+      for (var j = 0; j < cards.length; j++) { root.appendChild(cards[j]); }
+    }
+    var btns = document.querySelectorAll(".sort-btn");
+    for (var k = 0; k < btns.length; k++) {
+      btns[k].setAttribute("aria-pressed", btns[k].getAttribute("data-sort") === mode ? "true" : "false");
+    }
+  }
+
+  var sortBtns = document.querySelectorAll(".sort-btn");
+  for (var s = 0; s < sortBtns.length; s++) {
+    sortBtns[s].addEventListener("click", function (ev) {
+      applySort(ev.currentTarget.getAttribute("data-sort"));
+    });
+  }
+
+  /* ---------- Ctrl+K 命令面板：跨版面模糊过滤 ---------- */
+  var mask = document.getElementById("qly-palette");
+  var input = document.getElementById("qly-palette-input");
+  var list = document.getElementById("qly-palette-results");
+  var openBtn = document.getElementById("qly-palette-open");
+  var matches = [];
+  var cursor = 0;
+
+  function fuzzy(needle, hay) {
+    if (!needle) { return true; }
+    var i = 0;
+    for (var p = 0; p < hay.length && i < needle.length; p++) {
+      if (hay.charAt(p) === needle.charAt(i)) { i++; }
+    }
+    return i === needle.length;
+  }
+
+  function score(needle, row) {
+    var hay = row.s;
+    if (!needle) { return 0; }
+    var direct = hay.indexOf(needle);
+    if (direct >= 0) { return direct; }
+    return fuzzy(needle, hay) ? 1000 + hay.length : -1;
+  }
+
+  function render() {
+    list.innerHTML = "";
+    if (!matches.length) {
+      var none = document.createElement("li");
+      none.className = "palette-empty";
+      none.textContent = "没有匹配的条目";
+      list.appendChild(none);
+      return;
+    }
+    for (var i = 0; i < matches.length; i++) {
+      var row = matches[i];
+      var li = document.createElement("li");
+      li.className = i === cursor ? "active" : "";
+      var t = document.createElement("div");
+      t.className = "pt";
+      t.textContent = row.t;
+      var m = document.createElement("div");
+      m.className = "pm";
+      m.textContent = row.b + " · " + row.src + " · 🔥 " + row.h;
+      li.appendChild(t);
+      li.appendChild(m);
+      li.setAttribute("data-idx", String(i));
+      li.addEventListener("click", function (ev) {
+        jump(parseInt(ev.currentTarget.getAttribute("data-idx"), 10));
+      });
+      list.appendChild(li);
+    }
+  }
+
+  function search(text) {
+    var needle = (text || "").trim().toLowerCase();
+    var scored = [];
+    for (var i = 0; i < INDEX.length; i++) {
+      var sc = needle ? score(needle, INDEX[i]) : i;
+      if (sc >= 0) { scored.push([sc, i, INDEX[i]]); }
+    }
+    scored.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    matches = [];
+    for (var j = 0; j < scored.length && j < 40; j++) { matches.push(scored[j][2]); }
+    cursor = 0;
+    render();
+  }
+
+  function jump(index) {
+    var row = matches[index];
+    if (!row) { return; }
+    var card = document.getElementById(row.id);
+    if (card) {
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.classList.add("qly-flash-target");
+      setTimeout(function () { card.classList.remove("qly-flash-target"); }, 1600);
+    }
+    close();
+    if (row.u) { window.open(row.u, "_blank", "noopener"); }
+  }
+
+  function open() {
+    mask.classList.add("open");
+    input.value = "";
+    search("");
+    input.focus();
+  }
+
+  function close() {
+    mask.classList.remove("open");
+  }
+
+  if (openBtn) { openBtn.addEventListener("click", open); }
+  if (mask) {
+    mask.addEventListener("click", function (ev) {
+      if (ev.target === mask) { close(); }
+    });
+  }
+  if (input) {
+    input.addEventListener("input", function () { search(input.value); });
+  }
+
+  document.addEventListener("keydown", function (ev) {
+    var isOpen = mask && mask.classList.contains("open");
+    if ((ev.ctrlKey || ev.metaKey) && (ev.key === "k" || ev.key === "K")) {
+      ev.preventDefault();
+      if (isOpen) { close(); } else { open(); }
+      return;
+    }
+    if (!isOpen) { return; }
+    if (ev.key === "Escape") { ev.preventDefault(); close(); return; }
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      cursor = matches.length ? (cursor + 1) % matches.length : 0;
+      render();
+      return;
+    }
+    if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      cursor = matches.length ? (cursor - 1 + matches.length) % matches.length : 0;
+      render();
+      return;
+    }
+    if (ev.key === "Enter") { ev.preventDefault(); jump(cursor); }
+  });
+
+  applySort("hot");
+})();
+</script>
+</body>
+</html>

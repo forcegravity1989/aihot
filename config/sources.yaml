@@ -1,0 +1,61 @@
+# config/sources.yaml —— 远眼(local)唯一权威信源表 + aihot/insights 段。
+# 任何模块禁止写死信源 URL；新增/调整信源只改这里。
+
+aihot:                                   # 左眼「AIHOT · 卡兹克」——走站点 RSS 出口绕过反爬
+  base_url: https://aihot.virxact.com
+  source_name: "AIHOT · 卡兹克"
+  feeds:                                  # 通用 feed：{path, kind, weight}
+    - {path: /feed.xml,     kind: curated, weight: 0.85}   # AI 精选 top ~50
+    - {path: /feed/all.xml, kind: all,     weight: 0.70}   # 最近 7 天全量
+  category_feeds:                         # 分类 feed slug（只填真实 200 的四个）
+    slugs: [ai-models, ai-products, industry, paper]
+    weight: 0.75
+  category_map:                           # 中文 category 原值 → slug/tags
+    "AI 模型": {slug: models,   tags: [models]}
+    "AI 产品": {slug: products, tags: [products]}
+    "论文":    {slug: paper,    tags: [paper, research]}
+    "行业动态": {slug: industry, tags: [industry]}
+    "技巧观点": {slug: opinion,  tags: [opinion]}
+
+insights:
+  repo: anthropics/claude-code-insights      # 占位，可改
+  branch: main
+  data_paths: [data/plugins.json]
+
+# sources: 真实信源目录（spec-v0.3 §14，端点均已核验为真）。每项：
+#   {name, type, weight, tags, format, category, ...type 专属字段}
+# 新增/调整信源只改此列表；backend 由 type 显式声明，engine/remote_sync 按 type 分发。
+sources:
+  # —— 官方 blog（RSS，真实可达）——
+  - {name: OpenAI News,          type: rss, url: "https://openai.com/news/rss.xml",           weight: 0.95, format: blog, category: models,     tags: [official, openai, models]}
+  - {name: Google DeepMind Blog, type: rss, url: "https://deepmind.google/blog/rss.xml",      weight: 0.92, format: blog, category: models,     tags: [official, google, models]}
+  - {name: HuggingFace Blog,     type: rss, url: "https://huggingface.co/blog/feed.xml",      weight: 0.85, format: blog, category: tools,      tags: [vendor, huggingface, tools]}
+  - {name: Simon Willison,       type: rss, url: "https://simonwillison.net/atom/everything/", weight: 0.8, format: blog, category: practices, tags: [kol, dev, practices]}
+
+  # —— Anthropic（无 RSS，走 scrape：抽索引页里符合 article_pattern 的文章链接）——
+  - {name: Anthropic News,        type: scrape, url: "https://www.anthropic.com/news",        article_pattern: "^/news/[a-z0-9-]+$",        weight: 0.98, format: blog, category: models,      tags: [official, anthropic, models]}
+  - {name: Anthropic Engineering, type: scrape, url: "https://www.anthropic.com/engineering", article_pattern: "^/engineering/[a-z0-9-]+$", weight: 0.96, format: blog, category: practices,  tags: [official, anthropic, practices]}
+  - {name: Claude Blog,           type: scrape, url: "https://claude.com/blog",               article_pattern: "^/blog/[a-z0-9-]+$",        weight: 0.9,  format: blog, category: claude-code, tags: [official, claude, claude-code]}
+
+  # —— 官方 YouTube（频道 feed，真实可达）——
+  - {name: Claude YouTube,          type: youtube, channel_id: UCV03SRZXJEz-hchIAogeJOg, weight: 0.92, format: video, category: talks, tags: [official, anthropic, claude, video, talks]}
+  - {name: Anthropic YouTube,       type: youtube, channel_id: UCrDwWp7EBBv4NwvScIpBDOA, weight: 0.9,  format: video, category: talks, tags: [official, anthropic, video, talks]}
+  - {name: OpenAI YouTube,          type: youtube, channel_id: UCXZCJLdBC09xxGZ6gcdrc6A, weight: 0.85, format: video, category: talks, tags: [official, openai, video, talks]}
+  - {name: Google DeepMind YouTube, type: youtube, channel_id: UCP7jMXSY2xbc3KCAE0MHQ-A, weight: 0.82, format: video, category: talks, tags: [official, google, video, talks]}
+
+  # —— Claude 大会演讲（播放列表，playlist_id 待用户/后续确认后填入；先注释占位，不填不影响其余源）——
+  # - {name: "Code with Claude 大会", type: youtube, playlist_id: "PLxxxxxxxx", weight: 0.95, format: talk, category: talks, tags: [official, anthropic, talk, conference, practices]}
+
+  # —— AI 播客（RSS，源自 follow-builders default-sources）——
+  - {name: Latent Space,              type: rss, url: "https://www.latent.space/feed",         weight: 0.78, format: podcast, category: podcasts, tags: [kol, podcast]}
+  - {name: "No Priors",               type: rss, url: "https://feeds.megaphone.fm/nopriors",   weight: 0.72, format: podcast, category: podcasts, tags: [kol, podcast]}
+  - {name: "Training Data (Sequoia)", type: rss, url: "https://feeds.megaphone.fm/trainingdata", weight: 0.7, format: podcast, category: podcasts, tags: [vc, podcast]}
+  - {name: "Unsupervised Learning",   type: rss, url: "https://feeds.simplecast.com/dOSE_bdP",  weight: 0.7, format: podcast, category: podcasts, tags: [kol, podcast]}
+
+  # —— GitHub Trending（scrape，真实可达）——
+  - {name: GitHub Trending (Daily),  type: github-trending, since: daily,  weight: 0.68, format: repo, category: trending, tags: [github, trending, tools]}
+  - {name: GitHub Trending (Weekly), type: github-trending, since: weekly, weight: 0.62, format: repo, category: trending, tags: [github, trending, tools]}
+
+  # —— 论文（arXiv API）——
+  - {name: arXiv cs.CL, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}
+  - {name: arXiv cs.AI, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}

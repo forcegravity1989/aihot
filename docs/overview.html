@@ -1,0 +1,345 @@
+<title>千里眼 v0.3</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;900&family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --paper:#F4F6F3; --card:#FFFFFF; --ink:#1E2B33; --muted:#5C6B75;
+  --line:#D8DFDA; --accent:#3A5FAE; --accent-soft:#E7EDF8; --seal:#B5473C; --seal-soft:#F6E8E5;
+  --verify:#2E7F5B; --verify-soft:#E4F1EA;
+  --code-bg:#EDF1EE;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#151A1E; --card:#1D242A; --ink:#E4E9E6; --muted:#93A1A8;
+    --line:#2E383F; --accent:#7C9FE0; --accent-soft:#22314A; --seal:#E08573; --seal-soft:#3D2724;
+    --verify:#6BB893; --verify-soft:#1E3329;
+    --code-bg:#232C33;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#151A1E; --card:#1D242A; --ink:#E4E9E6; --muted:#93A1A8;
+  --line:#2E383F; --accent:#7C9FE0; --accent-soft:#22314A; --seal:#E08573; --seal-soft:#3D2724;
+  --verify:#6BB893; --verify-soft:#1E3329;
+  --code-bg:#232C33;
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; font-size:16px; line-height:1.85;}
+.wrap{max-width:940px; margin:0 auto; padding:0 28px 96px}
+h1,h2,h3{font-family:"Noto Serif SC","Songti SC",serif; text-wrap:balance; line-height:1.35}
+code,pre,.mono{font-family:"JetBrains Mono","SFMono-Regular",Menlo,monospace}
+code{background:var(--code-bg); padding:.1em .4em; border-radius:4px; font-size:.86em}
+pre{background:var(--code-bg); border:1px solid var(--line); border-radius:8px; padding:14px 18px; overflow-x:auto; font-size:.82em; line-height:1.7}
+pre code{background:none; padding:0}
+a{color:var(--accent); text-decoration:none} a:hover{text-decoration:underline}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+header{padding:72px 0 38px; border-bottom:2px solid var(--ink)}
+.kicker{font-size:13px; letter-spacing:.35em; text-transform:uppercase; color:var(--muted); margin:0 0 14px}
+h1{font-size:54px; font-weight:900; margin:0 0 6px}
+h1 .en{font-size:20px; font-weight:600; color:var(--muted); margin-left:14px; letter-spacing:.08em}
+.thesis{font-size:19px; margin:18px 0 0; max-width:46em}
+.thesis strong{color:var(--accent)}
+.turn{margin-top:20px; padding:14px 20px; background:var(--seal-soft); border-left:4px solid var(--seal); border-radius:0 8px 8px 0; max-width:52em; font-size:15px}
+.turn b{color:var(--seal)}
+.statrow{display:flex; flex-wrap:wrap; gap:14px; margin-top:28px}
+.stat{background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 18px; min-width:104px}
+.stat b{display:block; font-size:24px; font-variant-numeric:tabular-nums; font-family:"Noto Serif SC",serif}
+.stat span{font-size:12.5px; color:var(--muted)}
+
+nav.toc{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:6px 22px; padding:26px 0; border-bottom:1px solid var(--line); font-size:14px}
+nav.toc a{color:var(--ink)} nav.toc a:hover{color:var(--accent)}
+nav.toc .no{color:var(--muted); font-variant-numeric:tabular-nums; margin-right:8px; font-size:12.5px}
+
+section{padding-top:56px}
+h2{font-size:29px; font-weight:900; margin:0 0 4px; display:flex; align-items:baseline; gap:14px}
+h2 .no{font-size:15px; color:var(--accent); font-family:"JetBrains Mono",monospace; font-weight:600}
+.sub{color:var(--muted); font-size:14.5px; margin:0 0 22px}
+h3{font-size:19px; font-weight:700; margin:30px 0 10px}
+p{max-width:47em; margin:12px 0} ul{max-width:47em; padding-left:1.4em} li{margin:5px 0}
+
+.tablebox{overflow-x:auto; border:1px solid var(--line); border-radius:8px; background:var(--card); margin:16px 0}
+table{border-collapse:collapse; width:100%; font-size:14.2px; line-height:1.6}
+th,td{padding:10px 16px; text-align:left; vertical-align:top; border-top:1px solid var(--line)}
+thead th{border-top:none; background:var(--code-bg); font-size:12.5px; letter-spacing:.06em; color:var(--muted); white-space:nowrap}
+td code{white-space:nowrap} tbody tr:hover{background:var(--accent-soft)}
+
+.arch{margin:26px 0; display:flex; flex-direction:column; gap:0}
+.layer{background:var(--card); border:1px solid var(--line); border-left:5px solid var(--accent); border-radius:8px; padding:16px 22px; display:grid; grid-template-columns:160px 1fr; gap:6px 20px; align-items:start}
+.layer .lname{font-family:"Noto Serif SC",serif; font-weight:900; font-size:17px}
+.layer .lname code{display:block; font-size:12px; background:none; padding:0; color:var(--accent); margin-top:2px}
+.layer .ldesc{font-size:14px; color:var(--muted)}
+.layer .chips{grid-column:2; display:flex; flex-wrap:wrap; gap:6px; margin-top:4px}
+.chip{font-family:"JetBrains Mono",monospace; font-size:11.5px; border:1px solid var(--line); border-radius:99px; padding:2px 10px; background:var(--paper)}
+.flow-arrow{align-self:center; color:var(--muted); font-size:13px; padding:6px 0; display:flex; align-items:center; gap:10px}
+.flow-arrow::before{content:"▼"; color:var(--accent); font-size:11px}
+@media (max-width:640px){ .layer{grid-template-columns:1fr} .layer .chips{grid-column:1} h1{font-size:38px} }
+
+.callout{background:var(--accent-soft); border-left:4px solid var(--accent); border-radius:0 8px 8px 0; padding:14px 20px; margin:18px 0; font-size:14.5px; max-width:54em}
+.callout.seal{background:var(--seal-soft); border-left-color:var(--seal)}
+.callout.verify{background:var(--verify-soft); border-left-color:var(--verify)}
+.callout b:first-child{display:block; margin-bottom:4px}
+.badge{display:inline-block; font-size:12px; border-radius:4px; padding:1px 8px; font-weight:500; white-space:nowrap}
+.badge.heavy{background:var(--seal-soft); color:var(--seal)} .badge.ok{background:var(--accent-soft); color:var(--accent)}
+.badge.verify{background:var(--verify-soft); color:var(--verify)}
+
+/* change-intel 叙事↔实证 图示 */
+.cmap{display:grid; grid-template-columns:1fr auto 1fr; gap:0; align-items:stretch; margin:22px 0; border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.cmap .side{padding:18px 20px; background:var(--card)}
+.cmap .side.claim{border-right:none}
+.cmap .side h4{margin:0 0 8px; font-family:"Noto Serif SC",serif; font-size:15px}
+.cmap .side .q{font-size:14px; color:var(--muted); font-style:italic}
+.cmap .mid{display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0 18px; background:var(--verify-soft); color:var(--verify); font-weight:700; font-size:13px; white-space:nowrap}
+.cmap .mid .lens{font-size:24px}
+.cmap .side.artifact{background:var(--code-bg)}
+.cmap .side.artifact .m{font-family:"JetBrains Mono",monospace; font-size:13px}
+@media (max-width:640px){ .cmap{grid-template-columns:1fr} .cmap .mid{padding:12px} }
+
+ol.steps{counter-reset:s; list-style:none; padding:0; max-width:54em}
+ol.steps li{counter-increment:s; display:grid; grid-template-columns:34px 1fr; gap:14px; padding:9px 0; border-bottom:1px dashed var(--line); font-size:14.6px}
+ol.steps li::before{content:counter(s,decimal-leading-zero); font-family:"JetBrains Mono",monospace; color:var(--accent); font-size:13px; padding-top:2px}
+footer{margin-top:80px; padding-top:22px; border-top:2px solid var(--ink); color:var(--muted); font-size:13px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="kicker">Qianliyan · v0.3 · 架构总览</p>
+  <h1>千里眼<span class="en">QIANLIYAN</span></h1>
+  <p class="thesis">把异构 AI 信源熔合成一份带多源加权、<strong>叙事↔实证映射</strong>与深读/浅读的简体中文情报。v0.3 从"聚合器"进化为<strong>变更情报系统</strong>。</p>
+  <div class="turn"><b>这一版的转向：</b>"五眼"退位为一个标签——架构改由<b>配置驱动的信源适配器目录</b>组织（按 format/category）；真正的护城河从"多源报道同一事件"升级为"<b>叙事（演讲/博客的说法）与实证（真实 prompt/changelog diff）是否吻合</b>"。</div>
+  <div class="statrow">
+    <div class="stat"><b>517</b><span>pytest 全绿</span></div>
+    <div class="stat"><b>19+</b><span>真实信源</span></div>
+    <div class="stat"><b>16</b><span>主题频道</span></div>
+    <div class="stat"><b>2</b><span>读法（深/浅）</span></div>
+    <div class="stat"><b>0</b><span>离线外网请求</span></div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="目录">
+  <a href="#s1"><span class="no">01</span>定位与四条铁律</a>
+  <a href="#s2"><span class="no">02</span>架构：信源适配器目录</a>
+  <a href="#s3"><span class="no">03</span>真实信源目录</a>
+  <a href="#s4"><span class="no">04</span>变更情报（王牌）</a>
+  <a href="#s5"><span class="no">05</span>交叉验证与核心算法</a>
+  <a href="#s6"><span class="no">06</span>人物画像 · 读者画像 · 历史</a>
+  <a href="#s7"><span class="no">07</span>深读/浅读 + YouTube 字幕</a>
+  <a href="#s8"><span class="no">08</span>频道与 HTML 简报</a>
+  <a href="#s9"><span class="no">09</span>入口 · 分发 · API</a>
+  <a href="#s10"><span class="no">10</span>项目管理：SDLC + loop</a>
+  <a href="#s11"><span class="no">11</span>验证结论</a>
+  <a href="#s12"><span class="no">12</span>仓库地图</a>
+</nav>
+
+<section id="s1">
+  <h2><span class="no">01</span>定位与四条铁律</h2>
+  <p class="sub">为什么存在 · 价值主张</p>
+  <p>AI 领域的高价值信息散落在 REST/RSS、GitHub、官方 blog、YouTube 演讲、播客、X 动态、GitHub trending、系统提示词与 changelog 等异构渠道。千里眼并行巡视这些渠道，在本地熔成<b>一份统一池</b>，再切成频道页、热榜、深读/浅读日报、HTTP API。</p>
+  <div class="callout">
+    <b>设计哲学四条铁律</b>
+    ① 以本地数据为准，不凭记忆　② 每条必带 URL　③ 简体中文 + 人话　④ <b>交叉验证是核心价值</b>——v0.3 升级为「叙事 vs 实证是否吻合」。
+  </div>
+</section>
+
+<section id="s2">
+  <h2><span class="no">02</span>架构：信源适配器目录</h2>
+  <p class="sub">"五眼"是代称，不是约束——依赖只许向下，<code>core</code> 不 import 其他层</p>
+  <p>v0.3 把原来的"五眼硬骨架"让位给<b>配置驱动的分类型信源目录</b>：<code>sources.yaml</code> 是心脏，每个源声明自己的 <code>type</code>（rss / youtube / github-trending / scrape / arxiv…）、<code>weight</code>、<code>tags</code>、<code>format</code>、<code>category</code>。加信源只改配置、不动代码；aihot、builders、变更源只是"带专用解析器的源"。<b>"眼"退化为 item 上的一个标签。</b></p>
+  <div class="arch">
+    <div class="layer">
+      <div class="lname">采集层<code>eyes/ + engine/</code></div>
+      <div class="ldesc">每个适配器返回标准化 item；抓取后端（HTTP/RSS/YouTube/GitHub-trending/HTML-scrape/Git/CDP）下沉到 engine。</div>
+      <div class="chips"><span class="chip">aihot·卡兹克</span><span class="chip">builders·zarazhang</span><span class="chip">local目录眼</span><span class="chip">cc_prompts</span><span class="chip">plugins_official</span><span class="chip">insights</span><span class="chip">youtube</span><span class="chip">github_trending</span><span class="chip">youtube_transcript</span></div>
+    </div>
+    <div class="flow-arrow">标准化 item（title / url / source / weight / date / tags / format）</div>
+    <div class="layer">
+      <div class="lname">底座层<code>core/</code></div>
+      <div class="ldesc">合并、去重、打分、JSONL 落盘、四级路径解析、读者画像/历史、LLM 客户端。只懂算法与 IO。</div>
+      <div class="chips"><span class="chip">schema</span><span class="chip">utils</span><span class="chip">storage</span><span class="chip">paths</span><span class="chip">profile</span><span class="chip">llm_client</span></div>
+    </div>
+    <div class="flow-arrow">统一池 items.jsonl（去重打分 + 个性化 + 叙事↔实证标注）</div>
+    <div class="layer">
+      <div class="lname">加工渲染层<code>pipeline/</code></div>
+      <div class="ldesc">频道路由、<b>变更情报</b>、人物画像、翻译/标注、自研极简模板 + 单文件 HTML 简报。</div>
+      <div class="chips"><span class="chip">change_intel</span><span class="chip">persona</span><span class="chip">channels</span><span class="chip">report</span><span class="chip">minitpl</span><span class="chip">routing</span></div>
+    </div>
+    <div class="flow-arrow">channels/*.md · digest.html · glance/deep 日报 · hotlist.md</div>
+    <div class="layer">
+      <div class="lname">入口分发层<code>cli/</code></div>
+      <div class="ldesc">sync 主编排、FastAPI 服务、四通道分发、深读/浅读日报编排、数据治理、健康巡检。</div>
+      <div class="chips"><span class="chip">sync</span><span class="chip">api_server</span><span class="chip">deliver</span><span class="chip">daily_digest_all</span><span class="chip">data_prune</span><span class="chip">health_check</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="s3">
+  <h2><span class="no">03</span>真实信源目录</h2>
+  <p class="sub">19 个已核验端点 + 两个专用解析源 + 三个变更源</p>
+  <div class="tablebox"><table>
+    <thead><tr><th>类别</th><th>真实源</th><th>后端 / format</th></tr></thead>
+    <tbody>
+      <tr><td><b>aihot · 卡兹克</b></td><td>aihot.virxact.com 的 RSS（精选/全量/分类），原文 URL 内嵌在描述</td><td>rss / news（绕反爬）</td></tr>
+      <tr><td><b>builders · zarazhang</b></td><td>zarazhangrui/follow-builders 的 feed-x.json（13 位 builder，带互动数据）</td><td>raw_json / x</td></tr>
+      <tr><td>官方 blog</td><td>OpenAI · DeepMind · HuggingFace（RSS）· Anthropic news/engineering · Claude blog（scrape）</td><td>rss·scrape / blog</td></tr>
+      <tr><td>官方 YouTube</td><td><b>Claude</b> · Anthropic · OpenAI · DeepMind（频道 feed）</td><td>youtube / video·talk</td></tr>
+      <tr><td>AI 播客</td><td>Latent Space · No Priors · Training Data · Unsupervised Learning（RSS）</td><td>rss / podcast</td></tr>
+      <tr><td>GitHub trending</td><td>每日 / 每周（HTML scrape）</td><td>github-trending / repo</td></tr>
+      <tr><td>论文</td><td>arXiv cs.CL / cs.AI（API）</td><td>arxiv / paper</td></tr>
+      <tr><td><b>变更源</b></td><td>Piebald 系统提示词 changelog · anthropics 官方插件市场 · zhoux77899 insights 日榜</td><td>git / changelog·repo</td></tr>
+    </tbody>
+  </table></div>
+  <p>每条 item 带 <code>extra.format ∈ {news, blog, video, talk, podcast, repo, paper, x, changelog}</code>，驱动频道分组与深读/浅读的差异化呈现。方法论内容（loop / AI-native SDLC）不是单独源，而是 <code>practices</code> 频道按关键词横切聚合。</p>
+</section>
+
+<section id="s4">
+  <h2><span class="no">04</span>变更情报 · 王牌</h2>
+  <p class="sub">交叉验证的最高形态：叙事（演讲/博客的说法）与实证（真实 diff）是否吻合</p>
+  <p>三个真实变更源被沉淀为结构化变更流：<b>Piebald 的系统提示词 CHANGELOG</b>（按 Claude Code 版本记录、<b>每版带 token 增减</b>、NEW/REMOVED 分类、链 commit）、<b>anthropics 官方插件市场 + bump 追踪</b>、<b>zhoux77899 的插件/skill 日榜</b>（只取 7KB 日更，绝不碰 31MB/75MB 的巨型 json）。</p>
+  <h3>叙事 ↔ 实证 映射</h3>
+  <div class="cmap">
+    <div class="side claim">
+      <h4>🗣️ 叙事（talk / blog）</h4>
+      <p class="q">"Fable 5 减少了 80% 提示词"</p>
+    </div>
+    <div class="mid"><span class="lens">🔬</span><span>方向 · 量级<br>比对</span></div>
+    <div class="side artifact">
+      <h4>📐 实证（changelog）</h4>
+      <p class="m">同主题版本 token_delta<br>聚合 = 大幅负值</p>
+    </div>
+  </div>
+  <p><code>pipeline/change_intel.py</code> 对含数字断言（<code>\d+% / \dx / \d+倍</code>）的叙事类 item 抽断言 → 找同主题的实证类变更 item → 比对方向与量级，写 <code>extra.corroboration = {claim, evidence, verdict}</code>：</p>
+  <p><span class="badge verify">🔬 实证 corroborated</span>　方向吻合且量级达阈值<br>
+  <span class="badge ok">存疑 unverified</span>　找不到实证<br>
+  <span class="badge heavy">矛盾 contradicted</span>　方向相反</p>
+  <div class="callout verify">
+    <b>为什么这是护城河</b>
+    别处的 AI 简报止于"谁说了什么"。千里眼能回答"<b>他说的，被真实的代码/提示词 diff 证实了吗</b>"——把一句演讲金句，钉在可溯源的 commit 上。LLM 判定可选、regex 回退兜底，永不阻塞。
+  </div>
+  <h3>另外两件事</h3>
+  <ul>
+    <li><b>绑定</b>：同版本/主题的提示词变更与插件 bump 绑成一条"版本变更卡"（时间线）。</li>
+    <li><b>业界资产演进</b>：从 trending 日榜发现新入场/上升项目（multica、teams.ai、kanban.ai 这类），勾勒生态演进。</li>
+  </ul>
+</section>
+
+<section id="s5">
+  <h2><span class="no">05</span>交叉验证与核心算法</h2>
+  <p class="sub"><code>core/utils.py</code> · 被单元测试锁死语义</p>
+  <p><b>签名去重</b>：标题 NFKC 归一 → casefold → 去标点取前 50 字 → SHA1 前 16 位；release 类用 <code>source|version</code> 防误合并。<b>交叉验证合并</b>：同签名聚合，<code>source_list</code> 累积、<code>cross_refs = 源数 − 1</code>、取最高权重标题/最长摘要/最早日期——多源报道自动加成热度。</p>
+  <pre><code>hotness = weight × 0.5^(age_days / 7) × (1 + 0.35 × ln(1 + cross_refs))
+          └ 信源权威度   └ 新鲜度(半衰期7天)      └ 交叉验证加成</code></pre>
+  <p><b>重磅校准</b>：<span class="badge heavy">📈 重磅</span> cross_refs≥3；<span class="badge ok">⚡ 一手速报</span> weight≥0.95 且 24h 内。个性化叠加 <code>extra.personal_score = hotness × 兴趣乘数</code>。</p>
+</section>
+
+<section id="s6">
+  <h2><span class="no">06</span>人物画像 · 读者画像 · 历史</h2>
+  <p class="sub">两种画像都要（用户确认）</p>
+  <h3>人物画像（被追踪对象）</h3>
+  <p><code>pipeline/persona.py</code> 按 <code>extra.handle</code> 聚合 builder 类条目 → 每人一张档案：bio、头像、<b>近期在关注…</b>、活跃主题、top 动态、影响力数字（total_engagement / item_count）。LLM 增强 topics/recent_focus，规则回退。</p>
+  <h3>读者画像（你自己）+ 历史</h3>
+  <p><code>core/profile.py</code>：<code>reader.yaml</code> 显式兴趣（tag/source/people 乘数）× 从 <code>history.jsonl</code>（seen/open/deepread/received）与 <code>feedback.jsonl</code> 按 recency 衰减派生的偏好 → <code>personalize()</code> 给信息流写 <code>personal_score</code> 与命中原因，驱动"为你推荐"版面。mute 命中归零。无配置时退化为 hotness。</p>
+</section>
+
+<section id="s7">
+  <h2><span class="no">07</span>深读/浅读 + YouTube 字幕</h2>
+  <p class="sub">浅读=看过标题即已接收；深读=全文重点研读，突出图片与论点</p>
+  <p>一份 <code>digest-final.json</code> 渲染两个视图 + 一个带切换的合并页：</p>
+  <ul>
+    <li><b>浅读</b>（glance）：按 format 分组的极速标题流，每行 format 图标 + 交叉验证徽章 + 标题 + 来源 + 原文链接；「标记已读」localStorage 置灰。一眼扫完即"已接收"。</li>
+    <li><b>深读</b>（deep）：每条精读卡——video/talk 突出<b>缩略图 + 演讲要点</b>，repo 突出 star 增量，paper 突出摘要；distill 四段（要点/脉络/影响/局限）+ <b>关键论点 theses</b> + 交叉验证展开 + <b>🔬 叙事↔实证</b> 标记。</li>
+  </ul>
+  <div class="callout">
+    <b>YouTube 字幕（按 baoyu 真实方法）</b>
+    <code>engine/youtube_transcript.py</code> 的 <code>get_transcript</code> 多级回退：① <b>web-access CDP + baoyu 页内脚本</b>（真实 Chrome/会话，读页面自带 API key 调 innertube 取字幕轨）② 配置代理 <code>QLY_TRANSCRIPT_PROXY</code> ③ 直连 best-effort ④ 回退视频描述。深读对 video/talk 把<b>字幕全文</b>喂 LLM 提炼论点——真正"读懂"大会演讲。纯 requests 从数据中心 IP 拿不到，正因为缺真实浏览器上下文。
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="no">08</span>频道与 HTML 简报</h2>
+  <p class="sub">16 个主题频道 · 单文件自包含</p>
+  <p>一条 item 可同属多频道，跨源按主题聚合。频道 match 支持 tags / keywords / <b>formats</b> / <b>categories</b> / sources / source_kinds（块内 AND、any_of 表 OR）。当前频道：<code>headlines</code> · <code>models</code> · <code>claude-code</code> · <code>practices</code> · <code>talks</code> · <code>podcasts</code> · <code>trending</code> · <code>change-intel</code> · <code>papers</code> · <code>builders-live</code> + 若干 legacy。</p>
+  <p><code>digest.html</code>：自研极简模板引擎（不依赖 jinja2，编译节点树、禁 eval）；三排序按钮（🔥热度/🕒时间/📈得分）；Ctrl+K 命令面板跨版面模糊过滤；「为你推荐」与「人物画像」版面；大牛头像 base64 内嵌；每条带可点 URL。真实浏览器实测：<code>performance.getEntriesByType('resource')</code> 为空——零外链、单文件自包含。</p>
+</section>
+
+<section id="s9">
+  <h2><span class="no">09</span>入口 · 分发 · API</h2>
+  <p class="sub"><code>cli/</code> 六入口 · <code>scripts/</code> 兼容转发</p>
+  <div class="tablebox"><table>
+    <thead><tr><th>入口</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>cli/sync.py</code></td><td>主编排：抓取→合并→去重打分→个性化→人物画像→<b>变更情报</b>→频道→简报（<code>--quick/--eye/--mock/--status</code>）</td></tr>
+      <tr><td><code>cli/api_server.py</code></td><td>FastAPI：GET <code>/digest /items(sort=personal) /hotlist /status /personas /profile /daily</code> + POST <code>/sync /feedback /history</code></td></tr>
+      <tr><td><code>cli/daily_digest_all.py</code></td><td>深读/浅读日报编排（<code>--prepare/--finalize/--html</code>）</td></tr>
+      <tr><td><code>cli/deliver.py</code></td><td>四通道：in-chat / html / welink / email</td></tr>
+      <tr><td><code>cli/data_prune.py</code> · <code>health_check.py</code></td><td>数据治理 · 信源健康巡检</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="s10">
+  <h2><span class="no">10</span>项目管理：AI-native SDLC + loop</h2>
+  <p class="sub"><code>docs/PLAYBOOK.md</code> · 文档即合同，issue 即工作单元，wave 即并行实现</p>
+  <ol class="steps">
+    <li>Explore：侦察真实信源/约束，抓成 <code>tests/fixtures/real/</code>（对着真实结构写解析器）</li>
+    <li>Plan：落 <code>intent.md</code>（成功标准）/ <code>spec.md</code>+<code>spec-v0.3.md</code>（唯一实现合同）/ <code>plan.md</code></li>
+    <li>Issues：GitHub Epic + 子任务（#7 变更情报 · #8 transcript · #9 信源 · #10 收尾 · #11 推送）</li>
+    <li>Implement：拆 wave 派 Opus/Sonnet 子代理（<b>不用 Fable</b>），波内文件互斥杜绝冲突</li>
+    <li>Verify：全量 pytest 绿 + 离线端到端冒烟（DoD）→ 关 issue → 勾 Epic → 下一个</li>
+  </ol>
+  <div class="callout seal">
+    <b>外发动作红线</b>
+    push / merge / 删数据永不自动放行，需逐次显式批准——故「首次推送 GitHub」独立成 issue #11、默认不执行。
+  </div>
+</section>
+
+<section id="s11">
+  <h2><span class="no">11</span>验证结论</h2>
+  <p class="sub">Python 3.9.6 · 全程离线（socket 物理封网 + QLY_OFFLINE 双保险）</p>
+  <div class="tablebox"><table>
+    <thead><tr><th>能力</th><th>结果</th><th>验证</th></tr></thead>
+    <tbody>
+      <tr><td>单源故障不中断、失败源保旧数据</td><td><span class="badge ok">通过</span></td><td>故障注入测试</td></tr>
+      <tr><td>多源同题合并、交叉验证加成</td><td><span class="badge ok">通过</span></td><td>去重打分单测 + 端到端</td></tr>
+      <tr><td>真实信源解析（aihot/builders/YouTube/trending/changelog…）</td><td><span class="badge ok">通过</span></td><td>对 <code>fixtures/real/</code> 离线测</td></tr>
+      <tr><td><b>叙事↔实证映射</b>（corroboration 三态）</td><td><span class="badge verify">通过</span></td><td>change_intel 单测（含数字量级判定）</td></tr>
+      <tr><td>人物画像 · 读者画像 · 历史</td><td><span class="badge ok">通过</span></td><td>persona/profile 单测</td></tr>
+      <tr><td>深读/浅读 + 字幕接入</td><td><span class="badge ok">通过</span></td><td>daily/transcript 单测</td></tr>
+      <tr><td>LLM 全灭时主流程零阻塞</td><td><span class="badge ok">通过</span></td><td>回退专项测试</td></tr>
+      <tr><td>全链路离线端到端产出</td><td><span class="badge ok">通过</span></td><td><code>sync --mock</code> 冒烟</td></tr>
+    </tbody>
+  </table></div>
+  <p>共 <b>517 全绿</b>（约 3 秒）。<code>sync --mock</code> 离线端到端产出 items.jsonl / hotlist.md / channels/*.md（16 频道含 change-intel）/ personas.json / digest.html / sync_meta.json，零 traceback。</p>
+  <div class="callout seal">
+    <b>已知待办 / 待联调（均有降级，不阻塞主流程）</b>
+    ① Claude 大会 50+ 演讲的 YouTube 播放列表 <code>playlist_id</code>（需可访问 YouTube 的浏览器抓取，issue #9）；② YouTube 字幕的稳定获取依赖真实浏览器/会话（web-access CDP 或 <code>QLY_TRANSCRIPT_PROXY</code>）；③ 内眼心声/稼先保留槽位、不联调；④ 首次推送 GitHub 待批准（issue #11）。
+  </div>
+</section>
+
+<section id="s12">
+  <h2><span class="no">12</span>仓库地图</h2>
+  <p class="sub">SDLC 文档 + 代码布局</p>
+  <pre><code>aihot/
+├── config/     sources.yaml(19源) · channels.yaml(16频道) · builders.yaml · reader.yaml · paths.team.json · model-sources.yaml · x-follows.yaml
+├── templates/  digest.html.jinja · glance.html.jinja · deep.html.jinja
+├── qianliyan/
+│   ├── core/      paths · schema · utils · storage · profile · og_image · llm_client
+│   ├── engine/    http · rss · gitfeed · html_page · remote_sync · youtube · github_trending · youtube_transcript · cdp
+│   ├── eyes/      aihot · builders · local · insights · cc_prompts · plugins_official · company
+│   ├── pipeline/  change_intel · persona · channels · report · routing · minitpl · auto_translate · *_agent
+│   └── cli/       sync · api_server · deliver · daily_digest_all · data_prune · health_check
+├── tests/         517 用例 · fixtures/real（真实样本）· socket 物理封网
+└── docs/          intent.md · spec.md · spec-v0.3.md · plan.md · PLAYBOOK.md · overview.html</code></pre>
+  <h3>快速开始</h3>
+  <pre><code># 离线端到端（无需网络与密钥）
+QLY_OFFLINE=1 python -m qianliyan.cli.sync --mock
+
+# 真实同步 / 深读浅读日报 / API
+python -m qianliyan.cli.sync
+python -m qianliyan.cli.daily_digest_all --prepare --finalize --html
+QLY_PORT=8787 python -m qianliyan.cli.api_server   # 需 pip install "qianliyan[api]"</code></pre>
+</section>
+
+<footer>
+  <span>千里眼 qianliyan v0.3 · 架构：Fable 5 · 实现：Opus / Sonnet 子代理 · 517 测试全绿</span>
+  <span>2026-08-25</span>
+</footer>
+</div>

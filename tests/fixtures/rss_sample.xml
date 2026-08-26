@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example AI Blog</title>
+    <link>https://example.com/blog</link>
+    <item>
+      <title>Model X reaches new benchmark high</title>
+      <link>https://example.com/blog/model-x-benchmark</link>
+      <description>Model X posts a new SOTA score on the reasoning benchmark.</description>
+      <pubDate>Mon, 24 Aug 2026 09:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Weekly roundup: agents, tools, and evals</title>
+      <link>https://example.com/blog/weekly-roundup</link>
+      <description>This week in AI: new agent frameworks and eval suites.</description>
+      <pubDate>Sun, 23 Aug 2026 09:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

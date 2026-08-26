@@ -1,0 +1,10 @@
+# config/builders.yaml —— 右眼(builders)真实信源：Zara Zhang 的 follow-builders 汇聚仓库。
+# 逐 feed 拉 raw.githubusercontent.com/{repo}/{branch}/{feed}；每条 tweet → 一个 item。
+# 收录范围：allowlist 为空时默认收录 feed 中出现的全部 builder；mute 名单见 x-follows.yaml。
+
+repo: zarazhangrui/follow-builders
+branch: main
+feeds: [feed-x.json, feed-podcasts.json, feed-blogs.json]
+default_weight: 0.8
+allowlist: []          # 空 = 收录 feed 中出现的全部 builder；非空则仅收白名单(handle)
+weight_overrides: {}   # {handle: weight} 按人覆盖 default_weight
