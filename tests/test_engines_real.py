@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from qianliyan.core import utils
+from qianliyan.core import schema, utils
 from qianliyan.engine import github_trending, html_page, http, remote_sync, youtube
 
 REAL = Path(__file__).resolve().parent / "fixtures" / "real"
@@ -89,6 +89,102 @@ def test_youtube_parse_empty_and_malformed_return_empty():
 
 
 def test_youtube_fetch_is_feed_url_get_parse(monkeypatch):
+    monkeypatch.setattr(http, "get", lambda url, timeout=15: _FakeResponse(text=_read("youtube_anthropic.xml")))
+    items = youtube.fetch({"channel_id": "UCrDwWp7EBBv4NwvScIpBDOA", "format": "video"})
+    assert len(items) == 15
+
+
+# =========================================================================
+# engine.youtube · CDP 首选路径（feeds/videos.xml 已实测失效，2026-08-28）
+# =========================================================================
+def test_youtube_page_url_supports_handle_directly():
+    """CDP 路径（不同于 feed_url）可以直接用 handle，不需要先在线解析 channel_id。"""
+    assert youtube.page_url({"handle": "@claude"}) == "https://www.youtube.com/@claude/videos"
+    assert youtube.page_url({"channel_id": "UCabc"}) == "https://www.youtube.com/channel/UCabc/videos"
+    assert youtube.page_url({"playlist_id": "PLxyz"}) == "https://www.youtube.com/playlist?list=PLxyz"
+
+
+@pytest.mark.parametrize(
+    "text,expected_days_ago",
+    [
+        ("2天前", 2),
+        ("直播时间：3个月前", 90),   # 前缀不影响解析，只搜数字+单位+"前"
+        ("1年前", 365),
+        ("3周前", 21),
+        ("2 days ago", 2),
+        ("Streamed 3 months ago", 90),
+    ],
+)
+def test_relative_to_date_parses_cn_and_en(text, expected_days_ago):
+    now = utils.parse_date("2026-08-28T00:00:00+00:00")
+    got = utils.parse_date(youtube._relative_to_date(text, now=now))
+    assert got == now - __import__("datetime").timedelta(days=expected_days_ago)
+
+
+def test_relative_to_date_just_now_and_unparseable():
+    now = utils.parse_date("2026-08-28T00:00:00+00:00")
+    assert youtube._relative_to_date("刚刚", now=now) == utils.iso(now)
+    assert youtube._relative_to_date("not a date at all", now=now) is None
+    assert youtube._relative_to_date("", now=now) is None
+
+
+def test_items_from_cdp_videos_real_shape():
+    """喂 2026-08-28 对 @claude/videos 真实抓取脚本返回的原始结构（回归用例）。"""
+    raw = [
+        {"videoId": "x80HVKbZrno", "title": "Claude for Word: Turn a draft into a finished document",
+         "meta": ["1万次观看", "2天前"]},
+        {"videoId": "GMIWm5y90xA", "title": "Code with Claude 2026: Opening Keynote",
+         "meta": ["Claude", "24万次观看", "直播时间：3个月前"]},
+        {"videoId": "", "title": "no id, must be skipped", "meta": []},
+        {"videoId": "abc123", "title": "", "meta": []},   # 空标题也跳过
+    ]
+    items = youtube._items_from_cdp_videos(raw, {"name": "Claude YouTube", "weight": 0.92, "format": "talk"})
+    assert len(items) == 2
+    first = items[0]
+    assert first["url"] == "https://www.youtube.com/watch?v=x80HVKbZrno"
+    assert first["title"] == "Claude for Word: Turn a draft into a finished document"
+    assert first["extra"]["video_id"] == "x80HVKbZrno"
+    assert first["extra"]["format"] == "talk"
+    assert first["weight"] == 0.92
+    assert utils.parse_date(first["date"]) is not None
+    assert schema.validate_item(first) == []
+
+
+def test_fetch_via_cdp_raises_when_no_videos_extracted(monkeypatch):
+    """CDP 页面就绪但抽不到视频时要抛异常（交给 fetch() 回退 feed），不能悄悄返回 []。"""
+    class _FakePage:
+        context = type("C", (), {"add_cookies": lambda self, cookies: None})()
+        def goto(self, url, timeout=None): pass
+        def wait_for_function(self, script, timeout=None): pass
+        def evaluate(self, script): return []
+        def close(self): pass
+
+    class _FakeBrowser:
+        def new_page(self): return _FakePage()
+        def close(self): pass
+
+    class _FakeCdpModule:
+        class CDPUnavailable(Exception):
+            pass
+
+        @staticmethod
+        def connect():
+            return (type("Ctx", (), {"stop": lambda self: None})(), _FakeBrowser())
+
+    # `from . import cdp` 里的 cdp 已经是包 qianliyan.engine 的真实属性（被别的模块提前
+    # import 过），打 sys.modules 补丁打不中——要打包属性本身，getattr 才能拿到假模块。
+    import qianliyan.engine as engine_pkg
+    monkeypatch.setattr(engine_pkg, "cdp", _FakeCdpModule)
+    with pytest.raises(RuntimeError):
+        youtube.fetch_via_cdp({"handle": "@claude"})
+
+
+def test_fetch_falls_back_to_feed_when_cdp_fails(monkeypatch):
+    """CDP 抛异常（无 playwright/连不上/抽不到视频）时 fetch() 要回退 feed 路径，不能整体失败。"""
+    def _boom(cfg=None):
+        raise RuntimeError("CDP 不可用（模拟）")
+
+    monkeypatch.setattr(youtube, "fetch_via_cdp", _boom)
     monkeypatch.setattr(http, "get", lambda url, timeout=15: _FakeResponse(text=_read("youtube_anthropic.xml")))
     items = youtube.fetch({"channel_id": "UCrDwWp7EBBv4NwvScIpBDOA", "format": "video"})
     assert len(items) == 15

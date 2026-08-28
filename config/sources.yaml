@@ -43,8 +43,10 @@ sources:
   - {name: OpenAI YouTube,          type: youtube, channel_id: UCXZCJLdBC09xxGZ6gcdrc6A, weight: 0.85, format: video, category: talks, tags: [official, openai, video, talks]}
   - {name: Google DeepMind YouTube, type: youtube, channel_id: UCP7jMXSY2xbc3KCAE0MHQ-A, weight: 0.82, format: video, category: talks, tags: [official, google, video, talks]}
 
-  # —— Claude 大会演讲（播放列表，playlist_id 待用户/后续确认后填入；先注释占位，不填不影响其余源）——
-  # - {name: "Code with Claude 大会", type: youtube, playlist_id: "PLxxxxxxxx", weight: 0.95, format: talk, category: talks, tags: [official, anthropic, talk, conference, practices]}
+  # —— Claude 大会演讲（播放列表，2026-08-28 用 CDP 打开 @claude/playlists 页实测得到的真实 ID）——
+  - {name: "Code with Claude 2026 · San Francisco", type: youtube, playlist_id: "PLmWCw1CzcFim2obQ-w3ohbULOfwp5lApR", weight: 0.95, format: talk, category: talks, tags: [official, anthropic, talk, conference, practices]}
+  - {name: "Code with Claude 2026 · London",        type: youtube, playlist_id: "PLmWCw1CzcFilPJdvw6scjHjbBripZWFps", weight: 0.95, format: talk, category: talks, tags: [official, anthropic, talk, conference, practices]}
+  - {name: "Code with Claude 2026 · Japan",          type: youtube, playlist_id: "PLmWCw1CzcFinrtcyN6EMIp6KqrDj8sxD7", weight: 0.95, format: talk, category: talks, tags: [official, anthropic, talk, conference, practices]}
 
   # —— AI 播客（RSS，源自 follow-builders default-sources）——
   - {name: Latent Space,              type: rss, url: "https://www.latent.space/feed",         weight: 0.78, format: podcast, category: podcasts, tags: [kol, podcast]}
