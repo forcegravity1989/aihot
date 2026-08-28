@@ -139,6 +139,32 @@ def test_cross_map_prompt_topic_but_no_changelog_is_unverified(monkeypatch):
     assert talk["extra"]["corroboration"]["verdict"] == "unverified"
 
 
+def test_cross_map_bare_token_mention_unrelated_to_claude_code_is_unverified(monkeypatch):
+    """回归用例：文章只是恰好提到"token"/"prompt"这类通用词，但完全不是在说 Claude
+    Code——不能因为主题键都退化成 None 就侥幸对上（真实 bug：ChatGPT 搜索份额报道
+    提到 token 被错配到 claude-code-prompts 的 changelog，判成"已实证"）。
+    """
+    monkeypatch.setenv("QLY_OFFLINE", "1")
+    evidence = _changelog("claude-code-prompts", "3.0.0", -50000)
+    talk = mk(
+        "news",
+        "ChatGPT search now uses the site:operator at scale",
+        "the share of queries with a token-like operator dropped 68% this month",
+    )
+    items = [evidence, talk]
+    ci.cross_map_claims(items, llm=None)
+    corr = talk["extra"]["corroboration"]
+    assert corr["verdict"] == "unverified"
+    assert corr["evidence"] is None
+
+
+def test_extract_claim_is_prompt_topic_requires_claude_code_mention():
+    item = mk("news", "Some model got 3x more tokens", "a generic industry report")
+    claim = ci._extract_claim_regex(item)
+    assert claim is not None
+    assert claim["is_prompt_topic"] is False
+
+
 def test_cross_map_skips_narrative_without_numeric_claim(monkeypatch):
     monkeypatch.setenv("QLY_OFFLINE", "1")
     talk = mk("talk", "A qualitative talk about prompts", "no numbers here")
