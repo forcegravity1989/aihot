@@ -45,6 +45,7 @@ OUTPUT_NAME = "digest.html"
 AVATAR_DIR = "builder-avatars"
 HOTLIST_LIMIT = 50
 PERSONALIZED_LIMIT = 30
+HERO_COUNT = 3
 SUMMARY_MAX_CHARS = 160
 MAX_AVATAR_BYTES = 512 * 1024
 
@@ -57,7 +58,7 @@ _REASON_ICONS = {
 }
 
 PAGE_TITLE = "千里眼 · AI 情报简报"
-PAGE_SUBTITLE = "五眼并行采集 · 去重打分 · 频道分发"
+PAGE_SUBTITLE = "多源信息采集 · 交叉验证 · 变更情报"
 
 #: badge → 页面展示文案（spec §1：heavy=📈 重磅，flash=⚡ 一手速报）
 BADGE_LABELS = (("heavy", "📈 重磅"), ("flash", "⚡ 一手速报"))
@@ -222,6 +223,7 @@ def _view_item(
         "avatar_initial": _avatar_initial(item),
         "personal_score": "{0:.4f}".format(_personal_score(item) or 0.0),
         "personal_reasons": _reason_chips(_extra(item).get("personal_reasons")),
+        "image": str(_extra(item).get("og_image") or ""),
     }
 
 
@@ -367,6 +369,13 @@ def build_context(
         if isinstance(persona, dict):
             persona_views.append(_persona_view(persona, now, avatar_dir, avatar_cache))
 
+    # 头条区：全池热度最高的 HERO_COUNT 条，做成主体区第一屏（不是另一个"版面"，
+    # 只是热榜前几条的放大呈现——不额外进 palette 索引，避免和热榜版面重复计数）
+    hero_pool = pool_sorted[:HERO_COUNT]
+    hero_views = [_view_item(it, "hero", now, avatar_dir, avatar_cache) for it in hero_pool]
+    hero_main = hero_views[0] if hero_views else None
+    hero_rest = hero_views[1:]
+
     return {
         "version": __version__,
         "page_title": PAGE_TITLE,
@@ -377,6 +386,8 @@ def build_context(
         "heavy_count": sum(1 for it in pool if "heavy" in (it.get("badges") or [])),
         "flash_count": sum(1 for it in pool if "flash" in (it.get("badges") or [])),
         "boards": boards,
+        "hero_main": hero_main,
+        "hero_rest": hero_rest,
         "personalized": personalized_views,
         "personalized_count": len(personalized_views),
         "personas": persona_views,

@@ -7,7 +7,7 @@
 <title>{{ page_title }}</title>
 <style>
 :root {
-  --bg: #f5f7fb;
+  --bg: #f0f2f8;
   --card: #ffffff;
   --ink: #171a21;
   --muted: #6b7280;
@@ -20,7 +20,10 @@
   --heavy-soft: #fff3d6;
   --flash: #7c3aed;
   --flash-soft: #f1e9ff;
+  --ink-soft: #232838;
   --shadow: 0 1px 2px rgba(23, 26, 33, .05), 0 8px 24px rgba(23, 26, 33, .05);
+  --shadow-lg: 0 4px 8px rgba(23, 26, 33, .06), 0 20px 48px rgba(23, 26, 33, .10);
+  --sidebar-w: 264px;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -35,55 +38,91 @@ body {
 }
 a { color: inherit; text-decoration: none; }
 a:hover { text-decoration: underline; }
-.wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px 72px; }
 
-/* ---------- 页头 ---------- */
-.masthead {
-  position: sticky; top: 0; z-index: 30;
-  background: rgba(245, 247, 251, .92);
-  backdrop-filter: saturate(160%) blur(8px);
-  border-bottom: 1px solid var(--line);
+/* ---------- 整体布局：侧栏 + 主体 ---------- */
+.layout { max-width: 1440px; margin: 0 auto; display: flex; align-items: flex-start; }
+
+/* ---------- 侧栏（左，粘性） ---------- */
+.sidebar {
+  position: sticky; top: 0; height: 100vh; width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+  display: flex; flex-direction: column;
+  background: var(--ink-soft); color: #e7e9f2;
+  padding: 22px 18px; overflow-y: auto;
 }
-.masthead-inner { max-width: 1080px; margin: 0 auto; padding: 16px 20px 12px; }
-.brand-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-h1 { font-size: 22px; margin: 0; letter-spacing: .5px; }
-.subtitle { color: var(--muted); font-size: 13px; }
-.stats { margin-left: auto; color: var(--muted); font-size: 13px; }
-.stats b { color: var(--ink); font-weight: 600; }
+.sidebar-brand h1 { font-size: 19px; margin: 0; letter-spacing: .3px; color: #fff; }
+.sidebar-brand .subtitle { color: #9aa3c4; font-size: 12px; margin-top: 3px; display: block; }
+.sidebar-stats {
+  margin-top: 16px; padding: 12px 14px; background: rgba(255,255,255,.06); border-radius: 10px;
+  font-size: 12.5px; color: #b7bdd9; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px;
+}
+.sidebar-stats b { display: block; color: #fff; font-size: 16px; font-variant-numeric: tabular-nums; }
+.sidebar-stats span { display: block; margin-top: 2px; }
+.sidebar-updated { margin-top: 10px; color: #7d84a8; font-size: 11.5px; }
 
-.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-.sortbar { display: inline-flex; gap: 6px; background: var(--card); border: 1px solid var(--line);
-           border-radius: 999px; padding: 4px; box-shadow: var(--shadow); }
+.sidebar-section { margin-top: 22px; }
+.sidebar-label {
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7d84a8;
+  margin: 0 0 8px; padding: 0 4px;
+}
+.sortbar { display: flex; flex-direction: column; gap: 3px; }
 .sort-btn {
-  border: 0; background: transparent; color: var(--muted); cursor: pointer;
-  font: inherit; font-size: 13px; padding: 5px 14px; border-radius: 999px;
+  border: 0; background: transparent; color: #c3c8e0; cursor: pointer; text-align: left;
+  font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 8px;
   transition: background .15s ease, color .15s ease;
 }
-.sort-btn:hover { background: var(--brand-soft); color: var(--brand); }
+.sort-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
 .sort-btn[aria-pressed="true"] { background: var(--brand); color: #fff; }
 .palette-hint {
-  margin-left: auto; border: 1px solid var(--line); background: var(--card);
-  border-radius: 999px; padding: 5px 14px; font-size: 13px; color: var(--muted);
-  cursor: pointer;
+  width: 100%; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05);
+  border-radius: 8px; padding: 8px 10px; font-size: 12.5px; color: #c3c8e0;
+  cursor: pointer; text-align: left; display: flex; align-items: center; justify-content: space-between;
 }
-.palette-hint:hover { border-color: var(--brand); color: var(--brand); }
+.palette-hint:hover { border-color: var(--brand); color: #fff; }
 kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
-  background: #eef1f7; border: 1px solid var(--line); border-bottom-width: 2px;
-  border-radius: 5px; padding: 0 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.16); border-bottom-width: 2px;
+  border-radius: 5px; padding: 0 5px; color: #d7dafc;
 }
 
-/* ---------- 版面导航 ---------- */
-.boardnav { display: flex; gap: 6px; flex-wrap: wrap; margin: 18px 0 6px; }
+/* ---------- 侧栏版面导航（纵向列表，不是横向 chip） ---------- */
+.boardnav { display: flex; flex-direction: column; gap: 1px; }
 .boardnav a {
-  font-size: 13px; color: var(--muted); background: var(--card);
-  border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px;
+  font-size: 13px; color: #c3c8e0; border-radius: 8px; padding: 7px 10px;
+  display: flex; justify-content: space-between; gap: 8px;
 }
-.boardnav a:hover { color: var(--brand); border-color: var(--brand); text-decoration: none; }
-.boardnav .n { color: var(--faint); margin-left: 4px; }
+.boardnav a:hover { background: rgba(255,255,255,.08); color: #fff; text-decoration: none; }
+.boardnav .n { color: #7d84a8; font-variant-numeric: tabular-nums; }
+.sidebar-foot { margin-top: auto; padding-top: 14px; color: #5c628a; font-size: 11px; }
+
+/* ---------- 主体 ---------- */
+.main-col { flex: 1; min-width: 0; padding: 28px 32px 72px; }
+
+/* ---------- 头条区：日报主体开场 ---------- */
+.hero { margin-bottom: 40px; }
+.hero-label {
+  font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+  margin: 0 0 12px; display: flex; align-items: center; gap: 8px;
+}
+.hero-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.hero-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; align-items: stretch; }
+.hero-main {
+  background: var(--card); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column;
+}
+.hero-main .hero-img { width: 100%; aspect-ratio: 16/8; object-fit: cover; background: linear-gradient(135deg, var(--brand-soft), #dfe7ff); }
+.hero-main .hero-body { padding: 22px 24px 24px; flex: 1; display: flex; flex-direction: column; }
+.hero-main .card-title { font-size: 23px; line-height: 1.35; font-weight: 700; }
+.hero-main .card-summary { -webkit-line-clamp: 3; font-size: 14.5px; margin-top: 10px; }
+.hero-side { display: flex; flex-direction: column; gap: 14px; }
+.hero-card {
+  background: var(--card); border-radius: 14px; box-shadow: var(--shadow); flex: 1;
+  display: flex; flex-direction: column; padding: 16px 18px;
+}
+.hero-card .card-title { font-size: 15.5px; }
+.hero-card .card-summary { -webkit-line-clamp: 2; }
 
 /* ---------- 版面 ---------- */
-.board { margin-top: 34px; scroll-margin-top: 120px; }
+.board { margin-top: 34px; scroll-margin-top: 20px; }
 .board-head { display: flex; align-items: baseline; gap: 10px; border-bottom: 2px solid var(--ink); padding-bottom: 8px; }
 .board-head h2 { font-size: 17px; margin: 0; }
 .board-head .n { color: var(--faint); font-size: 13px; }
@@ -92,7 +131,7 @@ kbd {
 .card {
   display: flex; gap: 12px; background: var(--card); border: 1px solid var(--line);
   border-radius: 12px; padding: 14px 16px; margin-top: 10px; box-shadow: var(--shadow);
-  scroll-margin-top: 130px;
+  scroll-margin-top: 20px;
 }
 .card:hover { border-color: #cfd6e6; }
 .card.qly-flash-target { outline: 2px solid var(--brand); outline-offset: 2px; }
@@ -122,7 +161,7 @@ kbd {
 .empty { color: var(--faint); font-size: 13.5px; padding: 18px 4px; }
 
 /* ---------- 特别版面：为你推荐 / 人物画像 ---------- */
-.special-board { margin-top: 34px; scroll-margin-top: 120px; }
+.special-board { margin-top: 34px; scroll-margin-top: 20px; }
 .special-board .board-head { border-bottom-color: var(--brand); }
 .reasons { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
 .reason-chip, .topic-chip {
@@ -185,45 +224,104 @@ kbd {
 
 footer { margin-top: 46px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12.5px; }
 
+@media (max-width: 900px) {
+  .layout { display: block; }
+  .sidebar { position: static; width: 100%; height: auto; flex: none; }
+  .sidebar-section:has(.boardnav) { min-height: 0 !important; }
+  .boardnav { max-height: 260px; }
+  .hero-grid { grid-template-columns: 1fr; }
+  .main-col { padding: 20px 16px 56px; }
+}
 @media (max-width: 640px) {
-  .stats { margin-left: 0; width: 100%; }
-  .palette-hint { margin-left: 0; }
   .board-head .desc { display: none; }
 }
 </style>
 </head>
 <body>
 
-<header class="masthead">
-  <div class="masthead-inner">
-    <div class="brand-row">
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
       <h1>{{ page_title }}</h1>
       <span class="subtitle">{{ subtitle }}</span>
-      <span class="stats">
-        生成于 <b>{{ generated_at }}</b> · 共 <b>{{ total_items }}</b> 条 ·
-        <b>{{ board_count }}</b> 个版面 · 📈 重磅 <b>{{ heavy_count }}</b> · ⚡ 一手速报 <b>{{ flash_count }}</b>
-      </span>
     </div>
-    <div class="toolbar">
-      <span class="subtitle">排序：</span>
+    <div class="sidebar-stats">
+      <div><b>{{ total_items }}</b><span>条信息</span></div>
+      <div><b>{{ board_count }}</b><span>个版面</span></div>
+      <div><b>{{ heavy_count }}</b><span>📈 重磅</span></div>
+      <div><b>{{ flash_count }}</b><span>⚡ 一手速报</span></div>
+    </div>
+    <div class="sidebar-updated">生成于 {{ generated_at }}</div>
+
+    <div class="sidebar-section">
+      <p class="sidebar-label">排序</p>
       <div class="sortbar" role="group" aria-label="排序方式">
         <button type="button" class="sort-btn" id="qly-sort-hot" data-sort="hot" aria-pressed="true">🔥 热度</button>
         <button type="button" class="sort-btn" id="qly-sort-time" data-sort="time" aria-pressed="false">🕒 时间</button>
         <button type="button" class="sort-btn" id="qly-sort-score" data-sort="score" aria-pressed="false">📈 得分</button>
       </div>
-      <button type="button" class="palette-hint" id="qly-palette-open">🔍 搜索全部版面 <kbd>Ctrl</kbd> + <kbd>K</kbd></button>
     </div>
-  </div>
-</header>
 
-<div class="wrap">
-  <nav class="boardnav" aria-label="版面导航">
-    {% if personalized %}<a href="#board-personalized">✨ 为你推荐<span class="n">{{ personalized_count }}</span></a>{% endif %}
-    {% if personas %}<a href="#board-personas">👥 人物画像<span class="n">{{ personas_count }}</span></a>{% endif %}
-    {% for board in boards %}<a href="#board-{{ board.name }}">{{ board.title }}<span class="n">{{ board.count }}</span></a>{% endfor %}
-  </nav>
+    <div class="sidebar-section">
+      <button type="button" class="palette-hint" id="qly-palette-open">
+        <span>🔍 搜索全部版面</span><span><kbd>Ctrl</kbd>+<kbd>K</kbd></span>
+      </button>
+    </div>
 
-  <main>
+    <div class="sidebar-section" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+      <p class="sidebar-label">版面导航</p>
+      <nav class="boardnav" aria-label="版面导航" style="overflow-y: auto;">
+        {% if personalized %}<a href="#board-personalized">✨ 为你推荐<span class="n">{{ personalized_count }}</span></a>{% endif %}
+        {% if personas %}<a href="#board-personas">👥 人物画像<span class="n">{{ personas_count }}</span></a>{% endif %}
+        {% for board in boards %}<a href="#board-{{ board.name }}">{{ board.title }}<span class="n">{{ board.count }}</span></a>{% endfor %}
+      </nav>
+    </div>
+
+    <div class="sidebar-foot">千里眼 qianliyan {{ version }}</div>
+  </aside>
+
+  <main class="main-col">
+    {% if hero_main %}
+    <section class="hero" aria-label="今日头条">
+      <p class="hero-label">今日头条</p>
+      <div class="hero-grid">
+        <article class="hero-main">
+          {% if hero_main.image %}<img class="hero-img" src="{{ hero_main.image }}" alt="" loading="lazy">{% endif %}
+          {% if not hero_main.image %}<div class="hero-img" aria-hidden="true"></div>{% endif %}
+          <div class="hero-body">
+            <h2 class="card-title">
+              {% for badge in hero_main.badges %}<span class="badge badge-{{ badge.kind }}">{{ badge.label }}</span>{% endfor %}
+              <a href="{{ hero_main.url }}" target="_blank" rel="noopener noreferrer">{{ hero_main.display_title }}</a>
+            </h2>
+            {% if hero_main.summary %}<p class="card-summary">{{ hero_main.summary }}</p>{% endif %}
+            <div class="card-meta">
+              <span class="sources">{{ hero_main.sources_text }}</span>
+              <span title="{{ hero_main.date_abs }}">🕒 {{ hero_main.date_text }}</span>
+              <span class="hotness">🔥 {{ hero_main.hotness }}</span>
+              <a class="go" href="{{ hero_main.url }}" target="_blank" rel="noopener noreferrer">阅读原文 →</a>
+            </div>
+          </div>
+        </article>
+        <div class="hero-side">
+          {% for item in hero_rest %}
+          <article class="hero-card">
+            <h3 class="card-title">
+              {% for badge in item.badges %}<span class="badge badge-{{ badge.kind }}">{{ badge.label }}</span>{% endfor %}
+              <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.display_title }}</a>
+            </h3>
+            {% if item.summary %}<p class="card-summary">{{ item.summary }}</p>{% endif %}
+            <div class="card-meta">
+              <span class="sources">{{ item.sources_text }}</span>
+              <span class="hotness">🔥 {{ item.hotness }}</span>
+              <a class="go" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">阅读原文 →</a>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+    {% endif %}
+
     {% if personalized %}
     <section class="special-board" id="board-personalized" data-board="personalized">
       <div class="board-head">
@@ -335,13 +433,13 @@ footer { margin-top: 46px; padding-top: 16px; border-top: 1px solid var(--line);
       </ol>
     </section>
     {% endfor %}
-  </main>
 
-  <footer>
-    千里眼 qianliyan {{ version }} · 数据生成于 {{ generated_at }} ·
-    徽标说明：📈 重磅（≥3 家信源交叉报道）、⚡ 一手速报（高权威信源 24 小时内）。
-    本页为单文件自包含简报，可直接分享或离线打开。
-  </footer>
+    <footer>
+      千里眼 qianliyan {{ version }} · 数据生成于 {{ generated_at }} ·
+      徽标说明：📈 重磅（≥3 家信源交叉报道）、⚡ 一手速报（高权威信源 24 小时内）。
+      本页为单文件自包含简报，可直接分享或离线打开。
+    </footer>
+  </main>
 </div>
 
 <div class="palette-mask" id="qly-palette" role="dialog" aria-modal="true" aria-label="命令面板">
