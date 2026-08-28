@@ -45,6 +45,15 @@ def test_parse_date_accepts_date_only():
     assert utils.iso(utils.parse_date("2026-08-25")) == "2026-08-25T00:00:00+00:00"
 
 
+@pytest.mark.parametrize(
+    "raw",
+    ["August 25, 2026", "Aug 25, 2026", "25 August 2026"],
+)
+def test_parse_date_accepts_full_and_abbreviated_month_names(raw):
+    """官网卡片式抓取（html_page.extract_articles）常见的日期格式（回归用例）。"""
+    assert utils.iso(utils.parse_date(raw)) == "2026-08-25T00:00:00+00:00"
+
+
 @pytest.mark.parametrize("raw", [None, "", "   ", "not a date", "昨天", [], True])
 def test_parse_date_returns_none_on_failure(raw):
     assert utils.parse_date(raw) is None

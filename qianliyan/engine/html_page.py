@@ -141,9 +141,21 @@ def _split_leading_date(segments: List[str]) -> "tuple[str, str]":
     return date, title
 
 
+#: "整卡可点击"站点常把真标题/日期放在锚点外的兄弟元素里，锚点本身只包一句
+#: 通用 CTA（Webflow 一类模板的典型结构：``<h2>标题</h2><div>日期</div>`` 紧邻
+#: ``<a><span class="sr-only">Read more</span></a>``）。锚点自身文本落进这份
+#: 泛词表时，改用"自上一个 </a> 结束以来"最近出现过的标题/日期兜底。
+_CTA_GENERIC_RE = re.compile(
+    r"^(?:read more|learn more|continue reading|see more|view more|more|"
+    r"阅读更多|查看更多|了解更多|查看详情|更多)$",
+    re.IGNORECASE,
+)
+
+
 class _ArticleExtractor(HTMLParser):
     """抽 ``<a href>`` 及其标题：优先锚点内首个 ``<h1..h6>`` 文本，回退锚点全文；
-    两者都先剥掉开头粘连的日期文本节点（见 ``_split_leading_date``）。
+    两者都先剥掉开头粘连的日期文本节点（见 ``_split_leading_date``）；锚点自身文本
+    是无信息 CTA 泛词时，回退用锚点外、紧邻在前的标题/日期（见上方 ``_CTA_GENERIC_RE``）。
     """
 
     def __init__(self) -> None:
@@ -154,6 +166,12 @@ class _ArticleExtractor(HTMLParser):
         self._text_buf: List[str] = []
         self._heading_buf: List[str] = []
         self._heading_depth = 0
+        # 全局标题深度追踪（不分是否在 <a> 内），配合下面的"待定标题/日期"，
+        # 记录自上一个 </a> 结束以来见过的最近一个标题/日期，见类 docstring。
+        self._global_heading_depth = 0
+        self._global_heading_buf: List[str] = []
+        self._pending_heading = ""
+        self._pending_date = ""
 
     def handle_starttag(self, tag: str, attrs) -> None:
         if tag == "a":
@@ -167,15 +185,30 @@ class _ArticleExtractor(HTMLParser):
             return
         if self._in_a and _HEADING_RE.match(tag):
             self._heading_depth += 1
+        if _HEADING_RE.match(tag):
+            self._global_heading_depth += 1
+            self._global_heading_buf = []
 
     def handle_data(self, data: str) -> None:
-        if not self._in_a:
-            return
-        self._text_buf.append(data)
-        if self._heading_depth > 0:
-            self._heading_buf.append(data)
+        if self._in_a:
+            self._text_buf.append(data)
+            if self._heading_depth > 0:
+                self._heading_buf.append(data)
+        if self._global_heading_depth > 0:
+            self._global_heading_buf.append(data)
+        elif not self._in_a:
+            stripped = data.strip()
+            if stripped and _DATE_SEGMENT_RE.match(stripped):
+                self._pending_date = stripped
 
     def handle_endtag(self, tag: str) -> None:
+        if _HEADING_RE.match(tag) and self._global_heading_depth > 0:
+            self._global_heading_depth -= 1
+            if self._global_heading_depth == 0:
+                text = " ".join("".join(self._global_heading_buf).split())
+                if text:
+                    self._pending_heading = text
+                self._global_heading_buf = []
         if not self._in_a:
             return
         if _HEADING_RE.match(tag) and self._heading_depth > 0:
@@ -184,18 +217,27 @@ class _ArticleExtractor(HTMLParser):
         if tag == "a":
             text_date, text = _split_leading_date(self._text_buf)
             heading_date, heading = _split_leading_date(self._heading_buf)
+            title = heading or text
+            date = heading_date or text_date
+            if not title or _CTA_GENERIC_RE.match(title.strip()):
+                if self._pending_heading:
+                    title = self._pending_heading
+                if not date:
+                    date = self._pending_date
             if self._href is not None:
                 self.articles.append({
                     "href": self._href,
                     "text": text,
-                    "heading": heading,
-                    "date": heading_date or text_date,
+                    "heading": title,
+                    "date": date,
                 })
             self._in_a = False
             self._href = None
             self._text_buf = []
             self._heading_buf = []
             self._heading_depth = 0
+            self._pending_heading = ""
+            self._pending_date = ""
 
 
 def extract_articles(

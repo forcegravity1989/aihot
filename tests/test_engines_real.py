@@ -186,6 +186,35 @@ def test_extract_articles_strips_leading_date_segment_from_title():
     assert articles[0]["title"] == "A real headline that mentions Jul in passing"
 
 
+def test_extract_articles_falls_back_to_sibling_heading_for_cta_only_anchor():
+    """整卡可点击站点（Webflow 常见模式）：真标题/日期是锚点外的兄弟元素，锚点自身
+    只有一句"Read more" CTA——要回退用锚点之前最近出现的标题/日期（回归用例，
+    对应真实 claude.com/blog 的抓取质量问题）。
+    """
+    html = (
+        '<div class="card">'
+        '<h2>Claude in Chrome is generally available</h2>'
+        '<div>August 26, 2026</div>'
+        '<div class="clickable_wrap">'
+        '<a href="/blog/claude-in-chrome-generally-available"><span class="sr-only">Read more</span></a>'
+        "</div></div>"
+        '<div class="card">'
+        '<h2>A second real post title</h2>'
+        '<div>April 10, 2026</div>'
+        '<a href="/blog/a-second-real-post"><span>Learn more</span></a>'
+        "</div>"
+    )
+    articles = html_page.extract_articles(html, r"^/blog/[a-z0-9-]+$", base_url="https://claude.com/blog")
+    assert len(articles) == 2
+    first = next(a for a in articles if a["url"].endswith("claude-in-chrome-generally-available"))
+    assert first["title"] == "Claude in Chrome is generally available"
+    assert first["date"] == "August 26, 2026"
+    assert utils.parse_date(first["date"]) is not None
+    second = next(a for a in articles if a["url"].endswith("a-second-real-post"))
+    assert second["title"] == "A second real post title"
+    assert second["date"] == "April 10, 2026"
+
+
 def test_extract_articles_pattern_excludes_non_matching():
     html = (
         '<a href="/news/real-post"><h2>A real news post title</h2></a>'

@@ -34,7 +34,7 @@ sources:
 
   # —— Anthropic（无 RSS，走 scrape：抽索引页里符合 article_pattern 的文章链接）——
   - {name: Anthropic News,        type: scrape, url: "https://www.anthropic.com/news",        article_pattern: "^/news/[a-z0-9-]+$",        weight: 0.98, format: blog, category: models,      tags: [official, anthropic, models]}
-  - {name: Anthropic Engineering, type: scrape, url: "https://www.anthropic.com/engineering", article_pattern: "^/engineering/[a-z0-9-]+$", weight: 0.96, format: blog, category: practices,  tags: [official, anthropic, practices]}
+  - {name: Anthropic Engineering, type: scrape, url: "https://www.anthropic.com/engineering", article_pattern: "^/engineering/[a-z0-9-]+$", weight: 0.90, format: blog, category: practices,  tags: [official, anthropic, practices]}   # 列表页无 <time>，真实日期取不到；weight 压到 0.95 以下避免误判"一手速报"
   - {name: Claude Blog,           type: scrape, url: "https://claude.com/blog",               article_pattern: "^/blog/[a-z0-9-]+$",        weight: 0.9,  format: blog, category: claude-code, tags: [official, claude, claude-code]}
 
   # —— 官方 YouTube（频道 feed，真实可达）——
