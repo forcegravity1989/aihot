@@ -28,6 +28,7 @@ import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..core import llm_client, paths, storage, utils
+from ..engine import article as article_engine
 from ..engine import youtube_transcript
 from ..pipeline import channels, minitpl
 
@@ -75,6 +76,15 @@ DRAFT_FIELDS = (
     "date", "hotness", "weight", "cross_refs", "tags", "badges", "summary",
     "metrics", "extra",
 )
+
+#: 编辑（Agent 或人）可直接写进草案条目的字段——``--finalize`` 一律**尊重已写入的值**，
+#: 不用自动生成覆盖。这是本项目「Agent 在环」的落点：选稿、中文化、深读提炼这些需要
+#: 判断力的活由编辑做，代码只负责取原料（正文/字幕）与渲染。
+EDITOR_FIELDS = ("title_zh", "summary_zh", "editor_note", "distill")
+#: 摘要短于此字符数就认为"深读没有原料"，去抓正文（索引页抓取常只有标题，摘要为空）
+THIN_SUMMARY_CHARS = 200
+#: 正文抓取上限，避免个别超长文把草案撑爆
+FULLTEXT_MAX_CHARS = 12000
 
 #: intent.md「设计哲学四条铁律」——与 cli.deliver 同源文案，独立维护避免跨 cli 模块耦合
 IRON_LAWS = (
@@ -177,11 +187,49 @@ def _first_sentences(summary: Any, n: int = 3) -> List[str]:
     return parts[:n]
 
 
+def _maybe_attach_fulltext(entry: Dict[str, Any]) -> bool:
+    """摘要太薄时抓单篇正文存进 ``extra.fulltext``；抓到返回 True。
+
+    索引页抓取（``type: scrape`` 的官网 blog）往往只拿到标题、摘要为空——**深读因此
+    没有原料**。这里对选中的条目补一次单篇抓取。失败/离线静默回退，绝不阻塞。
+    """
+    summary = str(entry.get("summary") or "").strip()
+    if len(summary) >= THIN_SUMMARY_CHARS:
+        return False
+    extra = _extra(entry)
+    if str(extra.get("transcript") or "").strip():
+        return False           # video/talk 已有字幕全文，不必再抓网页
+    if str(extra.get("fulltext") or "").strip():
+        return False           # 已抓过（草案里带着），不重复
+    url = str(entry.get("url") or "").strip()
+    if not url:
+        return False
+
+    try:
+        result = article_engine.fetch_article(url)
+    except Exception as exc:  # noqa: BLE001 - 取正文属尽力而为，绝不阻塞 finalize
+        logger.warning("正文抓取失败 (%s): %s", url, exc)
+        return False
+
+    text = str(result.get("text") or "").strip()
+    if not text:
+        return False
+    if not isinstance(entry.get("extra"), dict):
+        entry["extra"] = {}
+    entry["extra"]["fulltext"] = text[:FULLTEXT_MAX_CHARS]
+    # 摘要空时顺手用首段补上，浅读列表才有一句话可看
+    if not summary and result.get("lead"):
+        entry["summary"] = str(result["lead"])
+    return True
+
+
 def _distill_source_text(entry: Dict[str, Any]) -> str:
-    """深读 distill 的输入文本：优先字幕全文 ``extra.transcript``（video/talk），否则摘要。"""
-    transcript = _extra(entry).get("transcript")
-    if transcript and str(transcript).strip():
-        return str(transcript).strip()
+    """深读 distill 的输入文本：字幕全文（video/talk）> 网页正文 > 摘要。"""
+    extra = _extra(entry)
+    for key in ("transcript", "fulltext"):
+        value = str(extra.get(key) or "").strip()
+        if value:
+            return value
     return str(entry.get("summary") or "").strip()
 
 
@@ -417,24 +465,35 @@ def cmd_finalize(date_str: str, do_html: bool) -> int:
     finalized: List[Dict[str, Any]] = []
     distilled_count = 0
     transcript_count = 0
+    fulltext_count = 0
+    editor_distill_count = 0
     for entry in selected:
         record = dict(entry)
-        # extra 浅拷贝，避免抓字幕写 extra.transcript 时污染原草案条目
+        # extra 浅拷贝，避免抓字幕/正文写 extra 时污染原草案条目
         if isinstance(record.get("extra"), dict):
             record["extra"] = dict(record["extra"])
-        # video/talk 先抓字幕全文（失败/离线静默回退，不阻塞）
+        # video/talk 先抓字幕全文；其余摘要太薄的抓网页正文（失败/离线静默回退，不阻塞）
         if _maybe_attach_transcript(record):
             transcript_count += 1
-        distill = _distill_fallback(record)
-        if available and client is not None:
-            try:
-                enhanced = _distill_llm(record, client)
-            except Exception as exc:  # noqa: BLE001 - 深读增强失败该条回退，不影响其余
-                logger.warning("深读增强失败，回退 (sig=%s): %s", record.get("sig"), exc)
-                enhanced = None
-            if enhanced:
-                distill = enhanced
-                distilled_count += 1
+        if _maybe_attach_fulltext(record):
+            fulltext_count += 1
+
+        # 编辑（Agent/人）已在草案里写好的深读，优先于任何自动生成
+        editor_distill = entry.get("distill")
+        if isinstance(editor_distill, dict) and any(editor_distill.get(k) for k in editor_distill):
+            distill = editor_distill
+            editor_distill_count += 1
+        else:
+            distill = _distill_fallback(record)
+            if available and client is not None:
+                try:
+                    enhanced = _distill_llm(record, client)
+                except Exception as exc:  # noqa: BLE001 - 深读增强失败该条回退，不影响其余
+                    logger.warning("深读增强失败，回退 (sig=%s): %s", record.get("sig"), exc)
+                    enhanced = None
+                if enhanced:
+                    distill = enhanced
+                    distilled_count += 1
         record["distill"] = distill
         record["images"] = _collect_images(record)
         record["format"] = infer_format(record)
@@ -447,8 +506,10 @@ def cmd_finalize(date_str: str, do_html: bool) -> int:
     }
     storage.write_json(_archive_path(date_str, FINAL_NAME), final_doc)
     print(
-        "finalize 完成：{0} 条精选条目（深读增强命中 {1} 条，字幕全文 {2} 条，其余走回退）".format(
-            len(finalized), distilled_count, transcript_count
+        "finalize 完成：{0} 条精选条目（编辑深读 {1} 条，LLM 深读 {2} 条，"
+        "字幕全文 {3} 条，网页正文 {4} 条，其余走回退）".format(
+            len(finalized), editor_distill_count, distilled_count,
+            transcript_count, fulltext_count,
         )
     )
 
@@ -470,14 +531,19 @@ def cmd_html_only(date_str: str) -> int:
 # 视图模型
 # =========================================================================
 def _display_title(entry: Dict[str, Any]) -> str:
-    zh = _extra(entry).get("title_zh")
-    if zh and str(zh).strip():
-        return str(zh).strip()
+    """中文标题优先。编辑写在条目顶层的 ``title_zh`` 优先于自动翻译写进 ``extra`` 的。"""
+    for candidate in (entry.get("title_zh"), _extra(entry).get("title_zh")):
+        if candidate and str(candidate).strip():
+            return str(candidate).strip()
     return str(entry.get("title") or "")
 
 
 def _summary_text(entry: Dict[str, Any]) -> str:
-    return str(_extra(entry).get("summary_zh") or entry.get("summary") or "").strip()
+    """中文摘要优先，同 :func:`_display_title` 的优先级。"""
+    for candidate in (entry.get("summary_zh"), _extra(entry).get("summary_zh")):
+        if candidate and str(candidate).strip():
+            return str(candidate).strip()
+    return str(entry.get("summary") or "").strip()
 
 
 def _sources_text(entry: Dict[str, Any]) -> str:
@@ -533,9 +599,25 @@ def _reltime(entry: Dict[str, Any], now) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
+def _timeline_key(entry: Dict[str, Any]) -> float:
+    """时间轴排序键：发布时间的 unix 秒；解析不出的排到最后（不是排到最前）。"""
+    dt = utils.parse_date(entry.get("date"))
+    if dt is None:
+        return float("-inf")
+    try:
+        return dt.timestamp()
+    except (OverflowError, OSError, ValueError):
+        return float("-inf")
+
+
 def _grouped_by_format(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, Any]]:
-    """按 format 分组（FORMAT_ORDER 优先），组内保持传入顺序。"""
+    """按 format 分组（FORMAT_ORDER 优先），**组内按时间轴倒序**（新的在前）。
+
+    浅读是"扫一遍就知道今天发生了什么"，时间顺序比热度顺序更符合这个用途——
+    热度排序留给聚合页 digest.html。
+    """
     buckets: "Dict[str, List[Dict[str, Any]]]" = {}
+    items = sorted(items, key=_timeline_key, reverse=True)
     for entry in items:
         fmt = infer_format(entry)
         row = {
