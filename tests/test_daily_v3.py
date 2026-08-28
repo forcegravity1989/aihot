@@ -170,16 +170,39 @@ def test_finalize_html_produces_three_views(tmp_data_dir):
     assert "⭐" in dp and "1200" in dp and "340" in dp and "Python" in dp  # repo 卡
     assert "{{" not in dp and "{%" not in dp
 
-    # 合并页：浅读/深读切换 JS，默认浅读
+    # 合并页：浅读/深读切换是**纯 CSS**（沙箱环境常不执行脚本，切换不能依赖 JS）
     assert "浅读" in m and "深读" in m
-    assert 'data-view="glance"' in m and 'data-view="deep"' in m
-    assert 'show("glance")' in m  # 默认浅读
+    assert 'id="qly-pick-glance"' in m and 'id="qly-pick-deep"' in m
+    assert 'for="qly-pick-glance"' in m and 'for="qly-pick-deep"' in m
+    assert "#qly-pick-deep:checked ~ #wrap-deep" in m  # :checked 驱动显示
     assert "wrap-glance" in m and "wrap-deep" in m
     assert "模型发布要闻" in m  # 内嵌了浅读片段
     assert "{{" not in m and "{%" not in m
 
     # 合并页复制到数据根
     assert daily_root.read_text(encoding="utf-8") == m
+
+
+def test_merged_toggle_works_without_javascript(tmp_data_dir):
+    """回归用例：切换不能依赖 JS——沙箱预览器（聊天内嵌、文件面板、邮件客户端）
+    常常不执行页面脚本，用户点「深读」会毫无反应、只能看到浅读。
+    """
+    _write_draft(DATE, [_draft_item("s1", "条目一")])
+    d.cmd_finalize(DATE, do_html=True)
+    merged = (paths.data_path("archive", DATE, d.MERGED_NAME)).read_text(encoding="utf-8")
+
+    # 结构：隐藏 radio + label[for]，纯 CSS :checked 控制显示
+    assert '<input class="qly-switch" type="radio"' in merged
+    assert "#qly-pick-glance:checked ~ #wrap-glance" in merged
+    assert "#qly-pick-deep:checked ~ #wrap-deep" in merged
+    # 默认浅读：glance 那个 radio 带 checked
+    glance_input = merged[merged.index('id="qly-pick-glance"') - 80: merged.index('id="qly-pick-glance"') + 40]
+    assert "checked" in glance_input
+    # 关键：切换本身不得再依赖脚本（浅读的「标记已读」仍可用 JS 做渐进增强，
+    # 那是可有可无的功能；切换是核心导航，必须无 JS 也能用）
+    assert 'data-view="deep"' not in merged, "旧的 JS 切换钩子应已移除"
+    assert 'show("glance")' not in merged, "旧的 JS 切换初始化应已移除"
+    assert ".daily-toggle button" not in merged, "切换控件应是 label，不是 button+JS"
 
 
 def test_html_only_reuses_final_doc(tmp_data_dir):

@@ -757,41 +757,38 @@ html, body { margin: 0; padding: 0; }
 body { background: var(--t-bg); color: var(--t-ink);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
                "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif; }
+/* 浅读/深读切换是**纯 CSS**（隐藏 radio + :checked 兄弟选择器），不依赖 JavaScript：
+   这份 HTML 会被邮件客户端、聊天工具的内嵌预览、文件面板等沙箱环境打开，那些环境
+   常常不执行页面脚本——切换是本页最基本的导航，不能一被沙箱就点不动。 */
+.qly-switch { position: absolute; opacity: 0; pointer-events: none; }
 .daily-toggle { position: sticky; top: 0; z-index: 40; display: flex; gap: 8px;
   justify-content: center; padding: 12px; background: var(--t-card);
   border-bottom: 1px solid var(--t-line); }
-.daily-toggle button { border: 1px solid var(--t-line); background: transparent;
+.daily-toggle label { border: 1px solid var(--t-line); background: transparent;
   color: var(--t-muted); border-radius: 999px; padding: 6px 20px; font: inherit;
-  font-size: 14px; cursor: pointer; }
-.daily-toggle button.active { background: var(--t-brand); color: #fff; border-color: var(--t-brand); }
+  font-size: 14px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.daily-toggle label:hover { border-color: var(--t-brand); color: var(--t-brand); }
+#qly-pick-glance:checked ~ .daily-toggle label[for="qly-pick-glance"],
+#qly-pick-deep:checked ~ .daily-toggle label[for="qly-pick-deep"] {
+  background: var(--t-brand); color: #fff; border-color: var(--t-brand); }
+/* 键盘可达：radio 获得焦点时给对应标签一个可见焦点环 */
+#qly-pick-glance:focus-visible ~ .daily-toggle label[for="qly-pick-glance"],
+#qly-pick-deep:focus-visible ~ .daily-toggle label[for="qly-pick-deep"] {
+  outline: 2px solid var(--t-brand); outline-offset: 2px; }
 .qly-view { display: none; }
-.qly-view.active { display: block; }
+#qly-pick-glance:checked ~ #wrap-glance,
+#qly-pick-deep:checked ~ #wrap-deep { display: block; }
 </style>
 </head>
 <body>
-<div class="daily-toggle" role="tablist" aria-label="浅读 / 深读切换">
-  <button type="button" id="tab-glance" class="active" data-view="glance">📑 浅读</button>
-  <button type="button" id="tab-deep" data-view="deep">📖 深读</button>
+<input class="qly-switch" type="radio" name="qly-view" id="qly-pick-glance" checked>
+<input class="qly-switch" type="radio" name="qly-view" id="qly-pick-deep">
+<div class="daily-toggle" aria-label="浅读 / 深读切换">
+  <label for="qly-pick-glance">📑 浅读</label>
+  <label for="qly-pick-deep">📖 深读</label>
 </div>
-<div class="qly-view active" id="wrap-glance">{{ glance_body|safe }}</div>
+<div class="qly-view" id="wrap-glance">{{ glance_body|safe }}</div>
 <div class="qly-view" id="wrap-deep">{{ deep_body|safe }}</div>
-<script>
-(function () {
-  "use strict";
-  var tabs = document.querySelectorAll(".daily-toggle button");
-  var views = { glance: document.getElementById("wrap-glance"), deep: document.getElementById("wrap-deep") };
-  function show(name) {
-    for (var k in views) { if (views[k]) { views[k].classList.toggle("active", k === name); } }
-    for (var i = 0; i < tabs.length; i++) {
-      tabs[i].classList.toggle("active", tabs[i].getAttribute("data-view") === name);
-    }
-  }
-  for (var t = 0; t < tabs.length; t++) {
-    tabs[t].addEventListener("click", function (ev) { show(ev.currentTarget.getAttribute("data-view")); });
-  }
-  show("glance");
-})();
-</script>
 </body>
 </html>
 """
