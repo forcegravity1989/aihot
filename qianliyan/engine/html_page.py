@@ -109,9 +109,42 @@ def fetch_links(url: str, limit: int = DEFAULT_LIMIT, timeout: int = 15) -> List
 # =========================================================================
 _HEADING_RE = re.compile(r"h[1-6]$")
 
+#: 卡片式官网常把 <time>发布日期</time> 与标题放进同一个可点击 <a> 里（如 Anthropic
+#: News），逐文本节点拼接后日期会粘在标题最前面。按「原始文本节点」（不是拼接后的整
+#: 串）逐个匹配，命中就摘出来单独当日期，不进标题——一次只处理开头连续的日期节点，
+#: 避免误伤标题正文里恰好出现的日期。
+_DATE_SEGMENT_RE = re.compile(
+    r"^(?:"
+    r"\d{4}-\d{2}-\d{2}"                          # 2026-08-27
+    r"|[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}"        # Aug 27, 2026 / August 27 2026
+    r"|\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{4}"          # 27 Aug 2026
+    r")$"
+)
+
+
+def _split_leading_date(segments: List[str]) -> "tuple[str, str]":
+    """按原始文本节点顺序剥掉开头连续的日期节点，返回 ``(date, 剩余标题)``。"""
+    date = ""
+    idx = 0
+    for idx, seg in enumerate(segments):
+        stripped = seg.strip()
+        if not stripped:
+            continue
+        if _DATE_SEGMENT_RE.match(stripped):
+            date = stripped
+            idx += 1
+            continue
+        break
+    else:
+        idx = len(segments)
+    title = " ".join("".join(segments[idx:]).split())
+    return date, title
+
 
 class _ArticleExtractor(HTMLParser):
-    """抽 ``<a href>`` 及其标题：优先锚点内首个 ``<h1..h6>`` 文本，回退锚点全文。"""
+    """抽 ``<a href>`` 及其标题：优先锚点内首个 ``<h1..h6>`` 文本，回退锚点全文；
+    两者都先剥掉开头粘连的日期文本节点（见 ``_split_leading_date``）。
+    """
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -149,10 +182,15 @@ class _ArticleExtractor(HTMLParser):
             self._heading_depth -= 1
             return
         if tag == "a":
-            text = " ".join("".join(self._text_buf).split())
-            heading = " ".join("".join(self._heading_buf).split())
+            text_date, text = _split_leading_date(self._text_buf)
+            heading_date, heading = _split_leading_date(self._heading_buf)
             if self._href is not None:
-                self.articles.append({"href": self._href, "text": text, "heading": heading})
+                self.articles.append({
+                    "href": self._href,
+                    "text": text,
+                    "heading": heading,
+                    "date": heading_date or text_date,
+                })
             self._in_a = False
             self._href = None
             self._text_buf = []
@@ -205,7 +243,7 @@ def extract_articles(
             "title": title,
             "url": url,
             "summary": "",
-            "date": "",
+            "date": art.get("date", ""),
             "extra": {"format": ARTICLE_FORMAT},
         })
         if len(results) >= limit:

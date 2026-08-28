@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from qianliyan.core import utils
 from qianliyan.engine import github_trending, html_page, http, remote_sync, youtube
 
 REAL = Path(__file__).resolve().parent / "fixtures" / "real"
@@ -163,6 +164,26 @@ def test_extract_articles_anthropic_news():
     # 标题优先取锚点内标题
     opus = next(a for a in articles if a["url"].endswith("/news/claude-opus-5"))
     assert opus["title"] == "Introducing Claude Opus 5"
+    # 卡片式列表项：<time>日期</time> 与标题同锚点，日期要被摘成 date 字段，
+    # 不能粘在标题最前面（bug：真实抓取里 hotness 因此集体误判成"现在"）
+    open_weights = next(a for a in articles if a["url"].endswith("/news/position-open-weights-models"))
+    assert open_weights["date"] == "Jul 27, 2026"
+    assert not open_weights["title"].startswith("Jul")
+    assert utils.parse_date(open_weights["date"]) is not None
+
+
+def test_extract_articles_strips_leading_date_segment_from_title():
+    """卡片把 <time> 与标题塞进同一个 <a> 时，日期节点要被摘出去，不进标题（回归用例）。"""
+    html = (
+        '<a href="/news/real-post">'
+        '<time>Jul 27, 2026</time><span>Announcements</span> '
+        '<h2>A real headline that mentions Jul in passing</h2>'
+        "</a>"
+    )
+    articles = html_page.extract_articles(html, r"^/news/[a-z0-9-]+$", base_url="https://x.com/news")
+    assert len(articles) == 1
+    assert articles[0]["date"] == "Jul 27, 2026"
+    assert articles[0]["title"] == "A real headline that mentions Jul in passing"
 
 
 def test_extract_articles_pattern_excludes_non_matching():
