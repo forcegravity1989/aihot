@@ -18,9 +18,9 @@ aihot:                                   # 左眼「AIHOT · 卡兹克」——�
     "技巧观点": {slug: opinion,  tags: [opinion]}
 
 insights:
-  repo: anthropics/claude-code-insights      # 占位，可改
+  repo: zhoux77899/claude-code-insights
   branch: main
-  data_paths: [data/plugins.json]
+  data_paths: [plugins/plugins-daily-insight.md]   # 7KB 日榜；严禁指向 history.json/repos.json（31MB/75MB）
 
 # sources: 真实信源目录（spec-v0.3 §14，端点均已核验为真）。每项：
 #   {name, type, weight, tags, format, category, ...type 专属字段}
