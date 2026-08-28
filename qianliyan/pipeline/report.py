@@ -201,6 +201,10 @@ def _view_item(
     sources = [str(s) for s in (item.get("source_list") or []) if s]
     if not sources and item.get("source"):
         sources = [str(item.get("source"))]
+    # 交叉验证展示（参照 Techmeme「More: 媒体A, 媒体B...」的做法）：单源就是普通来源名，
+    # 多源单独起一行，比小灰字标签更醒目——这是这款产品最该借鉴经典日报的地方。
+    lead_source = sources[0] if sources else ""
+    other_sources = sources[1:]
 
     return {
         "anchor": "item-{0}-{1}".format(board_name, sig or str(id(item))),
@@ -211,6 +215,9 @@ def _view_item(
         "summary": _summary_of(item),
         "source": str(item.get("source") or ""),
         "sources_text": " + ".join(sources),
+        "lead_source": lead_source,
+        "other_sources_text": "、".join(other_sources),
+        "cross_refs": len(other_sources),
         "date_text": _humanize(dt, now),
         "date_abs": utils.iso(dt) if dt is not None else "",
         "ts": str(int(dt.timestamp())) if dt is not None else "0",
