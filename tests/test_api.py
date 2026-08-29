@@ -262,3 +262,31 @@ def test_detail_page_rejects_path_traversal(tmp_data_dir, monkeypatch):
         resp = client.get(evil)
         assert resp.status_code != 200, evil
         assert "不该被读到" not in resp.text
+
+
+def test_daily_view_picks_the_matching_archive_page(tmp_data_dir, monkeypatch):
+    """有当日归档产物时，``view`` 要选中对应那一页；缺产物才回退根 daily.html。
+
+    回退逻辑很容易掩盖 view 路由本身失灵——三个 view 都回退到同一个文件时，
+    肉眼看响应大小是一样的，分不出是"选对了"还是"根本没选"。
+    """
+    from qianliyan.core import paths, utils
+
+    monkeypatch.delenv("QLY_API_KEY", raising=False)
+    today = utils.now_utc().strftime("%Y-%m-%d")
+    for name, body in (
+        (api_server.DAILY_MERGED_NAME, "合并首页"),
+        ("glance.html", "日报单视图"),
+        ("timeline.html", "时间轴单视图"),
+        ("deep.html", "深读单视图"),
+    ):
+        paths.data_path("archive", today, name).write_text(
+            "<html>{0}</html>".format(body), encoding="utf-8")
+
+    client = TestClient(api_server.create_app())
+    assert "合并首页" in client.get("/daily").text
+    assert "日报单视图" in client.get("/daily", params={"view": "glance"}).text
+    assert "时间轴单视图" in client.get("/daily", params={"view": "timeline"}).text
+    assert "深读单视图" in client.get("/daily", params={"view": "deep"}).text
+    # 未知 view 不该 500，落回合并首页
+    assert "合并首页" in client.get("/daily", params={"view": "nope"}).text
