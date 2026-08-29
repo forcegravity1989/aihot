@@ -28,6 +28,7 @@ from .. import __version__
 from ..core import paths, utils
 from . import channels as channels_mod
 from . import minitpl
+from . import theme
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +64,14 @@ PAGE_SUBTITLE = "多源信息采集 · 交叉验证 · 变更情报"
 #: badge → 页面展示文案（spec §1：heavy=📈 重磅，flash=⚡ 一手速报）
 BADGE_LABELS = (("heavy", "📈 重磅"), ("flash", "⚡ 一手速报"))
 
+#: 头像占位底色。这是**唯一允许写死色值**的地方——它不是主题色，是给没有头像的
+#: 人物/信源分配的一组稳定标识色，必须在明暗两种主题下都能压住白色首字母，所以取
+#: 设计系统四个语义色（cyan/emerald/amber/rose）的深色档并向外延展，而不是随手挑
+#: 一把饱和度很高的通用色——那样头像会比正文还抢眼。改配色时这组要跟着 _theme.css
+#: 的 accent 一起调。
 _AVATAR_COLORS = (
-    "#2f6df6", "#ff6a3d", "#0ea5a4", "#7c3aed",
-    "#d946a0", "#0284c7", "#16a34a", "#b45309",
+    "#135e6b", "#2f7d5c", "#b8873a", "#b3402a",
+    "#1d4f7c", "#5b4b8a", "#7c5a24", "#3f6b5a",
 )
 
 
@@ -385,6 +391,7 @@ def build_context(
 
     return {
         "version": __version__,
+        "theme_css": theme.load_theme_css(),
         "page_title": PAGE_TITLE,
         "subtitle": PAGE_SUBTITLE,
         "generated_at": now.strftime("%Y-%m-%d %H:%M UTC"),

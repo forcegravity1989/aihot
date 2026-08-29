@@ -27,10 +27,11 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from .. import __version__
 from ..core import llm_client, paths, storage, utils
 from ..engine import article as article_engine
 from ..engine import youtube_transcript
-from ..pipeline import channels, minitpl
+from ..pipeline import channels, minitpl, theme
 
 logger = logging.getLogger("qianliyan.cli.daily_digest_all")
 
@@ -41,9 +42,20 @@ MERGED_NAME = "digest.html"
 GLANCE_NAME = "glance.html"
 DEEP_NAME = "deep.html"
 DAILY_ROOT_NAME = "daily.html"
+TIMELINE_NAME = "timeline.html"
+#: 详情页目录名——每条一页，落在日报页**同级**的 story/ 下，于是归档页与数据根页
+#: 能用同一个相对链接 story/<sig>.html。
+#:
+#: 刻意**不叫 items/**：数据根的 items/ 已被 cli.sync 占用（items/<date>/<eye>.jsonl，
+#: 各眼的原始条目），往同一个目录里塞 HTML 会把「原始数据」和「渲染产物」混成一锅。
+DETAIL_DIR = "story"
+#: 首页顶部「今日热点」取前几条
+HOT_TOPICS_N = 5
 
 GLANCE_TEMPLATE = "glance.html.jinja"
 DEEP_TEMPLATE = "deep.html.jinja"
+TIMELINE_TEMPLATE = "timeline.html.jinja"
+ITEM_TEMPLATE = "item.html.jinja"
 
 PAGE_TITLE = "千里眼 · 每日日报"
 
@@ -610,6 +622,58 @@ def _timeline_key(entry: Dict[str, Any]) -> float:
         return float("-inf")
 
 
+
+#: 徽章 → 设计系统里的语义色类（badge-heavy / badge-flash / badge-ok）
+_BADGE_STYLES = {
+    "heavy": ("📈 重磅", "badge-heavy"),
+    "flash": ("⚡ 一手速报", "badge-flash"),
+}
+_SIG_SAFE = re.compile(r"[^A-Za-z0-9_.-]")
+
+
+def _badge_views(entry: Dict[str, Any]) -> List[Dict[str, str]]:
+    """条目徽章的视图模型：``[{"text": "📈 重磅", "cls": "badge-heavy"}, ...]``。
+
+    交叉源数单独一枚（``N 源交叉``），因为它是本产品的核心卖点，不该混在灰色小字里。
+    """
+    views: List[Dict[str, str]] = []
+    badges = entry.get("badges") or []
+    for key, (text, cls) in _BADGE_STYLES.items():
+        if key in badges:
+            views.append({"text": text, "cls": cls})
+    count = _source_count(entry)
+    if count > 1:
+        views.append({"text": "{0} 源交叉".format(count), "cls": "badge-ok"})
+    return views
+
+
+def _score_view(entry: Dict[str, Any]) -> Dict[str, str]:
+    """热度的视图模型：文案 + 分档类名（高/中/低），供 .qly-score 上色。"""
+    try:
+        hotness = float(entry.get("hotness") or 0.0)
+    except (TypeError, ValueError):
+        hotness = 0.0
+    if hotness >= 0.8:
+        cls = "score-high"
+    elif hotness >= 0.5:
+        cls = "score-mid"
+    else:
+        cls = "score-low"
+    return {"text": "热度 {0:.0f}".format(hotness * 100), "cls": cls, "value": hotness}
+
+
+def _detail_href(sig: str) -> str:
+    """条目详情页的相对链接；sig 缺失或含异常字符时退化为空串（模板会渲染成死链而非报错）。"""
+    clean = _SIG_SAFE.sub("_", str(sig or "").strip())
+    if not clean:
+        return ""
+    return "{0}/{1}.html".format(DETAIL_DIR, clean)
+
+
+def _weekday_cn(dt) -> str:
+    return "星期{0}".format("一二三四五六日"[dt.weekday()])
+
+
 def _grouped_by_format(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, Any]]:
     """按 format 分组（FORMAT_ORDER 优先），**组内按时间轴倒序**（新的在前）。
 
@@ -620,14 +684,20 @@ def _grouped_by_format(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, A
     items = sorted(items, key=_timeline_key, reverse=True)
     for entry in items:
         fmt = infer_format(entry)
+        sig = str(entry.get("sig") or "")
         row = {
-            "sig": str(entry.get("sig") or ""),
+            "sig": sig,
             "icon": FORMAT_ICONS.get(fmt, "•"),
             "title": _display_title(entry),
             "url": str(entry.get("url") or ""),
+            "detail_href": _detail_href(sig),
             "source": _sources_text(entry),
             "date_text": _reltime(entry, now),
             "cross": _cross_badge(entry),
+            # 日报版式（对齐 aihot）是「标题 + 摘要段」而不是光秃秃一行标题——
+            # 一行标题只够判断"要不要点"，摘要才让这一页本身就有阅读价值。
+            "summary": _summary_text(entry),
+            "badges": _badge_views(entry),
         }
         buckets.setdefault(fmt, []).append(row)
 
@@ -636,6 +706,7 @@ def _grouped_by_format(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, A
     groups: List[Dict[str, Any]] = []
     for fmt in ordered_fmts:
         groups.append({
+            "no": "{0:02d}".format(len(groups) + 1),
             "format": fmt,
             "icon": FORMAT_ICONS.get(fmt, "•"),
             "label": FORMAT_LABELS.get(fmt, fmt),
@@ -643,6 +714,71 @@ def _grouped_by_format(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, A
             "items": buckets[fmt],
         })
     return groups
+
+
+def _timeline_days(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, Any]]:
+    """时间轴视图模型：按**自然日**分组、日内按发布时间倒序。
+
+    和日报视图（按 format 分类目）是同一批条目的两种读法——日报回答"今天有哪几类事"，
+    时间轴回答"这一天是怎么一路发生的"。解析不出时间的条目单独归到末尾的「时间未知」组，
+    不硬塞进某一天，免得污染时序。
+    """
+    buckets: "Dict[str, List[Dict[str, Any]]]" = {}
+    labels: Dict[str, Dict[str, str]] = {}
+    unknown: List[Dict[str, Any]] = []
+
+    for entry in sorted(items, key=_timeline_key, reverse=True):
+        sig = str(entry.get("sig") or "")
+        score = _score_view(entry)
+        badges = entry.get("badges") or []
+        accent = ""
+        if "heavy" in badges:
+            accent = "timeline-item-heavy"
+        elif "flash" in badges:
+            accent = "timeline-item-flash"
+        dt = utils.parse_date(entry.get("date"))
+        row = {
+            "sig": sig,
+            "icon": FORMAT_ICONS.get(infer_format(entry), "•"),
+            "time": dt.strftime("%H:%M") if dt is not None else "--:--",
+            "title": _display_title(entry),
+            "url": str(entry.get("url") or ""),
+            "detail_href": _detail_href(sig),
+            "source": _sources_text(entry),
+            "summary": _summary_text(entry),
+            "badges": _badge_views(entry),
+            "score_text": score["text"],
+            "score_cls": score["cls"],
+            "accent_cls": accent,
+        }
+        if dt is None:
+            unknown.append(row)
+            continue
+        key = dt.strftime("%Y-%m-%d")
+        buckets.setdefault(key, []).append(row)
+        labels.setdefault(key, {
+            "date_label": "{0}月{1}日".format(dt.month, dt.day),
+            "weekday": _weekday_cn(dt),
+        })
+
+    days: List[Dict[str, Any]] = []
+    for key in sorted(buckets, reverse=True):
+        days.append({
+            "key": key,
+            "date_label": labels[key]["date_label"],
+            "weekday": labels[key]["weekday"],
+            "count": len(buckets[key]),
+            "items": buckets[key],
+        })
+    if unknown:
+        days.append({
+            "key": "unknown",
+            "date_label": "时间未知",
+            "weekday": "",
+            "count": len(unknown),
+            "items": unknown,
+        })
+    return days
 
 
 def _corroboration_view(extra: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -673,8 +809,10 @@ def _deep_card(entry: Dict[str, Any], now) -> Dict[str, Any]:
     is_video = fmt in ("video", "talk")
     has_transcript = bool(str(extra.get("transcript") or "").strip())
 
+    sig = str(entry.get("sig") or "")
     return {
-        "sig": str(entry.get("sig") or ""),
+        "sig": sig,
+        "detail_href": _detail_href(sig),
         "format": fmt,
         "icon": FORMAT_ICONS.get(fmt, "•"),
         "label": FORMAT_LABELS.get(fmt, fmt),
@@ -709,6 +847,7 @@ def _glance_context(date_str: str, items: Sequence[Dict[str, Any]], embed: bool,
     groups = _grouped_by_format(items, now)
     return {
         "embed": embed,
+        "theme_css": theme.load_theme_css(),
         "page_title": PAGE_TITLE,
         "date": date_str,
         "total": len(items),
@@ -717,10 +856,50 @@ def _glance_context(date_str: str, items: Sequence[Dict[str, Any]], embed: bool,
     }
 
 
+def _timeline_context(date_str: str, items: Sequence[Dict[str, Any]], embed: bool, now) -> Dict[str, Any]:
+    days = _timeline_days(items, now)
+    return {
+        "embed": embed,
+        "theme_css": theme.load_theme_css(),
+        "page_title": PAGE_TITLE,
+        "date": date_str,
+        "total": len(items),
+        "day_count": len(days),
+        "days": days,
+    }
+
+
+def _item_context(entry: Dict[str, Any], now, back_href: str) -> Dict[str, Any]:
+    """单条详情页上下文——深读卡有的它全有，外加返回链接与绝对时间。
+
+    详情页是「这一条的终点站」：读者从日报/时间轴点进来，要能不跳外链就把这条读明白，
+    所以摘要、论点、深读四段、实证核验、来源清单一次给全，原文链接只是补充。
+    """
+    card = _deep_card(entry, now)
+    dt = utils.parse_date(entry.get("date"))
+    score = _score_view(entry)
+    card.update({
+        "theme_css": theme.load_theme_css(),
+        "page_title": PAGE_TITLE,
+        "back_href": back_href,
+        "badges": _badge_views(entry),
+        "source_text": _sources_text(entry),
+        "source_count_text": "{0} 源交叉".format(card["source_count"]) if card["source_count"] > 1 else "",
+        # 人读格式，不是 ISO 串：详情页的元信息行是给人看的，"2026-08-28 04:24 UTC"
+        # 比 "2026-08-28T04:24:51+00:00" 一眼就能读
+        "date_abs": dt.strftime("%Y-%m-%d %H:%M UTC") if dt is not None else "时间未知",
+        "date_rel": _reltime(entry, now) if dt is not None else "",
+        "score_text": score["text"],
+        "score_cls": score["cls"],
+    })
+    return card
+
+
 def _deep_context(date_str: str, items: Sequence[Dict[str, Any]], embed: bool, now) -> Dict[str, Any]:
     cards = [_deep_card(entry, now) for entry in items]
     return {
         "embed": embed,
+        "theme_css": theme.load_theme_css(),
         "page_title": PAGE_TITLE,
         "date": date_str,
         "total": len(items),
@@ -738,7 +917,12 @@ def _load_template(name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-#: 合并页外壳（minitpl 渲染；浅读 / 深读切换，默认浅读）。内联 JS 避免出现 ``{{`` / ``%}``。
+#: 首页外壳（minitpl 渲染）。侧栏 + 主体，三个视图：日报 / 时间轴 / 深读，默认日报。
+#:
+#: 视图切换是**纯 CSS**（隐藏 radio + :checked 兄弟选择器），不依赖 JavaScript：
+#: 这份 HTML 会被邮件客户端、聊天工具的内嵌预览、文件面板等沙箱环境打开，那些环境
+#: 常常不执行页面脚本——切换是本页最基本的导航，不能一被沙箱就点不动。
+#: 侧栏的视图入口是 <label for>，和顶部的段控指向同一组 radio，两处点哪个都一样。
 MERGED_SHELL = """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -746,52 +930,126 @@ MERGED_SHELL = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="qianliyan daily">
 <title>{{ page_title }}</title>
+<style>{{ theme_css|safe }}</style>
 <style>
-:root { --t-bg: #f5f7fb; --t-card: #ffffff; --t-ink: #171a21; --t-muted: #6b7280;
-  --t-line: #e5e8f0; --t-brand: #2f6df6; }
-@media (prefers-color-scheme: dark) {
-  :root { --t-bg: #12151c; --t-card: #1b1f28; --t-ink: #e8ebf2; --t-muted: #9aa1ad;
-    --t-line: #2a2f3a; --t-brand: #6ea0ff; }
-}
-html, body { margin: 0; padding: 0; }
-body { background: var(--t-bg); color: var(--t-ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-               "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif; }
-/* 浅读/深读切换是**纯 CSS**（隐藏 radio + :checked 兄弟选择器），不依赖 JavaScript：
-   这份 HTML 会被邮件客户端、聊天工具的内嵌预览、文件面板等沙箱环境打开，那些环境
-   常常不执行页面脚本——切换是本页最基本的导航，不能一被沙箱就点不动。 */
 .qly-switch { position: absolute; opacity: 0; pointer-events: none; }
-.daily-toggle { position: sticky; top: 0; z-index: 40; display: flex; gap: 8px;
-  justify-content: center; padding: 12px; background: var(--t-card);
-  border-bottom: 1px solid var(--t-line); }
-.daily-toggle label { border: 1px solid var(--t-line); background: transparent;
-  color: var(--t-muted); border-radius: 999px; padding: 6px 20px; font: inherit;
-  font-size: 14px; cursor: pointer; user-select: none; -webkit-user-select: none; }
-.daily-toggle label:hover { border-color: var(--t-brand); color: var(--t-brand); }
-#qly-pick-glance:checked ~ .daily-toggle label[for="qly-pick-glance"],
-#qly-pick-deep:checked ~ .daily-toggle label[for="qly-pick-deep"] {
-  background: var(--t-brand); color: #fff; border-color: var(--t-brand); }
-/* 键盘可达：radio 获得焦点时给对应标签一个可见焦点环 */
-#qly-pick-glance:focus-visible ~ .daily-toggle label[for="qly-pick-glance"],
-#qly-pick-deep:focus-visible ~ .daily-toggle label[for="qly-pick-deep"] {
-  outline: 2px solid var(--t-brand); outline-offset: 2px; }
 .qly-view { display: none; }
-#qly-pick-glance:checked ~ #wrap-glance,
-#qly-pick-deep:checked ~ #wrap-deep { display: block; }
+#qly-pick-glance:checked ~ .qly-app #wrap-glance,
+#qly-pick-timeline:checked ~ .qly-app #wrap-timeline,
+#qly-pick-deep:checked ~ .qly-app #wrap-deep { display: block; }
+/* 当前视图在侧栏与段控里都要高亮，否则读者不知道自己在哪一屏 */
+#qly-pick-glance:checked ~ .qly-app label[for="qly-pick-glance"],
+#qly-pick-timeline:checked ~ .qly-app label[for="qly-pick-timeline"],
+#qly-pick-deep:checked ~ .qly-app label[for="qly-pick-deep"] {
+  background: var(--theme-accent-soft); color: var(--theme-accent-fg); font-weight: 600;
+}
+#qly-pick-glance:focus-visible ~ .qly-app label[for="qly-pick-glance"],
+#qly-pick-timeline:focus-visible ~ .qly-app label[for="qly-pick-timeline"],
+#qly-pick-deep:focus-visible ~ .qly-app label[for="qly-pick-deep"] {
+  outline: 2px solid var(--theme-accent); outline-offset: 2px;
+}
+.qly-segment { display: inline-flex; gap: 4px; padding: 3px; margin-bottom: 18px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-card); }
+.qly-segment label { padding: 6px 16px; border-radius: 999px; font-size: 13px; color: var(--text-1);
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease; }
+.qly-segment label:hover { color: var(--text-0); background: var(--surface-1); }
 </style>
 </head>
 <body>
 <input class="qly-switch" type="radio" name="qly-view" id="qly-pick-glance" checked>
+<input class="qly-switch" type="radio" name="qly-view" id="qly-pick-timeline">
 <input class="qly-switch" type="radio" name="qly-view" id="qly-pick-deep">
-<div class="daily-toggle" aria-label="浅读 / 深读切换">
-  <label for="qly-pick-glance">📑 浅读</label>
-  <label for="qly-pick-deep">📖 深读</label>
+<div class="qly-app">
+
+  <aside class="qly-sidebar">
+    <div>
+      <a class="qly-brand" href="#qly-top">
+        <span class="qly-brand-name">千里眼</span>
+        <span class="qly-brand-sub">QIANLIYAN DAILY</span>
+      </a>
+      <nav class="qly-nav" aria-label="视图与类目导航">
+        <div class="qly-nav-label">视图</div>
+        <label class="qly-nav-item" for="qly-pick-glance">📑 日报<span class="n">{{ total }}</span></label>
+        <label class="qly-nav-item" for="qly-pick-timeline">🕒 时间轴<span class="n">{{ day_count }} 天</span></label>
+        <label class="qly-nav-item" for="qly-pick-deep">📖 深读<span class="n">{{ total }}</span></label>
+        {% if nav_groups %}<div class="qly-nav-label">类目</div>{% endif %}
+        {% for group in nav_groups %}
+        <a class="qly-nav-item" href="#sec-{{ group.format }}">{{ group.icon }} {{ group.label }}<span class="n">{{ group.count }}</span></a>
+        {% endfor %}
+      </nav>
+    </div>
+    <div class="qly-side-stats">
+      <div><b>{{ total }}</b><span>今日条目</span></div>
+      <div><b>{{ heavy_count }}</b><span>📈 重磅</span></div>
+      <div><b>{{ flash_count }}</b><span>⚡ 速报</span></div>
+      <div><b>{{ cross_count }}</b><span>多源交叉</span></div>
+    </div>
+    <div class="qly-sidebar-foot">{{ date }}<br>千里眼 {{ version }}</div>
+  </aside>
+
+  <main class="qly-main" id="qly-top">
+    <div class="qly-main-inner">
+
+      <div class="qly-segment" role="group" aria-label="日报 / 时间轴 / 深读切换">
+        <label for="qly-pick-glance">📑 日报</label>
+        <label for="qly-pick-timeline">🕒 时间轴</label>
+        <label for="qly-pick-deep">📖 深读</label>
+      </div>
+
+      {% if hot_rows %}
+      <section class="hot-topics">
+        <div class="hot-topics-head">
+          <span class="hot-topics-title">今日热点</span>
+          <span class="hot-topics-hint">按热度 · 交叉验证加权</span>
+        </div>
+        <ol class="hot-topics-list">
+          {% for row in hot_rows %}
+          <li class="hot-topics-row">
+            <span class="hot-topics-rank hot-topics-rank-{{ row.rank }}">{{ row.rank }}</span>
+            <a class="hot-topics-link" href="{{ row.detail_href }}">{{ row.title }}</a>
+            <span class="hot-topics-meta">{{ row.score_text }}</span>
+          </li>
+          {% endfor %}
+        </ol>
+      </section>
+      {% endif %}
+
+      <div class="qly-view" id="wrap-glance">{{ glance_body|safe }}</div>
+      <div class="qly-view" id="wrap-timeline">{{ timeline_body|safe }}</div>
+      <div class="qly-view" id="wrap-deep">{{ deep_body|safe }}</div>
+
+    </div>
+  </main>
+
 </div>
-<div class="qly-view" id="wrap-glance">{{ glance_body|safe }}</div>
-<div class="qly-view" id="wrap-deep">{{ deep_body|safe }}</div>
 </body>
 </html>
 """
+
+
+def _hot_rows(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """首页顶部「今日热点」——全池按 hotness 取前 HOT_TOPICS_N 条。
+
+    热榜链到**详情页**而不是外链原文：这一榜是本页的导览，点进去应该还在千里眼里，
+    要不要跳外站由读者在详情页决定。
+    """
+    def _hot(entry: Dict[str, Any]) -> float:
+        try:
+            return float(entry.get("hotness") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    rows: List[Dict[str, Any]] = []
+    for rank, entry in enumerate(sorted(items, key=_hot, reverse=True)[:HOT_TOPICS_N], start=1):
+        rows.append({
+            "rank": str(rank),
+            "title": _display_title(entry),
+            "detail_href": _detail_href(str(entry.get("sig") or "")),
+            "url": str(entry.get("url") or ""),
+            "score_text": _score_view(entry)["text"],
+        })
+    return rows
 
 
 def render_glance(date_str: str, items: Sequence[Dict[str, Any]], embed: bool = False, now=None) -> str:
@@ -799,18 +1057,43 @@ def render_glance(date_str: str, items: Sequence[Dict[str, Any]], embed: bool = 
     return minitpl.render(_load_template(GLANCE_TEMPLATE), _glance_context(date_str, items, embed, now))
 
 
+def render_timeline(date_str: str, items: Sequence[Dict[str, Any]], embed: bool = False, now=None) -> str:
+    now = utils.as_utc(now or utils.now_utc())
+    return minitpl.render(_load_template(TIMELINE_TEMPLATE), _timeline_context(date_str, items, embed, now))
+
+
 def render_deep(date_str: str, items: Sequence[Dict[str, Any]], embed: bool = False, now=None) -> str:
     now = utils.as_utc(now or utils.now_utc())
     return minitpl.render(_load_template(DEEP_TEMPLATE), _deep_context(date_str, items, embed, now))
 
 
+def render_item(entry: Dict[str, Any], back_href: str = "../daily.html", now=None) -> str:
+    """渲染单条详情页。``back_href`` 由调用方给——同一份内容会落在两个目录下
+    （数据根 items/ 回 daily.html，归档 items/ 回 digest.html），返回链接不能写死。"""
+    now = utils.as_utc(now or utils.now_utc())
+    return minitpl.render(_load_template(ITEM_TEMPLATE), _item_context(entry, now, back_href))
+
+
 def render_merged(date_str: str, items: Sequence[Dict[str, Any]], now=None) -> str:
     now = utils.as_utc(now or utils.now_utc())
     glance_frag = render_glance(date_str, items, embed=True, now=now)
+    timeline_frag = render_timeline(date_str, items, embed=True, now=now)
     deep_frag = render_deep(date_str, items, embed=True, now=now)
+    badge_list = [entry.get("badges") or [] for entry in items]
     return minitpl.render(MERGED_SHELL, {
+        "theme_css": theme.load_theme_css(),
         "page_title": "{0} · {1}".format(PAGE_TITLE, date_str),
+        "version": __version__,
+        "date": date_str,
+        "total": len(items),
+        "day_count": len(_timeline_days(items, now)),
+        "heavy_count": sum(1 for b in badge_list if "heavy" in b),
+        "flash_count": sum(1 for b in badge_list if "flash" in b),
+        "cross_count": sum(1 for entry in items if _source_count(entry) > 1),
+        "nav_groups": _grouped_by_format(items, now),
+        "hot_rows": _hot_rows(items),
         "glance_body": glance_frag,
+        "timeline_body": timeline_frag,
         "deep_body": deep_frag,
     })
 
@@ -825,11 +1108,46 @@ def _write_text(path, text: str) -> bool:
         return False
 
 
+def _write_detail_pages(
+    date_str: str, items: Sequence[Dict[str, Any]], now,
+) -> int:
+    """为每条条目渲染一页详情页，落到归档与数据根两处的 ``story/``。
+
+    同一份内容渲两遍而不是渲一遍复制两份：返回链接不一样——归档目录里的合并页叫
+    ``digest.html``，数据根的叫 ``daily.html``，详情页的「← 返回日报」必须各自指对。
+    """
+    written = 0
+    targets = (
+        (_archive_path(date_str, DETAIL_DIR), "../{0}".format(MERGED_NAME)),
+        (paths.data_path(DETAIL_DIR), "../{0}".format(DAILY_ROOT_NAME)),
+    )
+    for entry in items:
+        sig = str(entry.get("sig") or "").strip()
+        href = _detail_href(sig)
+        if not href:
+            logger.warning("条目缺 sig，跳过详情页: %s", _display_title(entry)[:40])
+            continue
+        filename = href.split("/", 1)[1]
+        for base_dir, back_href in targets:
+            try:
+                page = render_item(entry, back_href=back_href, now=now)
+            except Exception as exc:  # noqa: BLE001 - 单条渲染失败不该拖垮整批
+                logger.warning("详情页渲染失败 (sig=%s): %s", sig, exc)
+                break
+            if _write_text(base_dir / filename, page):
+                written += 1
+    return written
+
+
 def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]]) -> int:
-    """渲染浅读 / 深读 / 合并页三件套，合并页复制到数据根 ``daily.html``。"""
+    """渲染日报 / 时间轴 / 深读三视图 + 合并首页 + 每条详情页。
+
+    合并首页复制到数据根 ``daily.html``（对外入口），详情页落在 ``story/`` 下。
+    """
     now = utils.as_utc(utils.now_utc())
     try:
         glance_full = render_glance(date_str, items, embed=False, now=now)
+        timeline_full = render_timeline(date_str, items, embed=False, now=now)
         deep_full = render_deep(date_str, items, embed=False, now=now)
         merged = render_merged(date_str, items, now=now)
     except FileNotFoundError as exc:
@@ -841,6 +1159,7 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]]) -> int:
         return 1
 
     _write_text(_archive_path(date_str, GLANCE_NAME), glance_full)
+    _write_text(_archive_path(date_str, TIMELINE_NAME), timeline_full)
     _write_text(_archive_path(date_str, DEEP_NAME), deep_full)
     merged_path = _archive_path(date_str, MERGED_NAME)
     _write_text(merged_path, merged)
@@ -848,12 +1167,17 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]]) -> int:
     root_path = paths.data_path(DAILY_ROOT_NAME)
     _write_text(root_path, merged)
 
+    detail_count = _write_detail_pages(date_str, items, now)
+
     print(
-        "日报 HTML 已写出：浅读 {0} · 深读 {1} · 合并页 {2}（并复制为 {3}）".format(
+        "日报 HTML 已写出：日报 {0} · 时间轴 {1} · 深读 {2} · 首页 {3}"
+        "（并复制为 {4}）· 详情页 {5} 个文件".format(
             _archive_path(date_str, GLANCE_NAME),
+            _archive_path(date_str, TIMELINE_NAME),
             _archive_path(date_str, DEEP_NAME),
             merged_path,
             root_path,
+            detail_count,
         )
     )
     return 0

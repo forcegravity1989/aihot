@@ -6,6 +6,8 @@ LLM 不可用 → distill 走规则回退，distill 字段仍须齐全、不阻�
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from qianliyan.core import paths, storage, utils
@@ -152,12 +154,15 @@ def test_finalize_html_produces_three_views(tmp_data_dir):
     dp = deep.read_text(encoding="utf-8")
     m = merged.read_text(encoding="utf-8")
 
-    # 浅读：标题流 + 已读控件 + localStorage，无大图，交叉验证徽章
-    assert "浅读速览" in g and "全部已接收" in g and "标记已读" in g
+    # 日报视图：编号分节 + 标题 + 摘要段 + 已读控件 + localStorage，无大图
+    assert "今日日报" in g and "全部已接收" in g and "标记已读" in g
     assert "localStorage" in g
-    assert "<img" not in g, "浅读极简无大图"
+    assert "<img" not in g, "日报视图极简无大图"
     assert "📈" in g or "⚡" in g or "源" in g  # 交叉验证徽章
     assert "模型发布要闻" in g
+    assert 'class="report-section-no"' in g, "日报分节要有编号（对齐经典日报版式）"
+    assert 'class="report-entry-summary"' in g, "日报条目要带摘要段，不能只有一行标题"
+    assert "story/s1.html" in g, "日报条目标题应链到详情页"
     assert "{{" not in g and "{%" not in g
 
     # 深读：distill 四段 + 交叉验证展开 + 各源 + repo 卡 star/语言
@@ -170,13 +175,19 @@ def test_finalize_html_produces_three_views(tmp_data_dir):
     assert "⭐" in dp and "1200" in dp and "340" in dp and "Python" in dp  # repo 卡
     assert "{{" not in dp and "{%" not in dp
 
-    # 合并页：浅读/深读切换是**纯 CSS**（沙箱环境常不执行脚本，切换不能依赖 JS）
-    assert "浅读" in m and "深读" in m
-    assert 'id="qly-pick-glance"' in m and 'id="qly-pick-deep"' in m
+    # 合并首页：日报 / 时间轴 / 深读三视图，切换是**纯 CSS**（沙箱常不执行脚本）
+    assert "日报" in m and "时间轴" in m and "深读" in m
+    assert 'id="qly-pick-glance"' in m and 'id="qly-pick-timeline"' in m and 'id="qly-pick-deep"' in m
     assert 'for="qly-pick-glance"' in m and 'for="qly-pick-deep"' in m
-    assert "#qly-pick-deep:checked ~ #wrap-deep" in m  # :checked 驱动显示
-    assert "wrap-glance" in m and "wrap-deep" in m
-    assert "模型发布要闻" in m  # 内嵌了浅读片段
+    assert "#qly-pick-deep:checked ~ .qly-app #wrap-deep" in m  # :checked 驱动显示
+    assert "wrap-glance" in m and "wrap-timeline" in m and "wrap-deep" in m
+    assert "模型发布要闻" in m  # 内嵌了日报片段
+    # 版面：侧栏 + 热点榜（首页不只是三段内容摞在一起）
+    assert 'class="qly-sidebar"' in m and 'class="qly-nav"' in m
+    assert 'class="hot-topics"' in m and "今日热点" in m
+    # 设计系统：唯一 token 源被内联进来，且页面里不该再有第二套配色变量
+    assert "--theme-accent" in m and "--surface-card" in m
+    assert "--g-brand" not in m and "--t-brand" not in m, "旧的散装配色变量应已清干净"
     assert "{{" not in m and "{%" not in m
 
     # 合并页复制到数据根
@@ -193,8 +204,9 @@ def test_merged_toggle_works_without_javascript(tmp_data_dir):
 
     # 结构：隐藏 radio + label[for]，纯 CSS :checked 控制显示
     assert '<input class="qly-switch" type="radio"' in merged
-    assert "#qly-pick-glance:checked ~ #wrap-glance" in merged
-    assert "#qly-pick-deep:checked ~ #wrap-deep" in merged
+    assert "#qly-pick-glance:checked ~ .qly-app #wrap-glance" in merged
+    assert "#qly-pick-timeline:checked ~ .qly-app #wrap-timeline" in merged
+    assert "#qly-pick-deep:checked ~ .qly-app #wrap-deep" in merged
     # 默认浅读：glance 那个 radio 带 checked
     glance_input = merged[merged.index('id="qly-pick-glance"') - 80: merged.index('id="qly-pick-glance"') + 40]
     assert "checked" in glance_input
@@ -264,7 +276,7 @@ def test_render_functions_survive_empty_items(tmp_data_dir):
     assert "今日暂无条目" in d.render_glance(DATE, [])
     assert "今日暂无条目" in d.render_deep(DATE, [])
     m = d.render_merged(DATE, [])
-    assert "浅读" in m and "深读" in m
+    assert "日报" in m and "时间轴" in m and "深读" in m
 
 
 # =========================================================================
@@ -368,3 +380,105 @@ def test_deep_card_omits_corroboration_when_absent_or_unknown(tmp_data_dir):
     assert "🔬" not in dp
     # 未知 verdict 也不呈现
     assert d._corroboration_view({"corroboration": {"verdict": "bogus"}}) is None
+
+
+# =========================================================================
+# 时间轴视图 & 详情页（v0.3 版面重构）
+# =========================================================================
+def test_timeline_groups_by_day_and_orders_newest_first(tmp_data_dir):
+    """时间轴按自然日分组、日内新的在前——这是它和日报视图（按类目分节）的分工。"""
+    items = [
+        _draft_item("old", "前天的事", date="2026-08-23T02:00:00+00:00"),
+        _draft_item("new", "今天的事", date="2026-08-25T09:30:00+00:00"),
+        _draft_item("mid", "今天早些", date="2026-08-25T01:15:00+00:00"),
+    ]
+    html = d.render_timeline(DATE, items, now=utils.parse_date("2026-08-25T12:00:00+00:00"))
+
+    assert "8月25日" in html and "8月23日" in html
+    assert html.index("8月25日") < html.index("8月23日"), "近的日期在上"
+    assert html.index("今天的事") < html.index("今天早些"), "日内新的在前"
+    assert "09:30" in html and "01:15" in html
+    assert 'class="timeline-dot"' in html and 'class="timeline-rail"' in html
+    assert "{{" not in html and "{%" not in html
+
+
+def test_timeline_keeps_undated_items_in_a_separate_tail_group(tmp_data_dir):
+    """解析不出时间的条目单独归到「时间未知」，不硬塞进某一天污染时序。"""
+    items = [
+        _draft_item("ok", "有时间", date="2026-08-25T09:30:00+00:00"),
+        _draft_item("bad", "没时间", date="not-a-date"),
+    ]
+    html = d.render_timeline(DATE, items)
+    assert "时间未知" in html
+    assert html.index("有时间") < html.index("没时间")
+
+
+def test_detail_page_written_for_each_item_in_both_locations(tmp_data_dir):
+    """每条一页详情页，归档与数据根各落一份，返回链接各自指对自己那份日报页。"""
+    _write_draft(DATE, [
+        _draft_item("s1", "模型发布要闻", source_list=["A News", "B Blog"],
+                    extra={"format": "blog"}),
+        _draft_item("s2", "另一条"),
+    ])
+    assert d.cmd_finalize(DATE, do_html=True) == 0
+
+    archived = paths.data_path("archive", DATE, d.DETAIL_DIR, "s1.html")
+    rooted = paths.data_path(d.DETAIL_DIR, "s1.html")
+    for p in (archived, rooted, paths.data_path(d.DETAIL_DIR, "s2.html")):
+        assert p.is_file(), "缺详情页 {0}".format(p)
+
+    page = rooted.read_text(encoding="utf-8")
+    assert "模型发布要闻" in page
+    assert "AI 导读" in page and "深读提炼" in page
+    assert "A News" in page and "B Blog" in page  # 来源清单
+    assert "打开原文" in page
+    assert "--theme-accent" in page, "详情页要吃同一套设计系统"
+    assert "{{" not in page and "{%" not in page
+
+    # 返回链接：数据根那份回 daily.html，归档那份回 digest.html
+    assert 'href="../{0}"'.format(d.DAILY_ROOT_NAME) in page
+    assert 'href="../{0}"'.format(d.MERGED_NAME) in archived.read_text(encoding="utf-8")
+
+
+def test_detail_pages_do_not_collide_with_sync_items_dir(tmp_data_dir):
+    """详情页目录不能是 items/——那是 cli.sync 放各眼原始 jsonl 的地方。"""
+    assert d.DETAIL_DIR != "items"
+    _write_draft(DATE, [_draft_item("s1", "条目一")])
+    d.cmd_finalize(DATE, do_html=True)
+    stray = list(paths.data_path("items").glob("*.html")) if paths.data_path("items").is_dir() else []
+    assert not stray, "详情页不该写进 items/"
+
+
+def test_all_pages_share_one_token_source(tmp_data_dir):
+    """设计系统只有一份：三个视图页与详情页都内联同一套 token，且不得残留旧配色变量。"""
+    _write_draft(DATE, [_draft_item("s1", "条目一")])
+    assert d.cmd_finalize(DATE, do_html=True) == 0
+
+    pages = [
+        paths.data_path("archive", DATE, d.GLANCE_NAME),
+        paths.data_path("archive", DATE, d.TIMELINE_NAME),
+        paths.data_path("archive", DATE, d.DEEP_NAME),
+        paths.data_path(d.DAILY_ROOT_NAME),
+        paths.data_path(d.DETAIL_DIR, "s1.html"),
+    ]
+    for path in pages:
+        text = path.read_text(encoding="utf-8")
+        assert "--theme-accent: #135e6b" in text, "{0} 没吃到设计系统".format(path.name)
+        assert "prefers-color-scheme: dark" in text, "{0} 缺暗色适配".format(path.name)
+        for legacy in ("--g-brand", "--t-brand", "#2f6df6"):
+            assert legacy not in text, "{0} 残留旧配色 {1}".format(path.name, legacy)
+
+
+def test_theme_css_comments_do_not_trip_whole_page_assertions():
+    """护栏：设计系统 CSS 会被**原样内联进每一个产物页**，它的注释因此处在全文断言的
+    射程内。历史上这里踩过三次——注释里写了模板标记、写了外链引入关键字、提了一句旧
+    配色 hex，分别误触发了「不得残留未渲染模板标记」「页面必须单文件自包含」「不得
+    残留旧配色」三条断言。规则：讲这些概念可以，别写它们的字面量。
+    """
+    from qianliyan.pipeline import theme
+
+    css = theme.load_theme_css()
+    forbidden = ("{" + "{", "{" + "%", "@" + "import", "#2f6df6", "--g-brand", "--t-brand")
+    hit = [token for token in forbidden if token in css]
+    assert not hit, "_theme.css 含会误触发全文断言的字面量: {0}".format(hit)
+    assert not re.search(r"url\(\s*['\"]?https?://", css), "_theme.css 不得引外部资源"

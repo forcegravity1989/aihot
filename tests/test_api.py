@@ -198,3 +198,67 @@ def test_main_without_fastapi_prints_install_hint_and_returns_nonzero(monkeypatc
     assert rc == 1
     captured = capsys.readouterr()
     assert "pip install" in captured.out
+
+
+# =========================================================================
+# GET /daily · /daily.html · /story/{sig}（v0.3 版面重构）
+# =========================================================================
+def _write_daily_products(date_str="2026-08-25"):
+    """铺一份最小日报产物：合并首页 + 单视图页 + 一个详情页。"""
+    from qianliyan.core import paths
+
+    paths.data_path(api_server.DAILY_ROOT_NAME).write_text("<html>合并首页</html>", encoding="utf-8")
+    detail = paths.data_path(api_server.DETAIL_DIR, "abc123.html")
+    detail.parent.mkdir(parents=True, exist_ok=True)
+    detail.write_text("<html>详情页正文</html>", encoding="utf-8")
+
+
+def test_get_daily_defaults_to_merged_homepage(tmp_data_dir, monkeypatch):
+    """不给 view 时给的是三视图合并首页，而不是某一个单视图页。"""
+    monkeypatch.delenv("QLY_API_KEY", raising=False)
+    _write_daily_products()
+    client = TestClient(api_server.create_app())
+    resp = client.get("/daily")
+    assert resp.status_code == 200
+    assert "合并首页" in resp.text
+
+
+def test_daily_html_alias_exists_for_detail_page_back_link(tmp_data_dir, monkeypatch):
+    """详情页的返回链接是相对路径 ../daily.html——走 HTTP 时必须有这条路由兜住，
+    否则从详情页点「返回日报」就是 404。"""
+    monkeypatch.delenv("QLY_API_KEY", raising=False)
+    _write_daily_products()
+    client = TestClient(api_server.create_app())
+    assert client.get("/daily.html").status_code == 200
+
+
+def test_get_detail_page(tmp_data_dir, monkeypatch):
+    """``/story/<sig>`` 与 ``/story/<sig>.html`` 都能取到同一页。"""
+    monkeypatch.delenv("QLY_API_KEY", raising=False)
+    _write_daily_products()
+    client = TestClient(api_server.create_app())
+    for path in ("/story/abc123", "/story/abc123.html"):
+        resp = client.get(path)
+        assert resp.status_code == 200, path
+        assert "详情页正文" in resp.text
+
+
+def test_get_detail_page_404_when_missing(tmp_data_dir, monkeypatch):
+    monkeypatch.delenv("QLY_API_KEY", raising=False)
+    _write_daily_products()
+    client = TestClient(api_server.create_app())
+    assert client.get("/story/nope").status_code == 404
+
+
+def test_detail_page_rejects_path_traversal(tmp_data_dir, monkeypatch):
+    """这是唯一一处把 URL 片段拼进文件路径的地方——不校验就等于开放整个数据目录。"""
+    monkeypatch.delenv("QLY_API_KEY", raising=False)
+    _write_daily_products()
+    from qianliyan.core import paths
+
+    paths.data_path("secret.html").write_text("不该被读到", encoding="utf-8")
+    client = TestClient(api_server.create_app())
+    for evil in ("/story/..%2Fsecret.html", "/story/../secret.html", "/story/..%2F..%2Fetc%2Fpasswd"):
+        resp = client.get(evil)
+        assert resp.status_code != 200, evil
+        assert "不该被读到" not in resp.text

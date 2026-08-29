@@ -4,86 +4,57 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="qianliyan glance">
-<title>{{ page_title }} · 浅读</title>
+<title>{{ page_title }} · 日报</title>
+<style>{{ theme_css|safe }}</style>
 </head>
 <body>{% endif %}
-<style>
-.qly-glance {
-  --g-bg: #f5f7fb; --g-card: #ffffff; --g-ink: #171a21; --g-muted: #6b7280;
-  --g-faint: #9aa1ad; --g-line: #e5e8f0; --g-brand: #2f6df6; --g-brand-soft: #eaf1ff;
-  --g-hot: #ff6a3d; --g-flash: #7c3aed;
-  background: var(--g-bg); color: var(--g-ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-               "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
-  font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
-  padding: 20px 20px 64px; max-width: 960px; margin: 0 auto;
-}
-@media (prefers-color-scheme: dark) {
-  .qly-glance {
-    --g-bg: #12151c; --g-card: #1b1f28; --g-ink: #e8ebf2; --g-muted: #9aa1ad;
-    --g-faint: #6b7280; --g-line: #2a2f3a; --g-brand: #6ea0ff; --g-brand-soft: #22314f;
-  }
-}
-.qly-glance a { color: inherit; text-decoration: none; }
-.qly-glance a:hover { text-decoration: underline; }
-.glance-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  border-bottom: 2px solid var(--g-ink); padding-bottom: 10px; margin-bottom: 6px; }
-.glance-title { font-size: 20px; margin: 0; }
-.glance-sub { color: var(--g-muted); font-size: 13px; }
-.mark-all { margin-left: auto; border: 1px solid var(--g-line); background: var(--g-card);
-  color: var(--g-brand); border-radius: 999px; padding: 6px 14px; font: inherit;
-  font-size: 13px; cursor: pointer; }
-.mark-all:hover { border-color: var(--g-brand); }
-.glance-group { margin-top: 22px; }
-.glance-group-head { font-size: 15px; margin: 0 0 4px; color: var(--g-ink);
-  border-bottom: 1px solid var(--g-line); padding-bottom: 6px; }
-.glance-group-head .gn { color: var(--g-faint); font-size: 12.5px; font-weight: 400; margin-left: 4px; }
-.glance-list { list-style: none; margin: 0; padding: 0; }
-.glance-row { display: flex; align-items: baseline; gap: 8px; padding: 7px 4px;
-  border-bottom: 1px dashed var(--g-line); flex-wrap: wrap; }
-.glance-row .gicon { flex: 0 0 auto; }
-.glance-row .gcross { flex: 0 0 auto; font-size: 12px; color: var(--g-hot);
-  background: var(--g-brand-soft); border-radius: 6px; padding: 0 6px; }
-.glance-row .gtitle { flex: 1 1 320px; min-width: 0; font-weight: 600; color: var(--g-ink); }
-.glance-row .gtitle:hover { color: var(--g-brand); }
-.glance-row .gsrc { color: var(--g-muted); font-size: 12.5px; }
-.glance-row .gtime { color: var(--g-faint); font-size: 12.5px; }
-.glance-row .glink { color: var(--g-brand); font-size: 12.5px; }
-.glance-row .gread { border: 0; background: transparent; color: var(--g-faint);
-  font: inherit; font-size: 12.5px; cursor: pointer; padding: 0 4px; }
-.glance-row .gread:hover { color: var(--g-brand); }
-.glance-row.is-read { opacity: .42; }
-.glance-row.is-read .gtitle { font-weight: 400; text-decoration: line-through; }
-.glance-empty { color: var(--g-faint); padding: 24px 4px; }
-</style>
 <div class="qly-glance qly-view-inner" id="view-glance-inner">
   <div class="glance-head">
-    <div>
-      <h1 class="glance-title">📑 浅读速览</h1>
-      <div class="glance-sub">{{ date }} · 共 {{ total }} 条 · 扫过标题即「已接收」</div>
+    <div class="qly-page-head">
+      <h1 class="qly-page-title">📑 今日日报</h1>
+      <div class="qly-page-sub">{{ date }} · 共 {{ total }} 条 · {{ group_count }} 个类目 · 扫过标题即「已接收」</div>
     </div>
-    <button type="button" class="mark-all" id="glance-mark-all">✅ 全部已接收</button>
+    <button type="button" class="btn mark-all" id="glance-mark-all">✅ 全部已接收</button>
   </div>
+  <hr class="qly-divider">
   {% for group in groups %}
-  <section class="glance-group">
-    <h2 class="glance-group-head">{{ group.icon }} {{ group.label }}<span class="gn">{{ group.count }} 条</span></h2>
-    <ul class="glance-list">
-      {% for item in group.items %}
-      <li class="glance-row" data-sig="{{ item.sig }}">
-        <span class="gicon">{{ item.icon }}</span>
-        {% if item.cross %}<span class="gcross">{{ item.cross }}</span>{% endif %}
-        <a class="gtitle" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
-        <span class="gsrc">{{ item.source }}</span>
-        <span class="gtime">🕒 {{ item.date_text }}</span>
-        <a class="glink" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">[原文]</a>
+  <section class="report-section" id="sec-{{ group.format }}">
+    <div class="report-section-head">
+      <span class="report-section-no">{{ group.no }}</span>
+      <h2 class="report-section-title">{{ group.icon }} {{ group.label }}</h2>
+      <span class="report-section-kicker">{{ group.format }}</span>
+      <span class="report-section-count">{{ group.count }} 条</span>
+    </div>
+    {% for item in group.items %}
+    <article class="report-entry glance-row" data-sig="{{ item.sig }}">
+      <div class="report-entry-meta">
+        <span class="timeline-source">{{ item.source }}</span>
+        {% for badge in item.badges %}<span class="badge {{ badge.cls }}">{{ badge.text }}</span>{% endfor %}
+        <span class="qly-score score-low">{{ item.date_text }}</span>
         <button type="button" class="gread" data-sig="{{ item.sig }}">标记已读</button>
-      </li>
-      {% endfor %}
-    </ul>
+      </div>
+      <h3 class="report-entry-title"><a class="gtitle" href="{{ item.detail_href }}">{{ item.title }}</a></h3>
+      {% if item.summary %}<p class="report-entry-summary">{{ item.summary }}</p>{% endif %}
+      <div class="report-entry-meta" style="margin-top:8px">
+        <a class="chip" href="{{ item.detail_href }}">详情页 →</a>
+        <a class="chip glink" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">原文 ↗</a>
+      </div>
+    </article>
+    {% endfor %}
   </section>
   {% endfor %}
   {% if not groups %}<p class="glance-empty">今日暂无条目。</p>{% endif %}
 </div>
+<style>
+.glance-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.glance-head .mark-all { margin-left: auto; color: var(--accent-cyan-fg); }
+.gread { border: 0; background: transparent; color: var(--text-2); font: inherit;
+  font-size: 12px; cursor: pointer; padding: 0 4px; margin-left: auto; }
+.gread:hover { color: var(--accent-cyan-fg); }
+.glance-row.is-read { opacity: .42; }
+.glance-row.is-read .gtitle { font-weight: 400; text-decoration: line-through; }
+.glance-empty { color: var(--text-2); padding: 24px 4px; }
+</style>
 <script>
 (function () {
   "use strict";

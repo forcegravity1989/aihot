@@ -1,0 +1,58 @@
+{% if not embed %}<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="qianliyan timeline">
+<title>{{ page_title }} · 时间轴</title>
+<style>{{ theme_css|safe }}</style>
+</head>
+<body>{% endif %}
+<div class="qly-timeline qly-view-inner" id="view-timeline-inner">
+  <div class="qly-page-head">
+    <h1 class="qly-page-title">🕒 时间轴</h1>
+    <div class="qly-page-sub">{{ date }} · 共 {{ total }} 条 · 按发布时间倒序，新的在最上面</div>
+  </div>
+  <hr class="qly-divider">
+  <div class="timeline">
+    {% for day in days %}
+    <section class="timeline-day">
+      <div class="timeline-day-head">
+        <h2 class="timeline-date">{{ day.date_label }}</h2>
+        <div class="timeline-day-meta">{{ day.weekday }} · {{ day.count }} 条</div>
+      </div>
+      <div class="timeline-day-items">
+        {% for item in day.items %}
+        <article class="timeline-item {{ item.accent_cls }}" data-sig="{{ item.sig }}">
+          <div class="timeline-time">{{ item.time }}</div>
+          <div class="timeline-rail"><span class="timeline-dot"></span></div>
+          <div class="timeline-card">
+            <div class="timeline-card-head">
+              <div class="timeline-head-left">
+                <span class="timeline-source">{{ item.source }}</span>
+                {% for badge in item.badges %}<span class="badge {{ badge.cls }}">{{ badge.text }}</span>{% endfor %}
+              </div>
+              <div class="timeline-head-right">
+                <span class="qly-score {{ item.score_cls }}">{{ item.score_text }}</span>
+              </div>
+            </div>
+            <h3 class="timeline-title"><a href="{{ item.detail_href }}">{{ item.icon }} {{ item.title }}</a></h3>
+            {% if item.summary %}<p class="timeline-summary">{{ item.summary }}</p>{% endif %}
+            <div class="timeline-foot">
+              <a class="chip" href="{{ item.detail_href }}">详情页 →</a>
+              <a class="chip" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">原文 ↗</a>
+            </div>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  {% if not days %}<p class="glance-empty">今日暂无条目。</p>{% endif %}
+</div>
+<style>
+.timeline-foot { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+</style>
+{% if not embed %}</body>
+</html>{% endif %}

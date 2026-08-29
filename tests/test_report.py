@@ -241,3 +241,28 @@ def test_build_context_counts_badges(tmp_data_dir, sample_items):
     assert context["heavy_count"] == sum(1 for it in items if "heavy" in it["badges"])
     assert context["flash_count"] == sum(1 for it in items if "flash" in it["badges"])
     assert context["board_count"] == 1  # 只有热榜（channel_map 为空）
+
+
+# =========================================================================
+# 设计系统（v0.3 版面重构）
+# =========================================================================
+def test_digest_uses_the_single_design_system(digest):
+    """简报页与日报页吃同一份 token 源，页面里不得再有第二套配色。"""
+    html = digest["html"]
+    assert "--theme-accent: #135e6b" in html, "简报页没吃到设计系统"
+    assert "prefers-color-scheme: dark" in html, "简报页缺暗色适配"
+    # 历史类名沿用旧变量名，但它们必须是**别名**（值取自 token），不能自带色值
+    assert "--ink-soft: var(--sidebar-bg)" in html
+    assert "--brand: var(--theme-accent)" in html
+    for legacy in ("#2f6df6", "#f0f2f8", "#232838"):
+        assert legacy not in html, "简报页残留旧配色 {0}".format(legacy)
+
+
+def test_avatar_palette_stays_in_step_with_the_accent_colors(digest):
+    """头像占位色是唯一写死色值的地方——它得取自设计系统的语义色，不是随手挑的通用色。"""
+    from qianliyan.pipeline import report
+
+    assert "#2f6df6" not in report._AVATAR_COLORS
+    # 四个语义色的深色档都应在色板里（明暗主题下都要压得住白色首字母）
+    for accent in ("#135e6b", "#2f7d5c", "#b8873a", "#b3402a"):
+        assert accent in report._AVATAR_COLORS

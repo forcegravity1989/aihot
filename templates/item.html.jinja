@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="qianliyan item">
+<title>{{ title }} · {{ page_title }}</title>
+<style>{{ theme_css|safe }}</style>
+</head>
+<body>
+<article class="dt-page" data-sig="{{ sig }}">
+
+  <div class="dt-topbar">
+    <a class="dt-back" href="{{ back_href }}">← 返回日报</a>
+    <div class="dt-topbar-right">
+      <span class="chip chip-cyan">{{ icon }} {{ label }}</span>
+      <span class="qly-score {{ score_cls }}">{{ score_text }}</span>
+      {% if url %}<a class="btn btn-primary" href="{{ url }}" target="_blank" rel="noopener noreferrer">打开原文 ↗</a>{% endif %}
+    </div>
+  </div>
+
+  <h1 class="dt-title">{{ title }}</h1>
+  <div class="dt-meta">{{ source_text }} · {{ date_abs }}{% if date_rel %} · {{ date_rel }}{% endif %}</div>
+  {% if badges %}
+  <div class="dt-tags" style="margin-top:12px">
+    {% for badge in badges %}<span class="badge {{ badge.cls }}">{{ badge.text }}</span>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if summary %}
+  <section class="dt-sec">
+    <div class="dt-sec-label">AI 导读</div>
+    <p class="dt-body">{{ summary }}</p>
+  </section>
+  {% endif %}
+
+  {% if is_video %}
+  <section class="dt-sec">
+    <div class="dt-sec-label">🎤 演讲{% if has_transcript %} · 已读字幕全文{% endif %}</div>
+    {% if thumbnail %}<div class="dt-figure"><img src="{{ thumbnail }}" alt="{{ title }}" loading="lazy"></div>{% endif %}
+  </section>
+  {% endif %}
+
+  {% if is_repo %}
+  <section class="dt-sec">
+    <div class="dt-sec-label">📦 仓库</div>
+    <div class="dt-tags">
+      {% if stars %}<span class="chip">⭐ {{ stars }}</span>{% endif %}
+      {% if stars_period %}<span class="chip chip-amber">本期 +{{ stars_period }}</span>{% endif %}
+      {% if language %}<span class="chip">{{ language }}</span>{% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if theses %}
+  <hr class="dt-rule">
+  <section class="dt-sec">
+    <div class="dt-sec-label">💡 关键论点</div>
+    <ul class="dt-list">{% for thesis in theses %}<li>{{ thesis }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  {% if corroboration %}
+  <hr class="dt-rule">
+  <section class="dt-sec">
+    <div class="dt-sec-label">🔬 叙事 ↔ 实证</div>
+    <div class="dt-corrob dt-corrob-{{ corroboration.verdict }}">
+      <span class="badge">{{ corroboration.label }}</span>
+      {% if corroboration.claim %}<p class="dt-body" style="margin-top:8px">{{ corroboration.claim }}</p>{% endif %}
+      {% if corroboration.evidence %}<p class="dt-body" style="margin-top:6px"><b>证据</b> · {{ corroboration.evidence }}</p>{% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  <hr class="dt-rule">
+  <section class="dt-sec">
+    <div class="dt-sec-label">深读提炼</div>
+    <div class="dt-grid">
+      <div class="dt-kv">
+        <div class="dt-kv-k">要点</div>
+        <div class="dt-kv-v">{% if kp %}<ul class="dt-list">{% for k in kp %}<li>{{ k }}</li>{% endfor %}</ul>{% endif %}{% if not kp %}—{% endif %}</div>
+      </div>
+      <div class="dt-kv">
+        <div class="dt-kv-k">脉络</div>
+        <div class="dt-kv-v">{% if chain %}{{ chain }}{% endif %}{% if not chain %}—{% endif %}</div>
+      </div>
+      <div class="dt-kv">
+        <div class="dt-kv-k">影响</div>
+        <div class="dt-kv-v">{% if pull %}{{ pull }}{% endif %}{% if not pull %}—{% endif %}</div>
+      </div>
+      <div class="dt-kv">
+        <div class="dt-kv-k">局限</div>
+        <div class="dt-kv-v">{% if limits %}{{ limits }}{% endif %}{% if not limits %}—{% endif %}</div>
+      </div>
+    </div>
+  </section>
+
+  {% if has_images %}
+  <hr class="dt-rule">
+  <section class="dt-sec">
+    <div class="dt-sec-label">配图</div>
+    {% for img in images %}<div class="dt-figure"><img src="{{ img }}" alt="配图" loading="lazy"></div>{% endfor %}
+  </section>
+  {% endif %}
+
+  <hr class="dt-rule">
+  <section class="dt-sec">
+    <div class="dt-sec-label">来源{% if source_count_text %} · {{ source_count_text }}{% endif %}</div>
+    <div class="dt-tags">
+      {% for src in source_list %}<span class="chip">{{ src.name }}</span>{% endfor %}
+    </div>
+  </section>
+
+  <hr class="dt-rule">
+  <div class="dt-sec">
+    <a class="dt-back" href="{{ back_href }}">← 返回日报</a>
+  </div>
+
+</article>
+</body>
+</html>
