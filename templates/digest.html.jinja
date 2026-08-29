@@ -94,6 +94,26 @@ kbd {
 .boardnav .n { color: var(--text-2); font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .sidebar-foot { margin-top: auto; padding-top: 14px; color: var(--text-2); font-size: 10.5px; }
 
+/* ---------- 变更情报版面 ----------
+   「他说的被真实的代码/提示词 diff 证实了吗」——版本变更卡（token 增减）+ 叙事↔实证
+   映射。这批数据此前算了就扔，只活在内存里。 */
+.chg-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.chg-card {
+  padding: 12px 14px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm);
+  background: var(--surface-0);
+}
+.chg-subject { font-size: 13.5px; font-weight: 600; color: var(--text-0); }
+.chg-ver { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-2); margin-left: 6px; }
+.chg-meta { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--text-2); }
+.corrob-list { list-style: none; margin: 14px 0 0; padding: 0; }
+.corrob-row { padding: 12px 0; border-top: 1px dashed var(--border); }
+.corrob-row:first-child { border-top: 0; }
+.corrob-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.corrob-title { font-size: 14px; font-weight: 600; }
+.corrob-claim { margin: 6px 0 0; font-size: 13px; line-height: 1.7; color: var(--text-1); }
+.corrob-ev { margin: 4px 0 0; font-size: 12.5px; color: var(--text-2); }
+
 /* ---------- 主体 ---------- */
 .main-col { flex: 1; min-width: 0; padding: 28px 32px 72px; }
 
@@ -270,6 +290,43 @@ footer { margin-top: 46px; padding-top: 16px; border-top: 1px solid var(--line);
       <p class="sidebar-label">版面导航</p>
       <nav class="boardnav" aria-label="版面导航" style="overflow-y: auto;">
         {% if personalized %}<a href="#board-personalized">✨ 为你推荐<span class="n">{{ personalized_count }}</span></a>{% endif %}
+        {% if change_cards %}
+        <section class="board" id="board-change">
+          <div class="board-head">
+            <h2>🔬 变更情报</h2>
+            <span class="n">{{ change_count }} 张变更卡 · {{ corroboration_count }} 条实证核验</span>
+            <span class="desc">叙事 ↔ 实证：说法有没有被真实的 diff 证实</span>
+          </div>
+          <div class="chg-grid">
+            {% for card in change_cards %}
+            <div class="chg-card">
+              <div><span class="chg-subject">{{ card.subject }}</span><span class="chg-ver">{{ card.version }}</span></div>
+              <div class="chg-meta">
+                {% if card.delta_text %}<span class="badge {{ card.delta_cls }}">{{ card.delta_text }}</span>{% endif %}
+                <span>{{ card.count_text }}</span>
+                {% if card.refs_text %}<span>· {{ card.refs_text }}</span>{% endif %}
+                {% if card.url %}<a href="{{ card.url }}" target="_blank" rel="noopener noreferrer" style="margin-left:auto">diff ↗</a>{% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% if corroborations %}
+          <ul class="corrob-list">
+            {% for row in corroborations %}
+            <li class="corrob-row">
+              <div class="corrob-head">
+                <span class="badge {{ row.cls }}">{{ row.label }}</span>
+                <a class="corrob-title" href="{{ row.url }}" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>
+              </div>
+              {% if row.claim %}<p class="corrob-claim">{{ row.claim }}</p>{% endif %}
+              {% if row.evidence %}<p class="corrob-ev">证据 · {{ row.evidence }}</p>{% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </section>
+        {% endif %}
+
         {% if personas %}<a href="#board-personas">👥 人物画像<span class="n">{{ personas_count }}</span></a>{% endif %}
         {% for board in boards %}<a href="#board-{{ board.name }}">{{ board.title }}<span class="n">{{ board.count }}</span></a>{% endfor %}
       </nav>

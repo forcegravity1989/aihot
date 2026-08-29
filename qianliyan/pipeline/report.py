@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .. import __version__
 from ..core import paths, utils
+from . import change_intel
 from . import channels as channels_mod
 from . import minitpl
 from . import theme
@@ -289,6 +290,81 @@ def _persona_view(
     }
 
 
+#: 变更卡展示上限——全池 200+ 张，全列会把简报压垮；按变动量取头部。
+CHANGE_CARD_LIMIT = 24
+#: extra.corroboration.verdict → 徽章文案与语义色类
+_CORROBORATION_STYLES = {
+    "corroborated": ("🔬 实证", "badge-ok"),
+    "unverified": ("🔬 存疑", "badge-flash"),
+    "contradicted": ("🔬 矛盾", "badge-heavy"),
+}
+
+
+def _change_card_views(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """把 ``change_intel.bind_changes`` 的版本变更卡整理成视图模型。
+
+    这批卡此前是**算了就扔**：``cli.sync`` 调 ``bind_changes`` 拿到结果后既不落盘也不
+    渲染，只有它顺带写进 item 的 corroboration 活了下来。而「哪个版本的提示词涨了多少
+    token」正是本产品自称的王牌之一，不该只存在于内存里。
+    """
+    try:
+        cards = change_intel.bind_changes(list(items or []))
+    except Exception as exc:  # noqa: BLE001 - 变更情报失败不许拖垮简报渲染
+        logger.warning("变更卡构造失败（跳过该版面）: %s", exc)
+        return []
+
+    def _delta(card: Dict[str, Any]) -> int:
+        try:
+            return int(card.get("token_delta") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    cards = sorted(cards, key=lambda c: (abs(_delta(c)), c.get("count") or 0), reverse=True)
+    views: List[Dict[str, Any]] = []
+    for card in cards[:CHANGE_CARD_LIMIT]:
+        delta = _delta(card)
+        urls = [str(u) for u in (card.get("urls") or []) if u]
+        views.append({
+            "subject": str(card.get("subject") or "未知主体"),
+            "version": str(card.get("version") or ""),
+            "delta_text": "{0:+,} tokens".format(delta) if delta else "",
+            # 涨用暖色、跌用冷色：这里没有"好坏"，只是方向，别用红绿暗示对错
+            "delta_cls": "badge-flash" if delta > 0 else ("badge-ok" if delta < 0 else ""),
+            "count_text": "{0} 项改动".format(card.get("count") or 0),
+            # refs 是**关联条目的 sig 列表**不是数字，直接 format 会渲染出 "['abc'] 源"
+            "refs_text": "{0} 条关联".format(len(card.get("refs") or [])) if card.get("refs") else "",
+            "url": urls[0] if urls else "",
+        })
+    return views
+
+
+def _corroboration_views(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """叙事↔实证映射：带 ``extra.corroboration`` 的条目——「他说的被 diff 证实了吗」。"""
+    views: List[Dict[str, Any]] = []
+    for item in items or []:
+        corrob = _extra(item).get("corroboration")
+        if not isinstance(corrob, dict):
+            continue
+        verdict = str(corrob.get("verdict") or "").strip().lower()
+        style = _CORROBORATION_STYLES.get(verdict)
+        if not style:
+            continue
+        label, cls = style
+        views.append({
+            "verdict": verdict,
+            "label": label,
+            "cls": cls,
+            "title": channels_mod.display_title(item),
+            "url": str(item.get("url") or ""),
+            "claim": str(corrob.get("claim") or "").strip(),
+            "evidence": str(corrob.get("evidence") or "").strip(),
+        })
+    # 矛盾 > 存疑 > 实证：反常的排前面，那才是值得看的
+    order = {"contradicted": 0, "unverified": 1, "corroborated": 2}
+    views.sort(key=lambda v: order.get(v["verdict"], 9))
+    return views
+
+
 def _json_blob(rows: Sequence[Dict[str, Any]]) -> str:
     """内联 ``<script type="application/json">`` 数据块（转义掉可能提前闭合脚本的字符）。"""
     text = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
@@ -382,6 +458,11 @@ def build_context(
         if isinstance(persona, dict):
             persona_views.append(_persona_view(persona, now, avatar_dir, avatar_cache))
 
+    # 变更情报：版本变更卡 + 叙事↔实证映射。数据在全池这一侧最厚（200+ 张卡、
+    # 50+ 条实证核验），10 条精选的日报页里几乎没有——所以这一版面放在简报页。
+    change_card_views = _change_card_views(pool)
+    corroboration_views = _corroboration_views(pool)
+
     # 头条区：全池热度最高的 HERO_COUNT 条，做成主体区第一屏（不是另一个"版面"，
     # 只是热榜前几条的放大呈现——不额外进 palette 索引，避免和热榜版面重复计数）
     hero_pool = pool_sorted[:HERO_COUNT]
@@ -406,6 +487,10 @@ def build_context(
         "personalized_count": len(personalized_views),
         "personas": persona_views,
         "personas_count": len(persona_views),
+        "change_cards": change_card_views,
+        "change_count": len(change_card_views),
+        "corroborations": corroboration_views,
+        "corroboration_count": len(corroboration_views),
         "data_json": _json_blob(index_rows),
     }
 

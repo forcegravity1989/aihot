@@ -266,3 +266,74 @@ def test_avatar_palette_stays_in_step_with_the_accent_colors(digest):
     # 四个语义色的深色档都应在色板里（明暗主题下都要压得住白色首字母）
     for accent in ("#af5233", "#4c73a5", "#579766", "#ce9042"):
         assert accent in report._AVATAR_COLORS
+
+
+# =========================================================================
+# 变更情报版面（王牌：叙事 ↔ 实证）
+# =========================================================================
+def _changelog_item(sig, subject, version, delta, **kw):
+    from qianliyan.core import schema
+
+    return schema.make_item(
+        title=kw.get("title", "{0} {1} 提示词变更".format(subject, version)),
+        url="https://github.com/x/commit/{0}".format(sig),
+        source="Claude Code 系统提示词", source_kind="local", backend="git",
+        weight=0.7, date="2026-08-25T04:00:00+00:00",
+        extra={"format": "changelog", "subject": subject, "version": version,
+               "token_delta": delta},
+    )
+
+
+def test_change_board_surfaces_bind_changes_cards():
+    """``bind_changes`` 的版本变更卡此前算了就扔——只活在内存里，既不落盘也不渲染。
+
+    「哪个版本的提示词涨了多少 token」是本产品自称的王牌之一，必须露出来。
+    """
+    from qianliyan.pipeline import report
+
+    items = [
+        _changelog_item("a1", "claude-code-prompts", "2.1.246", 69754),
+        _changelog_item("a2", "claude-code-prompts", "2.1.100", -1200),
+    ]
+    ctx = report.build_context(items)
+    assert ctx["change_count"] >= 1
+    html = report.render_html(items, out_path=False)
+    assert 'id="board-change"' in html
+    assert "变更情报" in html
+    assert "+69,754 tokens" in html, "token 增减要带千位分隔与正负号"
+    assert "{{" not in html and "{%" not in html
+
+
+def test_change_board_orders_anomalies_first():
+    """实证核验按 矛盾 > 存疑 > 实证 排——反常的排前面，那才是值得看的。"""
+    from qianliyan.core import schema
+    from qianliyan.pipeline import report
+
+    def narrative(sig, verdict):
+        return schema.make_item(
+            title="演讲 {0}".format(verdict), url="https://x/{0}".format(sig),
+            source="Talk", source_kind="local", backend="rss", weight=0.8,
+            date="2026-08-25T04:00:00+00:00",
+            extra={"format": "talk",
+                   "corroboration": {"verdict": verdict, "claim": "减少 80% 提示词", "evidence": "diff"}},
+        )
+
+    items = [narrative("c", "corroborated"), narrative("u", "unverified"), narrative("x", "contradicted")]
+    rows = report._corroboration_views(items)
+    assert [r["verdict"] for r in rows] == ["contradicted", "unverified", "corroborated"]
+
+
+def test_change_board_hidden_when_there_is_nothing_to_show(digest):
+    """没有 changelog 条目就不渲染这个版面（空版面比没有版面更糟）。"""
+    assert 'id="board-change"' not in digest["html"]
+
+
+def test_change_card_refs_is_a_count_not_a_list():
+    """refs 是**关联条目的 sig 列表**不是数字，直接 format 会渲染出 "['abc'] 源"。"""
+    from qianliyan.pipeline import report
+
+    views = report._change_card_views([
+        _changelog_item("a1", "claude-code-prompts", "2.1.246", 69754),
+    ])
+    for view in views:
+        assert "[" not in view["refs_text"], "refs 渲染成了列表字面量"
