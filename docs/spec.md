@@ -125,8 +125,16 @@ def validate_item(item: dict) -> list[str]   # 返回缺陷描述列表，空列
 | `badges` | list[str] | `"heavy"`（重磅）/ `"flash"`（一手速报），渲染层译为 📈/⚡ |
 | `tags` | list[str] | 主题标签，小写 |
 | `metrics` | dict | 数值指标（stars、rank、version…） |
-| `extra` | dict | 松散字段：`category`（aihot）、`platform`、`og_image`、`lang`、`title_zh`、`summary_zh`、`cluster_key`、`story_key`、`headline_fit`、`tier` |
+| `extra` | dict | 松散字段：`category`（aihot）、`platform`、`og_image`、`lang`、`title_zh`、`summary_zh`、`cluster_key`、`story_key`、`headline_fit`、`tier`、`date_precision` |
 | `sync_run_id` / `fetched_at` | str | 由 sync 编排器统一盖章 |
+
+**`extra.date_precision`**（`day` / `unknown`，精确时不写）：`date` 的可信精度。源没给发布
+时间时 `make_item` 会补当前时刻，一批条目于是全撞在同一秒；只给到天的源一律是
+`T00:00:00`。两种情况若不标记，渲染层会把它们画成精确到分钟的假时刻，读者无从分辨
+「04:26 发布」「这天发的、不知道几点」「根本不知道什么时候」。精度一旦丢在归一化这步
+就再也补不回来，所以落库时就记下。**只标有损的**——缺省即精确，`extra` 初始为空这条
+契约对绝大多数条目仍然成立。时间轴据此三档显示：`04:26` / `全天` / `—`，且日内把
+有真实时分的排在前面，避免「补出来的时刻」冒充当天最新。
 
 时间工具（放 `utils.py`）：`now_utc() -> datetime`、`iso(dt) -> str`、`parse_date(s) -> datetime|None`（容忍 ISO、RFC822、`YYYY-MM-DD`；解析失败返回 None，调用方兜底为 now）。
 

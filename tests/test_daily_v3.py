@@ -482,3 +482,41 @@ def test_theme_css_comments_do_not_trip_whole_page_assertions():
     hit = [token for token in forbidden if token in css]
     assert not hit, "_theme.css 含会误触发全文断言的字面量: {0}".format(hit)
     assert not re.search(r"url\(\s*['\"]?https?://", css), "_theme.css 不得引外部资源"
+
+
+def test_timeline_renders_three_time_precisions_honestly(tmp_data_dir):
+    """时间轴不得把三种精度混成一种。
+
+    源缺 date 时 core.schema 会补当前时刻（一批条目全撞同一秒），只给到天的源一律
+    00:00——两种都会被渲染成精确到分钟的假时刻。读者必须能分辨「04:26 发布」、
+    「这天发的，不知道几点」和「根本不知道什么时候」。
+    """
+    items = [
+        _draft_item("exact", "有真实时分", date="2026-08-25T09:30:00+00:00",
+                    extra={"date_precision": "exact"}),
+        _draft_item("day", "只知道是这天", date="2026-08-25T00:00:00+00:00",
+                    extra={"date_precision": "day"}),
+        _draft_item("unknown", "时间是补的", date="2026-08-25T23:59:59+00:00",
+                    extra={"date_precision": "unknown"}),
+    ]
+    html = d.render_timeline(DATE, items)
+
+    assert ">09:30<" in html, "精确的要显示到分"
+    assert ">全天<" in html, "只到天的不许编造时分"
+    assert ">—<" in html, "未知的干脆不给时间"
+    assert ">23:59<" not in html, "补出来的时刻不许当真实发布时间显示"
+
+    # 日内排序：有真实时分的在前，日粒度/未知的沉到末尾——否则「补成当前时刻」的
+    # 条目会冒充成今天最新，排在最上面
+    assert html.index("有真实时分") < html.index("只知道是这天")
+    assert html.index("有真实时分") < html.index("时间是补的")
+
+
+def test_timeline_infers_precision_for_legacy_rows(tmp_data_dir):
+    """老数据没有 date_precision（这字段是后加的）：零点当日粒度，其余当精确。"""
+    items = [
+        _draft_item("legacy_day", "老的日粒度", date="2026-08-25T00:00:00+00:00"),
+        _draft_item("legacy_exact", "老的有时分", date="2026-08-25T09:30:00+00:00"),
+    ]
+    html = d.render_timeline(DATE, items)
+    assert ">全天<" in html and ">09:30<" in html

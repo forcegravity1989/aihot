@@ -670,6 +670,28 @@ def _detail_href(sig: str) -> str:
     return "{0}/{1}.html".format(DETAIL_DIR, clean)
 
 
+#: date_precision → 时间轴左列的显示法。只到天的不编造时分，未知的干脆不给时间。
+_TIME_LABELS = {"day": "全天", "unknown": "—"}
+
+
+def _date_precision_of(entry: Dict[str, Any], dt) -> str:
+    """取条目的 date 精度。老数据没有这个字段（是在 core.schema 落库时才开始写的），
+    退化为看时间本身：零点当「只到天」，否则当「精确」——这样 40% 的日粒度条目立刻
+    显示正确，剩下 1% 的「未知」要等下一次同步才带上标记。"""
+    known = str(_extra(entry).get("date_precision") or "").strip()
+    if known in ("exact", "day", "unknown"):
+        return known
+    if dt is None:
+        return "unknown"
+    return "day" if (dt.hour, dt.minute, dt.second) == (0, 0, 0) else "exact"
+
+
+def _time_label(precision: str, dt) -> str:
+    if precision == "exact" and dt is not None:
+        return dt.strftime("%H:%M")
+    return _TIME_LABELS.get(precision, "—")
+
+
 def _weekday_cn(dt) -> str:
     return "星期{0}".format("一二三四五六日"[dt.weekday()])
 
@@ -737,10 +759,12 @@ def _timeline_days(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, Any]]
         elif "flash" in badges:
             accent = "timeline-item-flash"
         dt = utils.parse_date(entry.get("date"))
+        precision = _date_precision_of(entry, dt)
         row = {
             "sig": sig,
             "icon": FORMAT_ICONS.get(infer_format(entry), "•"),
-            "time": dt.strftime("%H:%M") if dt is not None else "--:--",
+            "time": _time_label(precision, dt),
+            "precision": precision,
             "title": _display_title(entry),
             "url": str(entry.get("url") or ""),
             "detail_href": _detail_href(sig),
@@ -750,6 +774,7 @@ def _timeline_days(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, Any]]
             "score_text": score["text"],
             "score_cls": score["cls"],
             "accent_cls": accent,
+            "_ts": dt.timestamp() if dt is not None else 0,
         }
         if dt is None:
             unknown.append(row)
@@ -763,6 +788,9 @@ def _timeline_days(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, Any]]
 
     days: List[Dict[str, Any]] = []
     for key in sorted(buckets, reverse=True):
+        # 日内：有真实时分的按时间倒序在前，只到天/未知的沉到当天末尾。
+        # 不这么排的话，缺 date 被补成当前时刻的条目会冒充成「今天最新」排在最上面。
+        buckets[key].sort(key=lambda r: (r["precision"] == "exact", r.get("_ts") or 0), reverse=True)
         days.append({
             "key": key,
             "date_label": labels[key]["date_label"],

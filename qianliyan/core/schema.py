@@ -22,6 +22,30 @@ BACKENDS = ("rest", "raw_json", "cdp", "rss", "git", "html", "sitemap", "arxiv")
 BADGES = ("heavy", "flash")
 
 
+#: date 的可信精度档：源给到时分 / 只给到天 / 压根没给（被补成当前时刻）
+DATE_PRECISIONS = ("exact", "day", "unknown")
+
+
+def _date_precision(date: Any) -> str:
+    """判断这条 date 的**可信精度**，供渲染层决定显示到分、只显示日期、还是不显示时间。
+
+    这不是锦上添花。源缺 date 时 :func:`_norm_date` 会补当前时刻——一批条目于是全撞在
+    同一秒；只给到天的源则一律是 00:00。两种情况在时间轴上都会被画成一个精确到分钟的
+    假时刻，读者无从分辨「凌晨 4:24 发布」和「根本不知道什么时候发布」。精度一旦丢在
+    归一化这一步，下游再也补不回来，所以必须在这里就记下来。
+    """
+    if date is None:
+        return "unknown"
+    if isinstance(date, str) and not date.strip():
+        return "unknown"
+    parsed = date if isinstance(date, datetime) else utils.parse_date(date)
+    if parsed is None:
+        return "unknown"
+    if (parsed.hour, parsed.minute, parsed.second) == (0, 0, 0):
+        return "day"
+    return "exact"
+
+
 def _norm_date(date: Any) -> str:
     """时间归一为 ISO 8601 UTC 字符串；缺省用当前 UTC；不可解析则原样保留。"""
     if date is None:
@@ -75,12 +99,30 @@ def make_item(
         "badges": [],
         "tags": list(tags or []),
         "metrics": dict(metrics or {}),
-        "extra": dict(extra or {}),
+        "extra": _extra_with_precision(extra, date),
         "sync_run_id": "",
         "fetched_at": utils.iso(utils.now_utc()),
     }
     item["sig"] = utils.item_signature(item)
     return item
+
+
+def _extra_with_precision(extra: Optional[Dict[str, Any]], date: Any) -> Dict[str, Any]:
+    """精度**有损时**才写 ``date_precision``（day / unknown）；精确的不写。
+
+    只给有损的打标有两个好处：item 契约里「extra 初始为空」这条不被破坏（绝大多数
+    条目的 extra 仍然干干净净），落盘体积也不为一个恒真的默认值买单。缺省即精确——
+    渲染层读不到这个键就按 exact 处理。
+
+    适配器若已自行判定则尊重它（setdefault），包括显式写 ``"exact"`` 覆盖本函数的判断。
+    """
+    merged = dict(extra or {})
+    if "date_precision" in merged:
+        return merged
+    precision = _date_precision(date)
+    if precision != "exact":
+        merged["date_precision"] = precision
+    return merged
 
 
 def validate_item(item: Dict[str, Any]) -> List[str]:

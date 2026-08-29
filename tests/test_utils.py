@@ -355,7 +355,19 @@ def test_make_item_fills_every_contract_field():
     assert item["sync_run_id"] == ""
     assert utils.parse_date(item["fetched_at"]) is not None
     assert item["summary"] == "" and item["tags"] == []
-    assert item["metrics"] == {} and item["extra"] == {}
+    assert item["metrics"] == {}
+    # 不带 date 建的 item 是「时间未知」，extra 里会带一枚精度标记——这是契约的一部分：
+    # 精度丢在归一化这步就再也补不回来。带了 date 的条目 extra 仍然是空的（见下一条断言）。
+    assert item["extra"] == {"date_precision": "unknown"}
+
+
+def test_make_item_leaves_extra_empty_when_the_date_is_trustworthy():
+    """精度无损时不打标——「extra 初始为空」这条契约对绝大多数条目仍然成立。"""
+    item = schema.make_item(
+        title="t", url="https://u", source="s", source_kind="local",
+        backend="rss", weight=0.5, date="2026-08-26T04:26:23+00:00",
+    )
+    assert item["extra"] == {}
 
 
 def test_make_item_defaults_date_to_now_and_normalizes_input():
@@ -417,3 +429,33 @@ def test_validate_item_flags_bad_values(patch, needle):
     item.update(patch)
     problems = schema.validate_item(item)
     assert any(needle in p for p in problems), problems
+
+
+# =========================================================================
+# date 精度标记（时间轴诚实性）
+# =========================================================================
+def test_make_item_records_date_precision():
+    """精度一旦丢在归一化这步，下游再也补不回来——必须落库时就记下。"""
+    from qianliyan.core import schema
+
+    def precision(date):
+        item = schema.make_item(title="t", url="https://u", source="s", source_kind="local",
+                                backend="rss", weight=0.5, date=date)
+        return item["extra"].get("date_precision")
+
+    # 精确的不打标——缺省即精确，item 契约里「extra 初始为空」这条不能因此破掉
+    assert precision("2026-08-26T04:26:23+00:00") is None
+    assert precision("2026-08-26T00:00:00+00:00") == "day"
+    assert precision(None) == "unknown"
+    assert precision("") == "unknown"
+    assert precision("不是日期") == "unknown"
+
+
+def test_make_item_respects_adapter_supplied_precision():
+    """适配器自己判定过就尊重它（setdefault，不覆盖）。"""
+    from qianliyan.core import schema
+
+    item = schema.make_item(title="t", url="https://u", source="s", source_kind="local",
+                            backend="rss", weight=0.5, date="2026-08-26T00:00:00+00:00",
+                            extra={"date_precision": "exact"})
+    assert item["extra"]["date_precision"] == "exact"
