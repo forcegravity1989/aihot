@@ -26,6 +26,37 @@ def pytest_configure(config):
 
 
 @pytest.fixture(autouse=True)
+def _never_touch_the_real_data_dir(monkeypatch, tmp_path_factory):
+    """物理层护栏：测试期间数据根目录**必须**落在 pytest 的 tmp 下，否则当场炸。
+
+    为什么需要它：测试隔离本身是靠被测代码（``paths.resolve_data_dir`` 读 QLY_DATA_DIR）
+    实现的——一旦那段代码坏了或被改坏，所有测试会安静地写进用户的真实数据目录，而且
+    每个用例仍然是绿的。这不是假想：跑变异测试时把 ``candidate = os.environ.get(
+    "QLY_DATA_DIR")`` 改成 ``None`` 之后，整轮 pytest（含 run_sync(mock=True)）把真实
+    items.jsonl 的 2797 条覆盖成了 56 条 mock 数据，还在数据根留下了路径穿越用例写的
+    secret.html。变异结果显示"被抓到"，但代价是真实数据被毁。
+
+    有了这道闸，同样的情况会立刻报错而不是写盘——护栏不能建在被守护的那段代码上。
+    """
+    from qianliyan.core import paths as paths_mod
+
+    basetemp = str(tmp_path_factory.getbasetemp().resolve())
+    original = paths_mod.resolve_data_dir
+
+    def guarded():
+        resolved = original()
+        if not str(resolved.resolve()).startswith(basetemp):
+            raise RuntimeError(
+                "测试企图使用 tmp 之外的数据目录: {0}\n"
+                "（这条护栏挡的是「隔离机制本身坏掉」——用例请依赖 tmp_data_dir fixture）"
+                .format(resolved)
+            )
+        return resolved
+
+    monkeypatch.setattr(paths_mod, "resolve_data_dir", guarded)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_network(request, monkeypatch):
     """物理层封网：除 AF_UNIX 外，任何真实 socket 连接一律报错。"""
     if request.node.get_closest_marker("allow_network"):
