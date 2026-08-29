@@ -975,94 +975,178 @@ MERGED_SHELL = """<!doctype html>
 <style>
 .qly-switch { position: absolute; opacity: 0; pointer-events: none; }
 .qly-view { display: none; }
-#qly-pick-glance:checked ~ .qly-app #wrap-glance,
-#qly-pick-timeline:checked ~ .qly-app #wrap-timeline,
-#qly-pick-deep:checked ~ .qly-app #wrap-deep { display: block; }
-/* 当前视图在侧栏与段控里都要高亮，否则读者不知道自己在哪一屏 */
-#qly-pick-glance:checked ~ .qly-app label[for="qly-pick-glance"],
-#qly-pick-timeline:checked ~ .qly-app label[for="qly-pick-timeline"],
-#qly-pick-deep:checked ~ .qly-app label[for="qly-pick-deep"] {
-  background: var(--theme-accent-soft); color: var(--theme-accent-fg); font-weight: 600;
+#qly-pick-glance:checked ~ .qly-shell #wrap-glance,
+#qly-pick-timeline:checked ~ .qly-shell #wrap-timeline,
+#qly-pick-deep:checked ~ .qly-shell #wrap-deep { display: block; }
+#qly-pick-glance:checked ~ .qly-shell label[for="qly-pick-glance"],
+#qly-pick-timeline:checked ~ .qly-shell label[for="qly-pick-timeline"],
+#qly-pick-deep:checked ~ .qly-shell label[for="qly-pick-deep"] {
+  background: var(--theme-accent); color: var(--theme-accent-contrast); font-weight: 600;
 }
-#qly-pick-glance:focus-visible ~ .qly-app label[for="qly-pick-glance"],
-#qly-pick-timeline:focus-visible ~ .qly-app label[for="qly-pick-timeline"],
-#qly-pick-deep:focus-visible ~ .qly-app label[for="qly-pick-deep"] {
+#qly-pick-glance:focus-visible ~ .qly-shell label[for="qly-pick-glance"],
+#qly-pick-timeline:focus-visible ~ .qly-shell label[for="qly-pick-timeline"],
+#qly-pick-deep:focus-visible ~ .qly-shell label[for="qly-pick-deep"] {
   outline: 2px solid var(--theme-accent); outline-offset: 2px;
 }
-.qly-segment { display: inline-flex; gap: 4px; padding: 3px; margin-bottom: 18px;
-  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-card); }
-.qly-segment label { padding: 6px 16px; border-radius: 999px; font-size: 13px; color: var(--text-1);
-  cursor: pointer; user-select: none; -webkit-user-select: none;
-  transition: background var(--dur-fast) ease, color var(--dur-fast) ease; }
-.qly-segment label:hover { color: var(--text-0); background: var(--surface-1); }
+/* 顶栏 */
+.qly-topbar {
+  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px;
+  height: 52px; padding: 0 20px; background: var(--bg-0);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.qly-logo {
+  width: 26px; height: 26px; border-radius: 8px; background: var(--theme-accent);
+  color: var(--theme-accent-contrast); display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px; flex-shrink: 0;
+}
+.qly-wordmark { display: flex; flex-direction: column; line-height: 1.25; }
+.qly-wordmark b { font-weight: 600; font-size: 14px; }
+.qly-wordmark span { font-size: 10px; color: var(--text-2); font-family: var(--font-mono); letter-spacing: .04em; }
+.qly-tabs { display: flex; gap: 2px; margin-left: 10px; }
+.qly-tabs label {
+  padding: 6px 14px; border-radius: 8px; font-size: 13px; color: var(--text-1); cursor: pointer;
+  user-select: none; -webkit-user-select: none;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.qly-tabs label:hover { background: var(--surface-1); color: var(--text-0); }
+.qly-topbar-meta {
+  margin-left: auto; display: flex; align-items: center; gap: 14px;
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--text-2); white-space: nowrap;
+}
+.qly-live { display: inline-flex; align-items: center; gap: 6px; }
+.qly-live::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-emerald);
+}
+/* 三栏 */
+.qly-shell { display: flex; align-items: stretch; min-height: 0; }
+.qly-rail {
+  width: var(--rail-width); flex-shrink: 0; border-left: 1px solid var(--border);
+  padding: 24px 18px 60px; display: flex; flex-direction: column; gap: 22px;
+  position: sticky; top: 52px; align-self: flex-start; max-height: calc(100vh - 52px); overflow-y: auto;
+}
+.qly-rail-label {
+  font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--text-2); margin-bottom: 8px;
+}
+.qly-archive { display: flex; flex-direction: column; gap: 1px; }
+.qly-archive a {
+  display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px;
+  border-radius: var(--radius-sm); font-size: 13px; color: var(--text-1);
+}
+.qly-archive a:hover { background: var(--surface-1); color: var(--text-0); }
+.qly-archive a.is-current { background: var(--theme-accent-soft); color: var(--theme-accent-fg); font-weight: 600; }
+.qly-archive .n { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
+.qly-srcbar { display: flex; flex-direction: column; gap: 9px; }
+.qly-srcbar-row > div:first-child {
+  display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 4px;
+}
+.qly-srcbar-row .n { font-family: var(--font-mono); color: var(--text-2); }
+.qly-srcbar-track { height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.qly-note-card {
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px;
+  background: var(--bg-1);
+}
+.qly-note-card b { display: block; font-size: 12px; margin-bottom: 8px; }
+.qly-note-card p { margin: 0; font-size: 11.5px; line-height: 1.8; color: var(--text-1); }
+.qly-note-card code { font-family: var(--font-mono); font-size: 10.5px; }
+@media (max-width: 1200px) { .qly-rail { display: none; } }
 </style>
 </head>
 <body>
 <input class="qly-switch" type="radio" name="qly-view" id="qly-pick-glance" checked>
 <input class="qly-switch" type="radio" name="qly-view" id="qly-pick-timeline">
 <input class="qly-switch" type="radio" name="qly-view" id="qly-pick-deep">
-<div class="qly-app">
 
-  <aside class="qly-sidebar">
-    <div>
-      <a class="qly-brand" href="#qly-top">
-        <span class="qly-brand-name">千里眼</span>
-        <span class="qly-brand-sub">QIANLIYAN DAILY</span>
-      </a>
-      <nav class="qly-nav" aria-label="视图与类目导航">
-        <div class="qly-nav-label">视图</div>
-        <label class="qly-nav-item" for="qly-pick-glance">📑 日报<span class="n">{{ total }}</span></label>
-        <label class="qly-nav-item" for="qly-pick-timeline">🕒 时间轴<span class="n">{{ day_count }} 天</span></label>
-        <label class="qly-nav-item" for="qly-pick-deep">📖 深读<span class="n">{{ total }}</span></label>
-        {% if nav_groups %}<div class="qly-nav-label">类目</div>{% endif %}
-        {% for group in nav_groups %}
-        <a class="qly-nav-item" href="#sec-{{ group.format }}">{{ group.icon }} {{ group.label }}<span class="n">{{ group.count }}</span></a>
-        {% endfor %}
-      </nav>
-    </div>
-    <div class="qly-side-stats">
-      <div><b>{{ total }}</b><span>今日条目</span></div>
-      <div><b>{{ heavy_count }}</b><span>📈 重磅</span></div>
-      <div><b>{{ flash_count }}</b><span>⚡ 速报</span></div>
-      <div><b>{{ cross_count }}</b><span>多源交叉</span></div>
-    </div>
-    <div class="qly-sidebar-foot">{{ date }}<br>千里眼 {{ version }}</div>
-  </aside>
+<div class="qly-shell">
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
 
-  <main class="qly-main" id="qly-top">
-    <div class="qly-main-inner">
-
-      <div class="qly-segment" role="group" aria-label="日报 / 时间轴 / 深读切换">
+    <nav class="qly-topbar" aria-label="主导航">
+      <div class="qly-logo">千</div>
+      <div class="qly-wordmark"><b>千里眼</b><span>QIANLIYAN · AIHOT 日报</span></div>
+      <div class="qly-tabs" role="group" aria-label="日报 / 时间轴 / 深读切换">
         <label for="qly-pick-glance">📑 日报</label>
         <label for="qly-pick-timeline">🕒 时间轴</label>
         <label for="qly-pick-deep">📖 深读</label>
       </div>
+      <div class="qly-topbar-meta">
+        <span class="qly-live">{{ date }}</span>
+        <span>{{ total }} 条 · 📈 {{ heavy_count }} · ⚡ {{ flash_count }} · 交叉 {{ cross_count }}</span>
+      </div>
+    </nav>
 
-      {% if hot_rows %}
-      <section class="hot-topics">
-        <div class="hot-topics-head">
-          <span class="hot-topics-title">今日热点</span>
-          <span class="hot-topics-hint">按热度 · 交叉验证加权</span>
+    <div class="qly-app" style="flex:1;min-height:0;">
+      <aside class="qly-sidebar">
+        <div>
+          <nav class="qly-nav" aria-label="往期与类目导航">
+            {% if archive_days %}<div class="qly-nav-label">往期归档</div>{% endif %}
+            <div class="qly-archive">
+              {% for day in archive_days %}
+              <a class="{{ day.cls }}" href="{{ day.href }}">{{ day.label }}<span class="n">{{ day.count }}</span></a>
+              {% endfor %}
+            </div>
+            {% if nav_groups %}<div class="qly-nav-label">类目</div>{% endif %}
+            {% for group in nav_groups %}
+            <a class="qly-nav-item" href="#sec-{{ group.format }}">{{ group.icon }} {{ group.label }}<span class="n">{{ group.count }}</span></a>
+            {% endfor %}
+          </nav>
         </div>
-        <ol class="hot-topics-list">
-          {% for row in hot_rows %}
-          <li class="hot-topics-row">
-            <span class="hot-topics-rank hot-topics-rank-{{ row.rank }}">{{ row.rank }}</span>
-            <a class="hot-topics-link" href="{{ row.detail_href }}">{{ row.title }}</a>
-            <span class="hot-topics-meta">{{ row.score_text }}</span>
-          </li>
-          {% endfor %}
-        </ol>
-      </section>
-      {% endif %}
+        <div class="qly-side-stats">
+          <div><b>{{ total }}</b><span>今日条目</span></div>
+          <div><b>{{ day_count }}</b><span>时间轴天数</span></div>
+          <div><b>{{ heavy_count }}</b><span>📈 重磅</span></div>
+          <div><b>{{ cross_count }}</b><span>多源交叉</span></div>
+        </div>
+        <div class="qly-sidebar-foot">
+          主信源 <b style="color:var(--text-0)">AIHOT · 卡兹克</b><br>聚合 X · 官方 Blog · YouTube<br>千里眼 {{ version }}
+        </div>
+      </aside>
 
-      <div class="qly-view" id="wrap-glance">{{ glance_body|safe }}</div>
-      <div class="qly-view" id="wrap-timeline">{{ timeline_body|safe }}</div>
-      <div class="qly-view" id="wrap-deep">{{ deep_body|safe }}</div>
-
+      <main class="qly-main" id="qly-top">
+        <div class="qly-main-inner">
+          <div class="qly-view" id="wrap-glance">{{ glance_body|safe }}</div>
+          <div class="qly-view" id="wrap-timeline">{{ timeline_body|safe }}</div>
+          <div class="qly-view" id="wrap-deep">{{ deep_body|safe }}</div>
+        </div>
+      </main>
     </div>
-  </main>
 
+  </div>
+
+  <aside class="qly-rail" aria-label="热点与信源统计">
+    {% if hot_rows %}
+    <div>
+      <div class="qly-rail-label">热度榜 · TOP {{ hot_count }}</div>
+      <ol class="hot-topics-list" style="padding:0">
+        {% for row in hot_rows %}
+        <li class="hot-topics-row" style="padding:8px 6px;border-radius:8px">
+          <span class="hot-topics-rank hot-topics-rank-{{ row.rank }}">{{ row.rank }}</span>
+          <a class="hot-topics-link" href="{{ row.detail_href }}" style="white-space:normal">{{ row.title }}</a>
+          <span class="hot-topics-meta">{{ row.score_text }}</span>
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+    {% endif %}
+
+    {% if source_stats %}
+    <div>
+      <div class="qly-rail-label">信源分布</div>
+      <div class="qly-srcbar">
+        {% for row in source_stats %}
+        <div class="qly-srcbar-row">
+          <div><span>{{ row.label }}</span><span class="n">{{ row.count }}</span></div>
+          <div class="qly-srcbar-track"><div style="{{ row.bar_style }}"></div></div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="qly-note-card">
+      <b>交叉验证</b>
+      <p>同一事件被多个独立信源报道即自动加权：<code>weight × 0.5^(age/7d) × (1 + 0.35·ln(1+refs))</code>。
+      ≥3 源标「📈 重磅」，一手且 24 小时内标「⚡ 速报」。每条都留 source_list，可溯源。</p>
+    </div>
+  </aside>
 </div>
 </body>
 </html>
@@ -1093,6 +1177,70 @@ def _hot_rows(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
+def _archive_days(current: str, current_count: int = 0, limit: int = 14) -> List[Dict[str, Any]]:
+    """往期归档：扫 ``archive/<date>/`` 下已渲染的日报，新到旧。
+
+    没有跨日导航是原来版面的硬伤——读者进了某一天就出不去，只能改地址栏。
+    条数取自当天定稿文档；读不到就留空而不是让整块导航消失。
+
+    ``current`` **一定在列**，哪怕它的 digest.html 还没落盘：这个函数是在渲染当天页面的
+    过程中被调的，当天那份文件此刻正要写出去。不特判的话，一个新日期的第一次渲染会得到
+    一份「没有今天」的归档列表，只有一天数据时整块导航还会整个消失。
+    """
+    root = paths.data_path("archive")
+    names: List[str] = []
+    if root.is_dir():
+        try:
+            names = sorted((p.name for p in root.iterdir() if p.is_dir()), reverse=True)
+        except OSError:
+            names = []
+
+    days: List[Dict[str, Any]] = []
+    for name in names[:limit]:
+        is_current = name == current
+        if not is_current and not (root / name / MERGED_NAME).is_file():
+            continue
+        if is_current:
+            count = current_count
+        else:
+            doc = storage.read_json(root / name / FINAL_NAME, default=None)
+            count = len((doc or {}).get("items") or []) if isinstance(doc, dict) else 0
+        days.append({
+            "date": name,
+            "label": name[5:].replace("-", "/") if len(name) >= 10 else name,
+            "count": str(count) if count else "",
+            "is_current": is_current,
+        })
+    if current and not any(d["is_current"] for d in days):
+        days.insert(0, {
+            "date": current,
+            "label": current[5:].replace("-", "/") if len(current) >= 10 else current,
+            "count": str(current_count) if current_count else "",
+            "is_current": True,
+        })
+    return days
+
+
+def _source_stats(items: Sequence[Dict[str, Any]], top: int = 6) -> List[Dict[str, Any]]:
+    """信源分布：当日各信源条数 + 条形宽度（宽度在这里算好，模板不做运算）。"""
+    counts: "Dict[str, int]" = {}
+    for entry in items:
+        name = str(entry.get("source") or "").strip() or "未知"
+        counts[name] = counts.get(name, 0) + 1
+    if not counts:
+        return []
+    biggest = max(counts.values())
+    rows = []
+    for name, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:top]:
+        rows.append({
+            "label": name,
+            "count": str(n),
+            "bar_style": "height:100%;border-radius:2px;background:var(--theme-accent);"
+                         "width:{0:.0f}%".format(100.0 * n / biggest),
+        })
+    return rows
+
+
 def render_glance(date_str: str, items: Sequence[Dict[str, Any]], embed: bool = False, now=None) -> str:
     now = utils.as_utc(now or utils.now_utc())
     return minitpl.render(_load_template(GLANCE_TEMPLATE), _glance_context(date_str, items, embed, now))
@@ -1115,12 +1263,33 @@ def render_item(entry: Dict[str, Any], back_href: str = "../daily.html", now=Non
     return minitpl.render(_load_template(ITEM_TEMPLATE), _item_context(entry, now, back_href))
 
 
-def render_merged(date_str: str, items: Sequence[Dict[str, Any]], now=None) -> str:
+def render_merged(
+    date_str: str,
+    items: Sequence[Dict[str, Any]],
+    now=None,
+    archive_base: str = "archive",
+) -> str:
+    """渲染三视图合并首页。
+
+    ``archive_base`` 是往期归档链接的前缀——同一份 HTML 会落在数据根和归档目录两处，
+    从数据根看别的日子是 ``archive/<date>/``，从 ``archive/<某日>/`` 看是 ``../<date>/``。
+    """
     now = utils.as_utc(now or utils.now_utc())
     glance_frag = render_glance(date_str, items, embed=True, now=now)
     timeline_frag = render_timeline(date_str, items, embed=True, now=now)
     deep_frag = render_deep(date_str, items, embed=True, now=now)
     badge_list = [entry.get("badges") or [] for entry in items]
+
+    days = []
+    for day in _archive_days(date_str, len(items)):
+        days.append({
+            "label": day["label"],
+            "count": day["count"],
+            "href": "{0}/{1}/{2}".format(archive_base.rstrip("/"), day["date"], MERGED_NAME),
+            "cls": "is-current" if day["is_current"] else "",
+        })
+
+    hot_rows = _hot_rows(items)
     return minitpl.render(MERGED_SHELL, {
         "theme_css": theme.load_theme_css(),
         "page_title": "{0} · {1}".format(PAGE_TITLE, date_str),
@@ -1132,7 +1301,10 @@ def render_merged(date_str: str, items: Sequence[Dict[str, Any]], now=None) -> s
         "flash_count": sum(1 for b in badge_list if "flash" in b),
         "cross_count": sum(1 for entry in items if _source_count(entry) > 1),
         "nav_groups": _grouped_by_format(items, now),
-        "hot_rows": _hot_rows(items),
+        "archive_days": days,
+        "hot_rows": hot_rows,
+        "hot_count": len(hot_rows),
+        "source_stats": _source_stats(items),
         "glance_body": glance_frag,
         "timeline_body": timeline_frag,
         "deep_body": deep_frag,
@@ -1202,8 +1374,9 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]]) -> int:
     _write_text(_archive_path(date_str, GLANCE_NAME), glance_full)
     _write_text(_archive_path(date_str, TIMELINE_NAME), timeline_full)
     _write_text(_archive_path(date_str, DEEP_NAME), deep_full)
+    # 归档目录里那份的往期链接要用 ../ 前缀（同级是别的日期目录），数据根那份用 archive/
     merged_path = _archive_path(date_str, MERGED_NAME)
-    _write_text(merged_path, merged)
+    _write_text(merged_path, render_merged(date_str, items, now=now, archive_base=".."))
 
     root_path = paths.data_path(DAILY_ROOT_NAME)
     _write_text(root_path, merged)

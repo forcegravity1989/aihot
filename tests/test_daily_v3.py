@@ -179,19 +179,27 @@ def test_finalize_html_produces_three_views(tmp_data_dir):
     assert "日报" in m and "时间轴" in m and "深读" in m
     assert 'id="qly-pick-glance"' in m and 'id="qly-pick-timeline"' in m and 'id="qly-pick-deep"' in m
     assert 'for="qly-pick-glance"' in m and 'for="qly-pick-deep"' in m
-    assert "#qly-pick-deep:checked ~ .qly-app #wrap-deep" in m  # :checked 驱动显示
+    assert "#qly-pick-deep:checked ~ .qly-shell #wrap-deep" in m  # :checked 驱动显示
     assert "wrap-glance" in m and "wrap-timeline" in m and "wrap-deep" in m
     assert "模型发布要闻" in m  # 内嵌了日报片段
     # 版面：侧栏 + 热点榜（首页不只是三段内容摞在一起）
     assert 'class="qly-sidebar"' in m and 'class="qly-nav"' in m
-    assert 'class="hot-topics"' in m and "今日热点" in m
+    assert 'class="qly-topbar"' in m, "缺顶栏"
+    assert 'class="qly-rail"' in m, "缺右栏（热榜 / 信源分布 / 交叉验证说明）"
+    assert "热度榜" in m and "信源分布" in m and "交叉验证" in m
+    assert "往期归档" in m, "缺跨日导航——读者进了某一天就出不去"
     # 设计系统：唯一 token 源被内联进来，且页面里不该再有第二套配色变量
     assert "--theme-accent" in m and "--surface-card" in m
     assert "--g-brand" not in m and "--t-brand" not in m, "旧的散装配色变量应已清干净"
     assert "{{" not in m and "{%" not in m
 
-    # 合并页复制到数据根
-    assert daily_root.read_text(encoding="utf-8") == m
+    # 合并页也落到数据根。两份**不是逐字节相同**：往期归档的相对链接前缀不一样——
+    # 数据根那份看别的日子是 archive/<date>/，归档目录里那份是 ../<date>/。
+    root_text = daily_root.read_text(encoding="utf-8")
+    assert "模型发布要闻" in root_text
+    assert 'href="archive/' in root_text, "数据根那份的往期链接应带 archive/ 前缀"
+    assert 'href="../' in m, "归档目录里那份的往期链接应是 ../ 前缀"
+    assert 'href="archive/' not in m
 
 
 def test_merged_toggle_works_without_javascript(tmp_data_dir):
@@ -204,9 +212,9 @@ def test_merged_toggle_works_without_javascript(tmp_data_dir):
 
     # 结构：隐藏 radio + label[for]，纯 CSS :checked 控制显示
     assert '<input class="qly-switch" type="radio"' in merged
-    assert "#qly-pick-glance:checked ~ .qly-app #wrap-glance" in merged
-    assert "#qly-pick-timeline:checked ~ .qly-app #wrap-timeline" in merged
-    assert "#qly-pick-deep:checked ~ .qly-app #wrap-deep" in merged
+    assert "#qly-pick-glance:checked ~ .qly-shell #wrap-glance" in merged
+    assert "#qly-pick-timeline:checked ~ .qly-shell #wrap-timeline" in merged
+    assert "#qly-pick-deep:checked ~ .qly-shell #wrap-deep" in merged
     # 默认浅读：glance 那个 radio 带 checked
     glance_input = merged[merged.index('id="qly-pick-glance"') - 80: merged.index('id="qly-pick-glance"') + 40]
     assert "checked" in glance_input
@@ -463,7 +471,7 @@ def test_all_pages_share_one_token_source(tmp_data_dir):
     ]
     for path in pages:
         text = path.read_text(encoding="utf-8")
-        assert "--theme-accent: #135e6b" in text, "{0} 没吃到设计系统".format(path.name)
+        assert "--theme-accent: #d97757" in text, "{0} 没吃到设计系统".format(path.name)
         assert "prefers-color-scheme: dark" in text, "{0} 缺暗色适配".format(path.name)
         for legacy in ("--g-brand", "--t-brand", "#2f6df6"):
             assert legacy not in text, "{0} 残留旧配色 {1}".format(path.name, legacy)
@@ -562,3 +570,31 @@ def test_views_survive_items_without_an_editor_note(tmp_data_dir):
     # 盯**渲染出的元素**而不是文案：`.editor-note` 的样式规则和注释恒在 CSS 里，
     # 用词做判据会被自己的样式注释误伤（这个坑本文件已经踩过一次）
     assert '<p class="editor-note">' not in text
+
+
+def test_archive_nav_always_includes_the_day_being_rendered(tmp_data_dir):
+    """当天一定在归档导航里，哪怕它的 digest.html 此刻还没落盘。
+
+    归档列表是在**渲染当天页面的过程中**算出来的——当天那份文件正要写出去。不特判的话，
+    一个新日期的第一次渲染会得到「没有今天」的列表；只有一天数据时整块导航还会整个消失。
+    """
+    _write_draft(DATE, [_draft_item("s1", "条目一")])
+    assert d.cmd_finalize(DATE, do_html=True) == 0
+    root = paths.data_path(d.DAILY_ROOT_NAME).read_text(encoding="utf-8")
+    assert "往期归档" in root
+    assert "is-current" in root, "当天那条要高亮"
+    assert DATE[5:].replace("-", "/") in root
+
+
+def test_source_stats_bars_are_computed_in_python(tmp_data_dir):
+    """信源分布的条宽在 Python 里算好——minitpl 不做运算，模板里写不了百分比。"""
+    items = [
+        _draft_item("a", "一", source="Anthropic News"),
+        _draft_item("b", "二", source="Anthropic News"),
+        _draft_item("c", "三", source="arXiv"),
+    ]
+    rows = d._source_stats(items)
+    assert [r["label"] for r in rows] == ["Anthropic News", "arXiv"]
+    assert [r["count"] for r in rows] == ["2", "1"]
+    assert "width:100%" in rows[0]["bar_style"]
+    assert "width:50%" in rows[1]["bar_style"]

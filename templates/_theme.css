@@ -3,8 +3,9 @@
  * 这份文件是**代码**：三个模板（日报首页 / 详情页 / 简报）的配色、字号、间距、圆角、
  * 组件外观全部从这里取，模板里不得再出现第二套 :root 变量。改配色只改这里。
  *
- * 取值对齐 aihot（卡兹克）站点的设计系统——青灰底 + 墨青强调色（light #135e6b /
- * dark #4fa3b3），而不是 v0.2 那套通用蓝。命名沿用 aihot 的语义分层：
+ * 配色取 Claude 品牌：暖象牙底 + 赤陶强调色 + 石板蓝副色（来自用户的 Claude Design 稿，
+ * 9 阶色阶在 OKLCH 同一亮度尺度上生成，同一档在明暗两主题里视觉重量一致）。语义分层
+ * 沿用 aihot 站点那套（它把角色切得很清楚）：
  *   bg-*      页面底色（0 最深/最外，2 最浅/最内）
  *   surface-* 叠加层（半透明，跟随主题自动反相）与卡片实色
  *   text-0/1/2  主文 / 次要 / 弱化
@@ -25,62 +26,63 @@
  * 1. Tokens —— 浅色为基准
  * ===================================================================== */
 :root {
-  --bg-0: #f4f5f6;
-  --bg-1: #eff1f2;
-  --bg-2: #e2e4e7;
+  /* 底色三阶：暖象牙 → 米白 → 浅砂 */
+  --bg-0: #faf9f5;
+  --bg-1: #f0eee6;
+  --bg-2: #ebe7e1;
 
-  --surface-0: rgba(28, 39, 51, .025);
-  --surface-1: rgba(28, 39, 51, .04);
-  --surface-2: rgba(28, 39, 51, .06);
-  --surface-3: rgba(28, 39, 51, .09);
-  --surface-card: #ffffff;
-  --surface-card-hover: #ffffff;
-  --surface-elevated: #ffffff;
+  --surface-0: rgba(38, 36, 33, .025);
+  --surface-1: rgba(38, 36, 33, .04);
+  --surface-2: rgba(38, 36, 33, .06);
+  --surface-3: rgba(38, 36, 33, .09);
+  --surface-card: #fefdfa;
+  --surface-card-hover: #fefdfa;
+  --surface-elevated: #fefdfa;
 
-  --text-0: #1c2733;
-  --text-1: #5c6672;
-  --text-2: #6b7684;
-  --text-2-on-page: #65707e;
+  --text-0: #1f1e1d;
+  --text-1: #58554f;
+  --text-2: #75716a;
+  --text-2-on-page: #6b6760;
 
-  --border: #e2e4e7;
-  --border-strong: #d8dbdf;
-  --border-soft: #eceef0;
-  --border-emphasis: #8a94a2;
-  --border-card-subtle-solid: #c9cdd2;
+  --border: #ebe7e1;
+  --border-strong: #d7d2ca;
+  --border-soft: #f6f3ef;
+  --border-emphasis: #96918a;
+  --border-card-subtle-solid: #d7d2ca;
 
-  --shadow-card: 0 1px 2px rgba(28, 39, 51, .05);
-  --shadow-card-hover: 0 6px 18px rgba(28, 39, 51, .09);
-  --shadow-soft: 0 4px 12px rgba(28, 39, 51, .06);
+  --shadow-card: 0 1px 2px rgba(38, 36, 33, .05);
+  --shadow-card-hover: 0 8px 24px rgba(38, 36, 33, .09);
+  --shadow-soft: 0 4px 12px rgba(38, 36, 33, .06);
 
-  --accent-cyan: #135e6b;
-  --accent-amber: #b8873a;
-  --accent-rose: #b3402a;
-  --accent-emerald: #2f7d5c;
-  --accent-cyan-fg: #135e6b;
-  --accent-amber-fg: #7c5a24;
-  --accent-rose-fg: #b3402a;
-  --accent-emerald-fg: #2a6e51;
-  /* 软背景：不用 color-mix() 现算，直接给实值——离线单文件页要在老浏览器/沙箱
-     预览器里也能正确显示，color-mix 不支持时会整块塌成透明。 */
-  --accent-cyan-soft: rgba(19, 94, 107, .08);
-  --accent-amber-soft: rgba(184, 135, 58, .12);
-  --accent-rose-soft: rgba(179, 64, 42, .08);
-  --accent-emerald-soft: rgba(47, 125, 92, .10);
+  /* 四个语义色。**填充档与文字档分开**：赤陶 #d97757 压在象牙底上做文字只有 2.6:1，
+     远不够 WCAG AA——所以文字一律用 -fg（深两档），填充/描边才用基色。 */
+  --accent-cyan: #4c73a5;
+  --accent-amber: #ce9042;
+  --accent-rose: #c15f4d;
+  --accent-emerald: #579766;
+  --accent-cyan-fg: #355781;
+  --accent-amber-fg: #774a03;
+  --accent-rose-fg: #883324;
+  --accent-emerald-fg: #286037;
+  --accent-cyan-soft: rgba(76, 115, 165, .10);
+  --accent-amber-soft: #feecce;
+  --accent-rose-soft: #ffe4df;
+  --accent-emerald-soft: #dcf7e1;
 
-  --rank-1: #b3402a;
-  --rank-2: #a3642f;
-  --rank-3: #96702e;
-  --rank-rest: #6b7684;
+  --rank-1: #893a1f;
+  --rank-2: #774a03;
+  --rank-3: #58554f;
+  --rank-rest: #75716a;
 
-  --theme-accent: #135e6b;
-  --theme-accent-hover: #0e4a54;
-  --theme-accent-contrast: #fcfcfd;
-  --theme-accent-fg: #135e6b;
-  --theme-accent-soft: rgba(19, 94, 107, .08);
+  --theme-accent: #d97757;
+  --theme-accent-hover: #af5233;
+  --theme-accent-contrast: #ffffff;
+  --theme-accent-fg: #af5233;
+  --theme-accent-soft: rgba(217, 119, 87, .12);
 
-  --page-bg-solid: #f4f5f6;
-  --sidebar-bg: #ffffff;
-  --sidebar-border: #e2e4e7;
+  --page-bg-solid: #faf9f5;
+  --sidebar-bg: #f0eee6;
+  --sidebar-border: #ebe7e1;
 
   --radius: 12px;
   --radius-sm: 8px;
@@ -109,8 +111,9 @@
   --dur-base: 160ms;
   --dur-enter: 240ms;
 
-  --nav-width: 208px;
-  --container-feed: 720px;
+  --nav-width: 216px;
+  --rail-width: 260px;
+  --container-feed: 740px;
   --container-detail: 720px;
 
   --font-body: system-ui, -apple-system, "Segoe UI", "PingFang SC",
@@ -123,22 +126,22 @@
    那些环境不跑 JS——所以主题只跟随系统 prefers-color-scheme，不做 JS 切换按钮。 */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-0: #10151c;
-    --bg-1: #171d26;
-    --bg-2: #1b2230;
+    --bg-0: #1a1815;
+    --bg-1: #22201c;
+    --bg-2: #2a2723;
 
     --surface-0: rgba(255, 255, 255, .03);
     --surface-1: rgba(255, 255, 255, .04);
     --surface-2: rgba(255, 255, 255, .07);
     --surface-3: rgba(255, 255, 255, .10);
-    --surface-card: #171d26;
-    --surface-card-hover: #1b2230;
-    --surface-elevated: #1b2230;
+    --surface-card: #22201c;
+    --surface-card-hover: #2a2723;
+    --surface-elevated: #2a2723;
 
-    --text-0: #e8ebf2;
-    --text-1: #98a2b3;
-    --text-2: #7b869a;
-    --text-2-on-page: #7b869a;
+    --text-0: #f0eee6;
+    --text-1: #b8b3ac;
+    --text-2: #96918a;
+    --text-2-on-page: #96918a;
 
     --border: rgba(255, 255, 255, .08);
     --border-strong: rgba(255, 255, 255, .12);
@@ -150,32 +153,33 @@
     --shadow-card-hover: none;
     --shadow-soft: 0 6px 18px rgba(0, 0, 0, .35);
 
-    --accent-cyan: #4fa3b3;
-    --accent-amber: #d3b26a;
-    --accent-rose: #d86a52;
-    --accent-emerald: #5fc79a;
-    --accent-cyan-fg: #6cb8c6;
-    --accent-amber-fg: #d3b26a;
-    --accent-rose-fg: #d86a52;
-    --accent-emerald-fg: #5fc79a;
-    --accent-cyan-soft: rgba(79, 163, 179, .14);
-    --accent-amber-soft: rgba(211, 178, 106, .14);
-    --accent-rose-soft: rgba(216, 106, 82, .14);
-    --accent-emerald-soft: rgba(95, 199, 154, .14);
+    /* 暗底上反过来：文字档要更亮，填充档保持基色 */
+    --accent-cyan: #6c95c9;
+    --accent-amber: #ce9042;
+    --accent-rose: #c15f4d;
+    --accent-emerald: #579766;
+    --accent-cyan-fg: #96b7e1;
+    --accent-amber-fg: #e0b070;
+    --accent-rose-fg: #e19080;
+    --accent-emerald-fg: #7fc394;
+    --accent-cyan-soft: rgba(108, 149, 201, .16);
+    --accent-amber-soft: rgba(206, 144, 66, .16);
+    --accent-rose-soft: rgba(193, 95, 77, .16);
+    --accent-emerald-soft: rgba(87, 151, 102, .16);
 
-    --rank-1: #d86a52;
-    --rank-2: #d18a5e;
-    --rank-3: #d3b26a;
-    --rank-rest: #7b869a;
+    --rank-1: #f19b80;
+    --rank-2: #ce9042;
+    --rank-3: #d7d2ca;
+    --rank-rest: #96918a;
 
-    --theme-accent: #4fa3b3;
-    --theme-accent-hover: #63b4c3;
-    --theme-accent-contrast: #0c1117;
-    --theme-accent-fg: #6cb8c6;
-    --theme-accent-soft: rgba(79, 163, 179, .14);
+    --theme-accent: #d97757;
+    --theme-accent-hover: #f19b80;
+    --theme-accent-contrast: #1a1815;
+    --theme-accent-fg: #f19b80;
+    --theme-accent-soft: rgba(217, 119, 87, .16);
 
-    --page-bg-solid: #10151c;
-    --sidebar-bg: #0c1117;
+    --page-bg-solid: #1a1815;
+    --sidebar-bg: #151310;
     --sidebar-border: rgba(255, 255, 255, .07);
   }
 }
