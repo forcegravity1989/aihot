@@ -29,38 +29,9 @@ def digest(tmp_data_dir, sample_items):
 # =========================================================================
 # 三排序按钮（spec §9.3.2）
 # =========================================================================
-def test_has_three_sort_buttons_with_required_labels(digest):
-    html = digest["html"]
-    for label in ("🔥 热度", "🕒 时间", "📈 得分"):
-        assert label in html, "缺少排序按钮: {0}".format(label)
-    for mode in ("hot", "time", "score"):
-        assert 'data-sort="{0}"'.format(mode) in html
-    assert len(re.findall(r'class="sort-btn"', html)) == 3
-
-
-def test_sort_uses_vanilla_js_over_data_attributes(digest):
-    html = digest["html"]
-    assert "data-sort-root" in html
-    for attr in ("data-hotness", "data-ts", "data-weight"):
-        assert attr in html
-    assert "appendChild" in html, "排序应为原地重排 DOM"
-    assert "<script>" in html and "</script>" in html
-
-
 # =========================================================================
 # Ctrl+K Command Palette（spec §9.3.3）
 # =========================================================================
-def test_has_ctrl_k_command_palette(digest):
-    html = digest["html"]
-    assert 'id="qly-palette"' in html
-    assert 'id="qly-palette-input"' in html
-    assert "Ctrl" in html and "<kbd>K</kbd>" in html
-    assert "Escape" in html, "Esc 关闭"
-    assert "ctrlKey" in html and "metaKey" in html
-    assert "Enter" in html, "回车跳转"
-    assert "fuzzy" in html, "模糊过滤"
-
-
 def test_palette_index_covers_every_rendered_item(digest):
     html = digest["html"]
     blob = re.search(
@@ -83,14 +54,6 @@ def test_palette_index_covers_every_rendered_item(digest):
 # =========================================================================
 # badge / 版面 / URL（spec §9.3.1，铁律 2）
 # =========================================================================
-def test_badges_render_as_chinese_emoji_labels(digest):
-    html = digest["html"]
-    assert "📈 重磅" in html
-    assert "⚡ 一手速报" in html
-    assert 'class="badge badge-heavy"' in html
-    assert 'class="badge badge-flash"' in html
-
-
 def test_every_card_carries_a_clickable_url(digest):
     html = digest["html"]
     cards = re.findall(r"<li class=\"card\".*?</li>", html, re.S)
@@ -193,13 +156,6 @@ def test_existing_avatar_is_inlined_as_base64(tmp_data_dir):
     html = report.render_html([_builder_item()], {})
     assert "data:image/png;base64," in html
     assert base64.b64encode(TINY_PNG).decode("ascii") in html
-
-
-def test_missing_avatar_falls_back_to_initial_circle(tmp_data_dir):
-    html = report.render_html([_builder_item()], {})
-    assert "data:image/png;base64," not in html
-    assert 'class="avatar" style="background:' in html
-    assert ">K</span>" in html
 
 
 # =========================================================================

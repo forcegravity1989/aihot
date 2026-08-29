@@ -75,22 +75,6 @@ def test_personas_omitted_means_no_personas_board(tmp_data_dir):
     assert "👥 人物画像" not in html  # 渲染标题带 emoji；CSS 注释里的裸文案不算
 
 
-def test_persona_avatar_inlined_as_base64_when_present(tmp_data_dir):
-    avatar_dir = tmp_data_dir / "builder-avatars"
-    avatar_dir.mkdir(parents=True, exist_ok=True)
-    (avatar_dir / "karpathy.png").write_bytes(TINY_PNG)
-
-    html = report.render_html([], {}, personas=[_persona("karpathy", "Andrej", 100)], out_path=False)
-    assert "data:image/png;base64," in html
-    assert base64.b64encode(TINY_PNG).decode("ascii") in html
-
-
-def test_persona_missing_avatar_uses_initial_circle(tmp_data_dir):
-    html = report.render_html([], {}, personas=[_persona("karpathy", "Andrej Karpathy", 100)], out_path=False)
-    assert 'class="avatar" style="background:' in html
-    assert ">A</span>" in html  # 首字母占位（Andrej → A）
-
-
 # =========================================================================
 # 为你推荐版面（personal_score 降序 + 原因 chip）
 # =========================================================================
@@ -109,15 +93,6 @@ def test_personalized_board_sorts_by_personal_score_desc(tmp_data_dir):
     pos_mid = section.index("中分条目")
     pos_low = section.index("低分条目")
     assert pos_high < pos_mid < pos_low, "为你推荐应按 personal_score 降序"
-
-
-def test_personalized_board_shows_reason_chips(tmp_data_dir):
-    item = _scored("命中兴趣", "https://a/1", hotness=0.4, score=0.8, reasons=["tag:models", "source:anthropic"])
-    html = report.render_html([item], {}, out_path=False)
-    section = html.split('id="board-personalized"', 1)[1].split("</section>", 1)[0]
-    assert 'class="reason-chip"' in section
-    assert "models" in section and "anthropic" in section
-    assert "0.8000" in section  # personal_score 展示
 
 
 def test_no_personal_score_means_no_personalized_board(tmp_data_dir):

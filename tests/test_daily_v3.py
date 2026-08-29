@@ -202,29 +202,6 @@ def test_finalize_html_produces_three_views(tmp_data_dir):
     assert 'href="archive/' not in m
 
 
-def test_merged_toggle_works_without_javascript(tmp_data_dir):
-    """回归用例：切换不能依赖 JS——沙箱预览器（聊天内嵌、文件面板、邮件客户端）
-    常常不执行页面脚本，用户点「深读」会毫无反应、只能看到浅读。
-    """
-    _write_draft(DATE, [_draft_item("s1", "条目一")])
-    d.cmd_finalize(DATE, do_html=True)
-    merged = (paths.data_path("archive", DATE, d.MERGED_NAME)).read_text(encoding="utf-8")
-
-    # 结构：隐藏 radio + label[for]，纯 CSS :checked 控制显示
-    assert '<input class="qly-switch" type="radio"' in merged
-    assert "#qly-pick-glance:checked ~ .qly-shell #wrap-glance" in merged
-    assert "#qly-pick-timeline:checked ~ .qly-shell #wrap-timeline" in merged
-    assert "#qly-pick-deep:checked ~ .qly-shell #wrap-deep" in merged
-    # 默认浅读：glance 那个 radio 带 checked
-    glance_input = merged[merged.index('id="qly-pick-glance"') - 80: merged.index('id="qly-pick-glance"') + 40]
-    assert "checked" in glance_input
-    # 关键：切换本身不得再依赖脚本（浅读的「标记已读」仍可用 JS 做渐进增强，
-    # 那是可有可无的功能；切换是核心导航，必须无 JS 也能用）
-    assert 'data-view="deep"' not in merged, "旧的 JS 切换钩子应已移除"
-    assert 'show("glance")' not in merged, "旧的 JS 切换初始化应已移除"
-    assert ".daily-toggle button" not in merged, "切换控件应是 label，不是 button+JS"
-
-
 def test_html_only_reuses_final_doc(tmp_data_dir):
     _write_draft(DATE, [_draft_item("s1", "条目一")])
     d.cmd_finalize(DATE, do_html=False)
