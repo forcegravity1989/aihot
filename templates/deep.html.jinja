@@ -86,6 +86,7 @@
     {% endif %}
 
     {% if card.summary %}<p class="deep-summary">{{ card.summary }}</p>{% endif %}
+    {% if card.editor_note %}<p class="editor-note"><b>编辑短评</b> · {{ card.editor_note }}</p>{% endif %}
 
     {% if card.theses %}
     <div class="deep-theses">

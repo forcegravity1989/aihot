@@ -520,3 +520,45 @@ def test_timeline_infers_precision_for_legacy_rows(tmp_data_dir):
     ]
     html = d.render_timeline(DATE, items)
     assert ">全天<" in html and ">09:30<" in html
+
+
+def test_editor_note_is_rendered_in_every_view(tmp_data_dir):
+    """编辑写的选稿理由必须露出来。
+
+    ``editor_note`` 是本项目「Agent 在环」的产出——选稿这种需要判断力的活由编辑做，
+    代码只负责取原料与渲染。这个字段一度被写进草案却在所有模板里被丢掉：管线在生产
+    「为什么今天选它」，页面却一个字都不显示，等于把千里眼降级成纯聚合器。
+    """
+    note = "今日首选。它把 agent 写得快但流程没跟上这个痛点讲透了。"
+    _write_draft(DATE, [_draft_item("s1", "模型发布要闻")])
+    # editor_note 是编辑字段，走草案落到定稿；这里直接改草案模拟编辑写过
+    import json
+    from qianliyan.core import storage
+    path = paths.data_path("archive", DATE, d.DRAFT_NAME)
+    doc = storage.read_json(path, default={})
+    doc["items"][0]["editor_note"] = note
+    storage.write_json(path, doc)
+
+    assert d.cmd_finalize(DATE, do_html=True) == 0
+
+    pages = {
+        "日报": paths.data_path("archive", DATE, d.GLANCE_NAME),
+        "时间轴": paths.data_path("archive", DATE, d.TIMELINE_NAME),
+        "深读": paths.data_path("archive", DATE, d.DEEP_NAME),
+        "详情页": paths.data_path(d.DETAIL_DIR, "s1.html"),
+        "首页": paths.data_path(d.DAILY_ROOT_NAME),
+    }
+    for label, path in pages.items():
+        text = path.read_text(encoding="utf-8")
+        assert note in text, "{0} 没渲染 editor_note".format(label)
+        assert '<p class="editor-note">' in text, "{0} 缺短评元素".format(label)
+
+
+def test_views_survive_items_without_an_editor_note(tmp_data_dir):
+    """没写短评的条目不许留下空壳（一条光秃秃的「编辑短评 ·」比不显示更糟）。"""
+    _write_draft(DATE, [_draft_item("s1", "条目一")])
+    assert d.cmd_finalize(DATE, do_html=True) == 0
+    text = paths.data_path("archive", DATE, d.GLANCE_NAME).read_text(encoding="utf-8")
+    # 盯**渲染出的元素**而不是文案：`.editor-note` 的样式规则和注释恒在 CSS 里，
+    # 用词做判据会被自己的样式注释误伤（这个坑本文件已经踩过一次）
+    assert '<p class="editor-note">' not in text

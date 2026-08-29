@@ -558,6 +558,16 @@ def _summary_text(entry: Dict[str, Any]) -> str:
     return str(entry.get("summary") or "").strip()
 
 
+def _editor_note(entry: Dict[str, Any]) -> str:
+    """编辑写的选稿理由（``editor_note``）。
+
+    这是本项目「Agent 在环」的产出——选稿、中文化、深读提炼这些需要判断力的活由编辑
+    （人或 Agent）做，代码只负责取原料与渲染。既然写了就必须露出来：一条「为什么今天
+    选它」比多一行元数据有价值得多，这也是千里眼区别于纯聚合器的地方。
+    """
+    return str(entry.get("editor_note") or "").strip()
+
+
 def _sources_text(entry: Dict[str, Any]) -> str:
     names = [str(s) for s in (entry.get("source_list") or []) if s]
     if not names and entry.get("source"):
@@ -719,6 +729,7 @@ def _grouped_by_format(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, A
             # 日报版式（对齐 aihot）是「标题 + 摘要段」而不是光秃秃一行标题——
             # 一行标题只够判断"要不要点"，摘要才让这一页本身就有阅读价值。
             "summary": _summary_text(entry),
+            "editor_note": _editor_note(entry),
             "badges": _badge_views(entry),
         }
         buckets.setdefault(fmt, []).append(row)
@@ -770,6 +781,7 @@ def _timeline_days(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, Any]]
             "detail_href": _detail_href(sig),
             "source": _sources_text(entry),
             "summary": _summary_text(entry),
+            "editor_note": _editor_note(entry),
             "badges": _badge_views(entry),
             "score_text": score["text"],
             "score_cls": score["cls"],
@@ -847,6 +859,7 @@ def _deep_card(entry: Dict[str, Any], now) -> Dict[str, Any]:
         "title": _display_title(entry),
         "url": str(entry.get("url") or ""),
         "summary": _summary_text(entry),
+        "editor_note": _editor_note(entry),
         "badges": _cross_parts(entry),
         "source_list": [{"name": str(s)} for s in (entry.get("source_list") or [entry.get("source") or ""]) if s],
         "source_count": _source_count(entry),

@@ -34,6 +34,13 @@
   </section>
   {% endif %}
 
+  {% if editor_note %}
+  <section class="dt-sec">
+    <div class="dt-sec-label">编辑为什么选它</div>
+    <p class="editor-note">{{ editor_note }}</p>
+  </section>
+  {% endif %}
+
   {% if is_video %}
   <section class="dt-sec">
     <div class="dt-sec-label">🎤 演讲{% if has_transcript %} · 已读字幕全文{% endif %}</div>

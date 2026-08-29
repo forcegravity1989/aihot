@@ -409,6 +409,15 @@ img { max-width: 100%; }
 .report-entry-summary { margin: 6px 0 0; font-size: 13.5px; line-height: var(--line-height-relaxed);
   color: var(--text-1); }
 
+/* 编辑短评 —— 编辑（人或 Agent）写的选稿理由。用左侧强调色竖线而不是又一张卡片：
+   它是**对正文的旁注**，视觉上应该依附在条目上，不该和条目本身抢层级。 */
+.editor-note {
+  margin: 10px 0 0; padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--theme-accent);
+  font-size: 13px; line-height: var(--line-height-relaxed); color: var(--text-1);
+}
+.editor-note b { color: var(--text-0); }
+
 /* =======================================================================
  * 9. 详情页
  * ===================================================================== */

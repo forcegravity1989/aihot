@@ -38,6 +38,7 @@
             </div>
             <h3 class="timeline-title"><a href="{{ item.detail_href }}">{{ item.icon }} {{ item.title }}</a></h3>
             {% if item.summary %}<p class="timeline-summary">{{ item.summary }}</p>{% endif %}
+            {% if item.editor_note %}<p class="editor-note"><b>编辑短评</b> · {{ item.editor_note }}</p>{% endif %}
             <div class="timeline-foot">
               <a class="chip" href="{{ item.detail_href }}">详情页 →</a>
               <a class="chip" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">原文 ↗</a>

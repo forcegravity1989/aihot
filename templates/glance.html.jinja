@@ -35,6 +35,7 @@
       </div>
       <h3 class="report-entry-title"><a class="gtitle" href="{{ item.detail_href }}">{{ item.title }}</a></h3>
       {% if item.summary %}<p class="report-entry-summary">{{ item.summary }}</p>{% endif %}
+      {% if item.editor_note %}<p class="editor-note"><b>编辑短评</b> · {{ item.editor_note }}</p>{% endif %}
       <div class="report-entry-meta" style="margin-top:8px">
         <a class="chip" href="{{ item.detail_href }}">详情页 →</a>
         <a class="chip glink" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">原文 ↗</a>
