@@ -37,6 +37,15 @@ sources:
   - {name: Anthropic Engineering, type: scrape, url: "https://www.anthropic.com/engineering", article_pattern: "^/engineering/[a-z0-9-]+$", weight: 0.90, format: blog, category: practices,  tags: [official, anthropic, practices]}   # 列表页无 <time>，真实日期取不到；weight 压到 0.95 以下避免误判"一手速报"
   - {name: Claude Blog,           type: scrape, url: "https://claude.com/blog",               article_pattern: "^/blog/[a-z0-9-]+$",        weight: 0.9,  format: blog, category: claude-code, tags: [official, claude, claude-code]}
 
+  # —— 其它模型厂商官方口径（2026-08-31 补：此前只有 OpenAI/Anthropic/DeepMind 三家，
+  #    Meta 与 Mistral 的 blog 是 JS 渲染的 SPA，服务端 HTML 里没有文章链接，scrape 抓不到，
+  #    要抓得上 CDP——和内网眼同一个问题，暂缺）——
+  #    DeepSeek 的 api-docs.deepseek.com/rss.xml 探测返回 200，但内容是 Docusaurus 文档站的
+  #    HTML 外壳（catch-all 路由），解析出 0 条——只看状态码会被骗，已撤掉。DeepSeek 暂缺。
+  #    Qwen 官方 blog 最新一篇停在 2025-09-22，收录的 44 条全是存档；留着是因为它一旦复更就能接上，
+  #    但别指望它进日报。
+  - {name: Qwen Blog,     type: rss, url: "https://qwenlm.github.io/blog/index.xml", weight: 0.88, format: blog, category: models, tags: [official, qwen, alibaba, models]}
+
   # —— 官方 YouTube（频道 feed，真实可达）——
   - {name: Claude YouTube,          type: youtube, channel_id: UCV03SRZXJEz-hchIAogeJOg, weight: 0.92, format: video, category: talks, tags: [official, anthropic, claude, video, talks]}
   - {name: Anthropic YouTube,       type: youtube, channel_id: UCrDwWp7EBBv4NwvScIpBDOA, weight: 0.9,  format: video, category: talks, tags: [official, anthropic, video, talks]}
@@ -58,6 +67,14 @@ sources:
   - {name: GitHub Trending (Daily),  type: github-trending, since: daily,  weight: 0.68, format: repo, category: trending, tags: [github, trending, tools]}
   - {name: GitHub Trending (Weekly), type: github-trending, since: weekly, weight: 0.62, format: repo, category: trending, tags: [github, trending, tools]}
 
+  # —— AI infra（2026-08-31 补：此前零专用信源，infra 话题全靠 HuggingFace Blog 一个源带，
+  #    而它近 7 天只有 5 条、其余 845 条是陈年存档，等于日报里基本看不到 infra）——
+  - {name: NVIDIA Developer Blog, type: rss, url: "https://developer.nvidia.com/blog/feed/", weight: 0.85, format: blog, category: infra, tags: [vendor, nvidia, infra, hardware]}
+  - {name: PyTorch Blog,          type: rss, url: "https://pytorch.org/blog/feed.xml",       weight: 0.85, format: blog, category: infra, tags: [vendor, pytorch, infra, framework]}
+  - {name: SemiAnalysis,          type: rss, url: "https://www.semianalysis.com/feed",       weight: 0.8,  format: blog, category: infra, tags: [kol, infra, hardware, analysis]}
+
   # —— 论文（arXiv API）——
   - {name: arXiv cs.CL, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}
   - {name: arXiv cs.AI, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}
+  - {name: arXiv cs.LG, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.LG&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}   # 机器学习主类目，此前缺席
+  - {name: arXiv cs.DC, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.DC&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv, infra]}   # 分布式/系统，infra 论文在这
