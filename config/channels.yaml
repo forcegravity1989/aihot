@@ -121,6 +121,25 @@ channels:
             ["pretrain", "post-train", "fine-tune", "finetune", "rlhf", "benchmark",
              "scaling law", "distill", "quantization", "推理优化", "强化学习"]
 
+  # —— AI infra（2026-08-31 新增）——
+  # 为什么要单开一个频道而不是靠 tags 蹭进 models/model-dev：频道内按 hotness 降序截断
+  # limit，而 Anthropic/Claude 生态的条目权重高又新鲜，把 infra 条目全挤出前 30。
+  # 加了源却排不进去 = 抓回来也看不见。给 infra 一个只跟同类竞争的位置，
+  # cmd_prepare 的「各频道 top 5」才会把它们带进选稿草案。
+  - name: infra
+    title: AI 基础设施
+    limit: 30
+    match:
+      # 只认信源级信号 + 极具体的技术词。第一版用了 inference/gpu/quantization 这类
+      # 宽泛词，结果被「Claude Code 系统提示词」灌满——那个源 204 条全新鲜、权重又高，
+      # changelog 正文里这些词满地都是。宽 keyword 规则会静默劫持整个频道。
+      any_of:
+        - tags_any: [infra, hardware, framework, serving]
+        - categories: [infra]
+        - keywords_any:
+            ["vllm", "sglang", "tensorrt", "trainium", "kv cache", "kv-cache",
+             "cuda kernel", "推理引擎", "显存占用"]
+
   # —— 插件生态（既有频道，向后兼容）——
   - name: plugins
     title: 插件生态
