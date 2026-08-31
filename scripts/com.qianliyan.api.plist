@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  scripts/com.qianliyan.api.plist —— 千里眼 HTTP 服务的 launchd 定义（模板）。
+
+  为什么要有这个：服务此前是挂在一次性 shell 会话里跑的，会话一结束就没了，重启也不
+  回来。长驻服务应该由系统托管——KeepAlive 拉起崩溃的进程，RunAtLoad + 开机自启保证
+  重启后还在。
+
+  安装（把 __REPO__ / __DATA_DIR__ 换成真实路径）：
+      sed -e "s|__REPO__|$PWD|g" -e "s|__DATA_DIR__|$HOME/qianliyan-data|g" \
+          scripts/com.qianliyan.api.plist > ~/Library/LaunchAgents/com.qianliyan.api.plist
+      launchctl load ~/Library/LaunchAgents/com.qianliyan.api.plist
+
+  停用：launchctl unload ~/Library/LaunchAgents/com.qianliyan.api.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.qianliyan.api</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO__/.venv/bin/python</string>
+        <string>-m</string>
+        <string>qianliyan.cli.api_server</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>8787</string>
+    </array>
+
+    <!-- 只监听 127.0.0.1：这份服务没有鉴权（QLY_API_KEY 未设时全开放），
+         绝不能暴露到局域网。要对外必须先设 QLY_API_KEY。 -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>QLY_DATA_DIR</key>
+        <string>__DATA_DIR__</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+    <key>StandardOutPath</key>
+    <string>__DATA_DIR__/logs/api.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__DATA_DIR__/logs/api.err.log</string>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

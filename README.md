@@ -96,6 +96,24 @@ launchctl load ~/Library/LaunchAgents/com.qianliyan.daily.plist
 会让每一轮都非零退出，告警很快被当噪音忽略。判据改成「主信源有没有拿到数据」，
 那才是「今天的日报有没有原料」这个真问题。
 
+## HTTP 服务
+
+服务同样由 launchd 托管（`KeepAlive` 崩溃自动拉起、开机自启），不再挂在一次性 shell
+会话里——会话一结束服务就没了，重启也不回来。
+
+```bash
+DATA=$(.venv/bin/python -c 'from qianliyan.core import paths; print(paths.resolve_data_dir())')
+sed -e "s|__REPO__|$PWD|g" -e "s|__DATA_DIR__|$DATA|g" \
+    scripts/com.qianliyan.api.plist > ~/Library/LaunchAgents/com.qianliyan.api.plist
+launchctl load ~/Library/LaunchAgents/com.qianliyan.api.plist
+```
+
+监听 `127.0.0.1:8787`。**只绑本机是刻意的**：`QLY_API_KEY` 未设时所有端点无鉴权，
+绝不能暴露到局域网；要对外先设 `QLY_API_KEY`。
+
+主要端点：`/daily`（三视图首页）、`/daily?view=glance|timeline|deep`、`/story/<sig>`
+（单条详情页）、`/digest`（全池简报）、`/items`、`/hotlist`、`/status`。
+
 ## 目录说明
 
 ```
