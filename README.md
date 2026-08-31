@@ -96,6 +96,39 @@ launchctl load ~/Library/LaunchAgents/com.qianliyan.daily.plist
 会让每一轮都非零退出，告警很快被当噪音忽略。判据改成「主信源有没有拿到数据」，
 那才是「今天的日报有没有原料」这个真问题。
 
+## 云端信源哨兵
+
+抓取跑在本机（launchd），**盯梢跑在云端**（Claude routine
+[`千里眼 · GitHub 信源哨兵`](https://claude.ai/code/routines/trig_01TSB1SbHWxg7uaVynxuQ7Q7)，
+每天 08:00 London / 07:00 UTC）。两层分工是被约束逼出来的：
+
+| | 跑在哪 | 为什么只能在这 |
+|---|---|---|
+| 抓取 | 本机 launchd | 产物要落 `$QLY_DATA_DIR`，云端 agent 碰不到本机文件系统 |
+| 盯梢 | 云端 routine | 不依赖本机，笔记本合盖照跑；而本机 cron 失败只写日志、没人看 |
+
+**云端沙箱的出网被 egress 策略卡死**——实测连 `example.com`、`arxiv.org` 都是
+`CONNECT tunnel failed 403`，只有 `api.github.com` 通。所以哨兵**不跑 `health_check`**
+（那会把十几个源全报 FAIL，是它自己出不了网，不是信源挂了），只盯四个住在 GitHub 上的信源：
+
+| 眼 | 仓库 | 路径 |
+|---|---|---|
+| insights | `zhoux77899/claude-code-insights` | `plugins/plugins-daily-insight.md` |
+| cc_prompts | `Piebald-AI/claude-code-system-prompts` | `CHANGELOG.md` |
+| plugins_official | `anthropics/claude-plugins-official` | `.claude-plugin/marketplace.json` |
+| builders | `zarazhangrui/follow-builders` | 见 `config/builders.yaml` |
+
+范围小，但覆盖的恰好是**最容易静默坏掉**的那类：文件被改名/移位/改 schema，本地抓取会
+静悄悄少一块数据，没人会发现。哨兵每天做两件事——确认路径还在，以及把线上内容喂给
+仓库里那个真实的解析器，和 `tests/fixtures/real/` 的基线样本比**条目数与字段非空率**。
+
+**一切正常就什么都不做**（不开 issue、不留评论）。有问题才开一条 `信源哨兵 · <日期>` 的
+issue，且先查重——已有未关闭的就只追加评论。哨兵是只读的：不改代码、不开 PR、不 push。
+
+> 由来：`health_check` 探测主信源用的一直是迁移前的 REST 接口，天天返回 404 被当噪音
+> 忽略，直到 2026-08-31 才发现——而那期间主信源其实是好的。**误报比漏报更有害**，
+> 所以哨兵的判据写得保守，且明确写了「不把自己出不了网当成信源故障」。
+
 ## HTTP 服务
 
 服务同样由 launchd 托管（`KeepAlive` 崩溃自动拉起、开机自启），不再挂在一次性 shell
