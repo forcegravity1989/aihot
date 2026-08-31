@@ -129,6 +129,25 @@ issue，且先查重——已有未关闭的就只追加评论。哨兵是只读
 > 忽略，直到 2026-08-31 才发现——而那期间主信源其实是好的。**误报比漏报更有害**，
 > 所以哨兵的判据写得保守，且明确写了「不把自己出不了网当成信源故障」。
 
+## 给云端 routine 开放网络
+
+云端环境默认是 **Trusted** 级别——只放行包管理器 / GitHub / 云 SDK，`aihot`、YouTube、
+各家官方 blog 全在墙外。网络级别是**每个环境自己的设置**（None / Trusted / Full / Custom），
+你自己就能改，没有组织级白名单可推送。
+
+出网域名清单从探测目标同源导出，加信源后重跑一次即可：
+
+```bash
+.venv/bin/python -m qianliyan.cli.health_check --print-domains
+```
+
+把输出填进 **claude.ai/code 消息框上方的云图标 → 环境设置 → Network access → Custom →
+Allowed domains**，并勾选「Also include default list of common package managers」
+（否则 pypi / GitHub 会被一起关掉）。环境选择器**没有设置页也没有直达 URL**，只能在 UI 点。
+
+> 建议单独建一个环境给哨兵用，把 Default 留在 Trusted：哨兵只读公开 feed，放宽它一个就够，
+> 不必让所有云端会话都能出网。
+
 ## HTTP 服务
 
 服务同样由 launchd 托管（`KeepAlive` 崩溃自动拉起、开机自启），不再挂在一次性 shell
