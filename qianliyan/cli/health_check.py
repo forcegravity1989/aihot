@@ -48,13 +48,37 @@ def _local_targets(sources_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
 
 
 def _aihot_target(sources_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
+    """aihot 的探测目标 = 配置里**实际在抓的那些 feed**。
+
+    这里曾经写死探老的 REST 接口 ``/api/news?category=llm``——而 aihot 早已迁到 RSS
+    出口（``feeds`` / ``category_feeds``），配置里根本没有 ``endpoint`` 字段，于是探测
+    一直落到默认值上、天天返回 404，把好端端的主信源报成挂了。健康探测**必须探真正
+    在用的地址**，否则它每天喊狼来了，真挂的那天没人信。
+    """
     cfg = sources_cfg.get("aihot") or {}
     base_url = str(cfg.get("base_url") or "https://aihot.virxact.com").rstrip("/")
-    endpoint = str(cfg.get("endpoint") or "/api/news")
-    categories = cfg.get("categories") or ["llm"]
-    category = categories[0] if categories else "llm"
-    url = "{0}{1}?category={2}".format(base_url, endpoint, category)
-    return [("AIHot", "rest", url)]
+
+    targets: List[Tuple[str, str, str]] = []
+    for feed in (cfg.get("feeds") or []):
+        if not isinstance(feed, dict):
+            continue
+        path = str(feed.get("path") or "").strip()
+        if path:
+            kind = str(feed.get("kind") or "feed")
+            targets.append(("AIHot · {0}".format(kind), "rss", base_url + path))
+
+    # 分类 feed 只探第一个——四个是同一套出口，全探纯属拖慢探测
+    category_cfg = cfg.get("category_feeds") or {}
+    slugs = [str(x) for x in (category_cfg.get("slugs") or []) if str(x).strip()]
+    if slugs:
+        targets.append((
+            "AIHot · 分类({0})".format(slugs[0]), "rss",
+            "{0}/feed/category/{1}.xml".format(base_url, slugs[0]),
+        ))
+
+    if not targets:  # 配置缺 feeds 时至少探站点本身，别静默返回空
+        targets.append(("AIHot", "rss", base_url))
+    return targets
 
 
 def _builders_target(builders_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:

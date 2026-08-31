@@ -54,6 +54,48 @@ env QLY_DATA_DIR  >  <repo根>/paths.local.json  >  config/paths.team.json  >  ~
 （全局热榜 top 50）、`channels/<name>.md`（各频道人读页）、`digest.html`（HTML 简报）、
 `sync_meta.json`（最近一次同步的运行元数据）。
 
+## 定时抓取
+
+抓取跑在 launchd 上（macOS），每天 **07:30** 一轮，给编辑留出选稿时间。
+
+```bash
+# 安装
+DATA=$(.venv/bin/python -c 'from qianliyan.core import paths; print(paths.resolve_data_dir())')
+sed -e "s|__REPO__|$PWD|g" -e "s|__DATA_DIR__|$DATA|g" \
+    scripts/com.qianliyan.daily.plist > ~/Library/LaunchAgents/com.qianliyan.daily.plist
+launchctl load ~/Library/LaunchAgents/com.qianliyan.daily.plist
+```
+
+`launchctl start com.qianliyan.daily` 手动触发一轮；`launchctl list | grep qianliyan`
+看状态（第二列是上次退出码）；`launchctl unload ...` 停用。改时间就改 plist 里的
+`StartCalendarInterval` 再 unload/load 一次。
+
+**为什么不是 crontab**：这是会合盖休眠的笔记本。到点时机器睡着，cron 那一轮就永久
+错过、第二天才有数据；launchd 会在唤醒后补跑。对「每天抓一次」，差别就是今天有没有日报。
+
+调度入口是 [`scripts/qly-daily.sh`](scripts/qly-daily.sh)，做三件事：
+
+| 步骤 | 说明 |
+|------|------|
+| `sync` | 抓取 → 去重打分 → 富化 → 渲染简报 |
+| `daily_digest_all --prepare` | 备好当日选稿草案 |
+| 日志 | `$QLY_DATA_DIR/logs/daily-<日期>.log`，保留 30 天 |
+
+**选稿与定稿刻意不自动做**——那两步需要判断力，是编辑（人或 Agent）的活，自动跑只会
+产出一份没人看过的日报。草案备好后由编辑选条目、写 `editor_note`，再 `--finalize --html`。
+
+退出码语义（决定要不要报警）：
+
+| 码 | 含义 |
+|----|------|
+| 0 | 当日数据拿到了（主信源 aihot OK） |
+| 1 | 抓取失败 / 主信源挂了 / 全部眼失败——需要人看一眼 |
+| 2 | 上一轮还在跑，本轮跳过——不是错误 |
+
+**不用 `sync --strict`**：内网 `company` 眼在没有 CDP 浏览器的机器上天天失败，`--strict`
+会让每一轮都非零退出，告警很快被当噪音忽略。判据改成「主信源有没有拿到数据」，
+那才是「今天的日报有没有原料」这个真问题。
+
 ## 目录说明
 
 ```

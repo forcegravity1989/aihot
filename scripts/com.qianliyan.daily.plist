@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  scripts/com.qianliyan.daily.plist —— 千里眼每日抓取的 launchd 定义（模板）。
+
+  为什么是 launchd 而不是 crontab：这是一台会合盖休眠的笔记本。到点时机器睡着的话，
+  cron 那一轮就**永久错过**了，第二天才有数据；launchd 的 StartCalendarInterval 会在
+  唤醒后补跑。对「每天抓一次」这种任务，差别就是「今天有没有日报」。
+
+  安装（把 __REPO__ / __DATA_DIR__ 换成真实路径）：
+      sed -e "s|__REPO__|$PWD|" -e "s|__DATA_DIR__|$HOME/qianliyan-data|" \
+          scripts/com.qianliyan.daily.plist > ~/Library/LaunchAgents/com.qianliyan.daily.plist
+      launchctl load ~/Library/LaunchAgents/com.qianliyan.daily.plist
+
+  改时间：编辑 StartCalendarInterval 后 launchctl unload && load 一次。
+  停用：  launchctl unload ~/Library/LaunchAgents/com.qianliyan.daily.plist
+  手动触发一次：launchctl start com.qianliyan.daily
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.qianliyan.daily</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__REPO__/scripts/qly-daily.sh</string>
+    </array>
+
+    <!-- 07:30 抓取，给编辑留出选稿时间，日报 8:00 前能发出去 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <!-- 装上时不要立刻跑一轮：装载往往发生在白天调试时，平白多抓一次没意义 -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- launchd 的环境极简，数据目录显式给出，不依赖 shell profile -->
+        <key>QLY_DATA_DIR</key>
+        <string>__DATA_DIR__</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+
+    <!-- 脚本自己写按日期分文件的日志；这两个只兜住脚本启动前就炸掉的情况 -->
+    <key>StandardOutPath</key>
+    <string>__DATA_DIR__/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__DATA_DIR__/logs/launchd.err.log</string>
+
+    <!-- 抓一轮约 80 秒；给 30 分钟上限，卡死的任务不许长期占着锁 -->
+    <key>ExitTimeOut</key>
+    <integer>1800</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <!-- 低优先级 IO，别和前台工作抢磁盘 -->
+    <key>LowPriorityIO</key>
+    <true/>
+</dict>
+</plist>
