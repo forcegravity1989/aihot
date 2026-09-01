@@ -61,6 +61,8 @@ PAGE_TITLE = "千里眼 · 每日日报"
 
 TOP_N_GLOBAL = 40
 TOP_N_CHANNEL = 5
+#: 个性化 top-N 里同一信源（按组织归并后）最多占几席
+PREPARE_MAX_PER_SOURCE = 6
 
 #: extra.format → 浅读/深读图标（spec-v0.3 §16）
 FORMAT_ICONS = {
@@ -349,9 +351,15 @@ def cmd_prepare(date_str: str) -> int:
         print("items.jsonl 为空或不存在，请先执行一次 `python -m qianliyan.cli.sync`。")
         return 1
 
+    # 个性化 top-N 也要过同源上限。频道那条路已经限了，这条不限的话草案照样被一家灌满——
+    # 实测「Claude Code 系统提示词」凭 204 条全新鲜的条目独占 87 条候选里的 30 条，
+    # 编辑打开草案看到的三分之一是同一个源的 changelog。用的是频道那把尺子（含组织级归并），
+    # 同样是软上限：铺不满 TOP_N_GLOBAL 时按分数回填，不会让候选变少。
     ranked = sorted(items, key=_rank_key, reverse=True)
     chosen: "Dict[str, Dict[str, Any]]" = {}
-    for item in ranked[:TOP_N_GLOBAL]:
+    for item in channels.diversify(
+        ranked, PREPARE_MAX_PER_SOURCE, TOP_N_GLOBAL, channels.load_source_groups(),
+    ):
         sig = item.get("sig")
         if sig:
             chosen.setdefault(sig, item)

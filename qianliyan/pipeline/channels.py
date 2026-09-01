@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "CONFIG_NAME",
     "DEFAULT_LIMIT",
+    "DEFAULT_MAX_PER_SOURCE",
+    "diversify",
+    "load_source_groups",
     "BADGE_EMOJI",
     "load_channels",
     "match_item",
@@ -49,6 +52,16 @@ __all__ = [
 
 CONFIG_NAME = "channels.yaml"
 DEFAULT_LIMIT = 30
+
+#: 同一信源在单个频道内最多占多少席（``defaults.max_per_source`` 可改，频道级可覆盖，
+#: 0 / null = 不限）。
+#:
+#: 为什么需要它：频道内按 hotness 降序截断 limit，而权重高又新鲜的源会整段吃掉名额。
+#: 实测 15 个非空频道里有 7 个的 top10 被**同一个源**占满 9~10 席——practices 全是
+#: Anthropic Engineering、talks 全是 OpenAI YouTube、trending 全是 GitHub Trending
+#: Daily、change-intel 全是系统提示词。名字叫「模型发布」的频道 top5 全是 Anthropic，
+#: 看不到 OpenAI/Google/Qwen。新加的信源更是连一席都排不进去——抓回来也看不见。
+DEFAULT_MAX_PER_SOURCE = 3
 
 #: badge → 渲染符号（spec §1：heavy=📈 重磅，flash=⚡ 一手速报）
 BADGE_EMOJI = OrderedDict((("heavy", "📈"), ("flash", "⚡")))
@@ -85,6 +98,85 @@ def _fold_all(values: Iterable[Any]) -> List[str]:
     return [str(v).casefold() for v in values]
 
 
+def _coerce_cap(value: Any, fallback: int) -> int:
+    """同源席位上限：缺省取 fallback；显式 0 / 负数 / null 表示**不限**（返回 0）。"""
+    if value is None:
+        return fallback
+    try:
+        cap = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return cap if cap > 0 else 0
+
+
+def _source_key(item: Dict[str, Any], groups: Optional[Dict[str, str]] = None) -> str:
+    """判定「同源」用的键。
+
+    取 ``source`` 而不是 ``source_list``——多源交叉的条目正是我们想留下的，不该因为
+    它的某个来源已占满席位就被挤掉。
+
+    ``groups`` 给的是**组织级归并**：Anthropic News / Anthropic Engineering / Claude Blog
+    在 ``source`` 上是三个源，实际是同一家。只按源计数的话，「模型发布」频道 top5 仍然
+    全是 Anthropic，看不到 OpenAI / Google / Qwen——那正是这个频道存在的意义。
+    匹配规则同 model-sources.yaml：子串、大小写不敏感、**命中多条时取最长 key**
+    （更具体的规则胜出）。
+    """
+    source = str(item.get("source") or "").strip()
+    folded = source.casefold()
+    if groups:
+        hit = ""
+        for needle, group in groups.items():
+            if needle in folded and len(needle) > len(hit):
+                hit, matched = needle, group
+        if hit:
+            return "group:{0}".format(matched).casefold()
+    return folded
+
+
+def load_source_groups() -> Dict[str, str]:
+    """读 ``channels.yaml`` 的 ``defaults.source_groups``（组名 → 子串列表），
+    返回展平后的「子串 → 组名」表（子串一律 casefold）。"""
+    raw = paths.load_yaml_config(CONFIG_NAME)
+    defaults = raw.get("defaults") if isinstance(raw.get("defaults"), dict) else {}
+    spec = (defaults or {}).get("source_groups")
+    flat: Dict[str, str] = {}
+    if isinstance(spec, dict):
+        for group, needles in spec.items():
+            for needle in (needles or []):
+                text = str(needle).strip().casefold()
+                if text:
+                    flat[text] = str(group)
+    return flat
+
+
+def diversify(items: List[Dict[str, Any]], cap: int, limit: int,
+               groups: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    """**软上限**：同源最多占 cap 席；铺不满 limit 时按热度回填被压下的条目。
+
+    软而不是硬，是因为有些频道天生就只有一两个源（trending 只有 GitHub Trending
+    daily/weekly，change-intel 只有系统提示词 + 插件市场）。硬砍会让这些频道直接变空——
+    多样性上限的目的是「有得选时别让一家独占」，不是「宁缺毋滥」。
+
+    入参 ``items`` 须已按热度降序。返回顺序：先是铺开的一轮（仍按热度），再接回填的。
+    """
+    if cap <= 0:
+        return items[:limit]
+
+    picked: List[Dict[str, Any]] = []
+    held: List[Dict[str, Any]] = []
+    seen: Dict[str, int] = {}
+    for item in items:
+        key = _source_key(item, groups)
+        if seen.get(key, 0) < cap:
+            picked.append(item)
+            seen[key] = seen.get(key, 0) + 1
+        else:
+            held.append(item)
+    if len(picked) < limit:
+        picked.extend(held[: limit - len(picked)])
+    return picked[:limit]
+
+
 def _coerce_limit(value: Any, fallback: int = DEFAULT_LIMIT) -> int:
     try:
         limit = int(value)
@@ -101,6 +193,7 @@ def load_channels() -> List[Dict[str, Any]]:
     raw = paths.load_yaml_config(CONFIG_NAME)
     defaults = raw.get("defaults") if isinstance(raw.get("defaults"), dict) else {}
     default_limit = _coerce_limit((defaults or {}).get("limit"), DEFAULT_LIMIT)
+    default_cap = _coerce_cap((defaults or {}).get("max_per_source"), DEFAULT_MAX_PER_SOURCE)
 
     entries = raw.get("channels")
     pairs: List[Any] = []
@@ -128,6 +221,7 @@ def load_channels() -> List[Dict[str, Any]]:
             "name": name,
             "title": str(entry.get("title") or name),
             "limit": _coerce_limit(entry.get("limit"), default_limit),
+            "max_per_source": _coerce_cap(entry.get("max_per_source"), default_cap),
             "match": match_cfg or {},
         })
     return channels
@@ -243,6 +337,7 @@ def route(
 
     result: "OrderedDict[str, List[Dict[str, Any]]]" = OrderedDict()
     pool = [it for it in (items or []) if isinstance(it, dict)]
+    groups = load_source_groups()
 
     for channel in channels or []:
         if not isinstance(channel, dict):
@@ -258,7 +353,12 @@ def route(
 
         matched = [it for it in pool if match_item(it, match_cfg)]
         matched.sort(key=_hotness, reverse=True)
-        result[name] = matched[:_coerce_limit(channel.get("limit"))]
+        result[name] = diversify(
+            matched,
+            _coerce_cap(channel.get("max_per_source"), DEFAULT_MAX_PER_SOURCE),
+            _coerce_limit(channel.get("limit")),
+            groups,
+        )
 
     return result
 

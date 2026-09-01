@@ -25,6 +25,21 @@
 
 defaults:
   limit: 30
+  # 同一信源在单个频道内最多占几席（频道级可用 max_per_source 覆盖，0 = 不限）。
+  # 软上限：铺不满 limit 时按热度回填被压下的条目，所以天生只有一两个源的频道
+  # （trending / change-intel）不会因此变空。
+  max_per_source: 3
+  # 组织级归并：同一家的多个信源算作一个，否则「模型发布」频道 top5 会全是
+  # Anthropic News + Anthropic Engineering + Claude Blog——三个 source，一家公司，
+  # 而这个频道存在的意义正是让你看到不同厂商。
+  # 匹配同 model-sources.yaml：对 source 名做大小写不敏感子串匹配，命中多条取最长 key。
+  source_groups:
+    anthropic:  ["anthropic", "claude blog", "claude code", "claude 官方"]
+    openai:     ["openai"]
+    google:     ["deepmind", "google"]
+    arxiv:      ["arxiv"]
+    github:     ["github trending"]
+    huggingface: ["huggingface"]
 
 channels:
   # —— 头条：跨源热榜（热度 + 交叉验证），聚官方/模型/大会/blog 的高信号条目 ——

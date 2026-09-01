@@ -355,3 +355,42 @@ def test_offline_run_never_opens_a_socket(tmp_data_dir, monkeypatch):
 
     assert daily.cmd_finalize(date_str, do_html=True) == 0, "离线下整条链路应跑完"
     assert not opened, "离线模式漏出网了: {0}".format(opened)
+
+
+def test_one_source_cannot_monopolize_a_channel(tmp_data_dir):
+    """频道内单源席位上限：有得选时不许一家独占，没得选时也不许把频道饿空。
+
+    真实数据上量过：15 个非空频道里 7 个的 top10 被同一个源占满 9~10 席——practices 全是
+    Anthropic Engineering、talks 全是 OpenAI YouTube、change-intel 全是系统提示词。新加的
+    信源更是一席都排不进去,抓回来也看不见。所以上限必须是**软**的：铺不满 limit 时按热度
+    回填,否则 trending（只有 daily/weekly 两个源）这类频道会直接空掉。
+    """
+    from qianliyan.core import schema, utils
+    from qianliyan.pipeline import channels as C
+
+    def item(source, title, hotness):
+        made = schema.make_item(
+            title=title, url="https://example.com/{0}".format(title.replace(" ", "-")),
+            source=source, source_kind="local", backend="rss", weight=0.9,
+            date=utils.iso(utils.now_utc()), tags=["models"],
+        )
+        made["hotness"] = hotness
+        return made
+
+    # 一个源霸榜（热度最高的 10 条全是它），另有 3 个源各 1 条
+    pool = [item("Loud Source", "loud {0}".format(i), 0.99 - i * 0.001) for i in range(10)]
+    pool += [item(name, "quiet " + name, 0.5) for name in ("Alt A", "Alt B", "Alt C")]
+
+    channel = {"name": "t", "title": "t", "limit": 30, "max_per_source": 3,
+               "match": {"tags_any": ["models"]}}
+    routed = C.route(pool, [channel])["t"]
+
+    top = [str(i.get("source")) for i in routed[:6]]
+    assert top.count("Loud Source") <= 3, "单源占了 {0} 席，上限没生效".format(top.count("Loud Source"))
+    assert {"Alt A", "Alt B", "Alt C"} <= set(top), "被压下的其它源没能进前排"
+    # 软上限：总条数不变，超出上限的仍按热度回填在后面
+    assert len(routed) == len(pool), "软上限不该让频道少收条目"
+
+    # 只有一个源的频道不许被饿空
+    single = C.route(pool[:10], [channel])["t"]
+    assert len(single) == 10, "频道只有一个源时，上限不该把它砍掉"
