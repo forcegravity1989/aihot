@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional, Sequence
 
 from .. import __version__
@@ -24,10 +25,19 @@ DEFAULT_ITEMS_LIMIT = 50
 DEFAULT_PROFILE_ITEMS = 20
 FEEDBACK_ACTIONS = ("up", "down", "hide")
 
-#: 深读/浅读日报归档文件名（spec-v0.3 §6/§8，daily_digest_all 定稿产物）
-DAILY_VIEWS = {"glance": "glance.html", "deep": "deep.html"}
-DAILY_DEFAULT_VIEW = "deep"
+#: 单视图归档文件名（daily_digest_all 定稿产物）。缺省不给 ``view`` 时走**合并首页**，
+#: 那才是带侧栏 / 热点榜 / 三视图切换的完整版面；单视图页留给要嵌进别处的场景。
+DAILY_VIEWS = {
+    "glance": "glance.html",
+    "timeline": "timeline.html",
+    "deep": "deep.html",
+}
+DAILY_MERGED_NAME = "digest.html"
 DAILY_ROOT_NAME = "daily.html"
+#: 详情页目录（与 cli.daily_digest_all.DETAIL_DIR 一致）
+DETAIL_DIR = "story"
+#: 详情页文件名白名单——只允许 sig 那种字符集，挡掉 ../ 之类的路径穿越
+DETAIL_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 try:  # fastapi/uvicorn 属可选依赖，缺失时降级而不拖垮 import（spec §10.3）
     from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
@@ -178,21 +188,47 @@ def create_app() -> FastAPI:  # type: ignore[name-defined]
         top = _filter_items(_load_items(), None, DEFAULT_PROFILE_ITEMS, None, "personal")
         return {"profile": reader_profile, "items": top}
 
-    @app.get("/daily")
-    def get_daily(view: str = DAILY_DEFAULT_VIEW) -> HTMLResponse:  # type: ignore[name-defined]
-        """当日深读/浅读日报 HTML（``view=glance|deep``，缺省 deep，spec-v0.3 §8）。
+    def _daily_html(view: Optional[str]) -> HTMLResponse:  # type: ignore[name-defined]
+        """当日日报 HTML。``view`` 省略 → 合并首页；给了则取对应单视图页。
 
-        优先读 ``archive/<今日>/{glance,deep}.html``；无当日视图则回退数据根 ``daily.html``；
-        再无则 404。
+        优先读 ``archive/<今日>/…``；无当日产物则回退数据根 ``daily.html``；再无则 404。
         """
         key = str(view or "").casefold()
-        name = DAILY_VIEWS.get(key, DAILY_VIEWS[DAILY_DEFAULT_VIEW])
+        name = DAILY_VIEWS.get(key) or DAILY_MERGED_NAME
         date_str = utils.now_utc().strftime("%Y-%m-%d")
         path = paths.data_path("archive", date_str, name)
         if not path.is_file():
             path = paths.data_path(DAILY_ROOT_NAME)
         if not path.is_file():
             raise HTTPException(status_code=404, detail="当日日报不存在，请先执行 daily_digest_all")
+        return HTMLResponse(content=path.read_text(encoding="utf-8"))
+
+    @app.get("/daily")
+    def get_daily(view: Optional[str] = None) -> HTMLResponse:  # type: ignore[name-defined]
+        """当日日报（``view=glance|timeline|deep`` 取单视图，缺省是三视图合并首页）。"""
+        return _daily_html(view)
+
+    @app.get("/daily.html")
+    def get_daily_html(view: Optional[str] = None) -> HTMLResponse:  # type: ignore[name-defined]
+        """``/daily`` 的别名。详情页里的返回链接是相对路径 ``../daily.html``，
+        走 HTTP 时会落到这个地址上——没有这条路由，从详情页点「返回日报」就是 404。"""
+        return _daily_html(view)
+
+    @app.get("/" + DETAIL_DIR + "/{name}")
+    def get_detail(name: str) -> HTMLResponse:  # type: ignore[name-defined]
+        """单条详情页（``/story/<sig>`` 或 ``/story/<sig>.html``）。
+
+        文件名过白名单再拼路径：这是唯一一处把 URL 片段拼进文件路径的地方，
+        不校验就等于把数据目录整个开放给路径穿越。
+        """
+        clean = str(name or "").strip()
+        if not clean.endswith(".html"):
+            clean = "{0}.html".format(clean)
+        if not DETAIL_NAME_RE.match(clean) or ".." in clean:
+            raise HTTPException(status_code=404, detail="详情页不存在")
+        path = paths.data_path(DETAIL_DIR, clean)
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="详情页不存在，请先执行 daily_digest_all --html")
         return HTMLResponse(content=path.read_text(encoding="utf-8"))
 
     @app.post("/history")

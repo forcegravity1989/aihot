@@ -54,6 +54,118 @@ env QLY_DATA_DIR  >  <repo根>/paths.local.json  >  config/paths.team.json  >  ~
 （全局热榜 top 50）、`channels/<name>.md`（各频道人读页）、`digest.html`（HTML 简报）、
 `sync_meta.json`（最近一次同步的运行元数据）。
 
+## 定时抓取
+
+抓取跑在 launchd 上（macOS），每天 **07:30** 一轮，给编辑留出选稿时间。
+
+```bash
+# 安装
+DATA=$(.venv/bin/python -c 'from qianliyan.core import paths; print(paths.resolve_data_dir())')
+sed -e "s|__REPO__|$PWD|g" -e "s|__DATA_DIR__|$DATA|g" \
+    scripts/com.qianliyan.daily.plist > ~/Library/LaunchAgents/com.qianliyan.daily.plist
+launchctl load ~/Library/LaunchAgents/com.qianliyan.daily.plist
+```
+
+`launchctl start com.qianliyan.daily` 手动触发一轮；`launchctl list | grep qianliyan`
+看状态（第二列是上次退出码）；`launchctl unload ...` 停用。改时间就改 plist 里的
+`StartCalendarInterval` 再 unload/load 一次。
+
+**为什么不是 crontab**：这是会合盖休眠的笔记本。到点时机器睡着，cron 那一轮就永久
+错过、第二天才有数据；launchd 会在唤醒后补跑。对「每天抓一次」，差别就是今天有没有日报。
+
+调度入口是 [`scripts/qly-daily.sh`](scripts/qly-daily.sh)，做三件事：
+
+| 步骤 | 说明 |
+|------|------|
+| `sync` | 抓取 → 去重打分 → 富化 → 渲染简报 |
+| `daily_digest_all --prepare` | 备好当日选稿草案 |
+| 日志 | `$QLY_DATA_DIR/logs/daily-<日期>.log`，保留 30 天 |
+
+**选稿与定稿刻意不自动做**——那两步需要判断力，是编辑（人或 Agent）的活，自动跑只会
+产出一份没人看过的日报。草案备好后由编辑选条目、写 `editor_note`，再 `--finalize --html`。
+
+退出码语义（决定要不要报警）：
+
+| 码 | 含义 |
+|----|------|
+| 0 | 当日数据拿到了（主信源 aihot OK） |
+| 1 | 抓取失败 / 主信源挂了 / 全部眼失败——需要人看一眼 |
+| 2 | 上一轮还在跑，本轮跳过——不是错误 |
+
+**不用 `sync --strict`**：内网 `company` 眼在没有 CDP 浏览器的机器上天天失败，`--strict`
+会让每一轮都非零退出，告警很快被当噪音忽略。判据改成「主信源有没有拿到数据」，
+那才是「今天的日报有没有原料」这个真问题。
+
+## 云端信源哨兵
+
+抓取跑在本机（launchd），**盯梢跑在云端**（Claude routine
+[`千里眼 · GitHub 信源哨兵`](https://claude.ai/code/routines/trig_01TSB1SbHWxg7uaVynxuQ7Q7)，
+每天 08:00 London / 07:00 UTC）。两层分工是被约束逼出来的：
+
+| | 跑在哪 | 为什么只能在这 |
+|---|---|---|
+| 抓取 | 本机 launchd | 产物要落 `$QLY_DATA_DIR`，云端 agent 碰不到本机文件系统 |
+| 盯梢 | 云端 routine | 不依赖本机，笔记本合盖照跑；而本机 cron 失败只写日志、没人看 |
+
+**云端沙箱的出网被 egress 策略卡死**——实测连 `example.com`、`arxiv.org` 都是
+`CONNECT tunnel failed 403`，只有 `api.github.com` 通。所以哨兵**不跑 `health_check`**
+（那会把十几个源全报 FAIL，是它自己出不了网，不是信源挂了），只盯四个住在 GitHub 上的信源：
+
+| 眼 | 仓库 | 路径 |
+|---|---|---|
+| insights | `zhoux77899/claude-code-insights` | `plugins/plugins-daily-insight.md` |
+| cc_prompts | `Piebald-AI/claude-code-system-prompts` | `CHANGELOG.md` |
+| plugins_official | `anthropics/claude-plugins-official` | `.claude-plugin/marketplace.json` |
+| builders | `zarazhangrui/follow-builders` | 见 `config/builders.yaml` |
+
+范围小，但覆盖的恰好是**最容易静默坏掉**的那类：文件被改名/移位/改 schema，本地抓取会
+静悄悄少一块数据，没人会发现。哨兵每天做两件事——确认路径还在，以及把线上内容喂给
+仓库里那个真实的解析器，和 `tests/fixtures/real/` 的基线样本比**条目数与字段非空率**。
+
+**一切正常就什么都不做**（不开 issue、不留评论）。有问题才开一条 `信源哨兵 · <日期>` 的
+issue，且先查重——已有未关闭的就只追加评论。哨兵是只读的：不改代码、不开 PR、不 push。
+
+> 由来：`health_check` 探测主信源用的一直是迁移前的 REST 接口，天天返回 404 被当噪音
+> 忽略，直到 2026-08-31 才发现——而那期间主信源其实是好的。**误报比漏报更有害**，
+> 所以哨兵的判据写得保守，且明确写了「不把自己出不了网当成信源故障」。
+
+## 给云端 routine 开放网络
+
+云端环境默认是 **Trusted** 级别——只放行包管理器 / GitHub / 云 SDK，`aihot`、YouTube、
+各家官方 blog 全在墙外。网络级别是**每个环境自己的设置**（None / Trusted / Full / Custom），
+你自己就能改，没有组织级白名单可推送。
+
+出网域名清单从探测目标同源导出，加信源后重跑一次即可：
+
+```bash
+.venv/bin/python -m qianliyan.cli.health_check --print-domains
+```
+
+把输出填进 **claude.ai/code 消息框上方的云图标 → 环境设置 → Network access → Custom →
+Allowed domains**，并勾选「Also include default list of common package managers」
+（否则 pypi / GitHub 会被一起关掉）。环境选择器**没有设置页也没有直达 URL**，只能在 UI 点。
+
+> 建议单独建一个环境给哨兵用，把 Default 留在 Trusted：哨兵只读公开 feed，放宽它一个就够，
+> 不必让所有云端会话都能出网。
+
+## HTTP 服务
+
+服务同样由 launchd 托管（`KeepAlive` 崩溃自动拉起、开机自启），不再挂在一次性 shell
+会话里——会话一结束服务就没了，重启也不回来。
+
+```bash
+DATA=$(.venv/bin/python -c 'from qianliyan.core import paths; print(paths.resolve_data_dir())')
+sed -e "s|__REPO__|$PWD|g" -e "s|__DATA_DIR__|$DATA|g" \
+    scripts/com.qianliyan.api.plist > ~/Library/LaunchAgents/com.qianliyan.api.plist
+launchctl load ~/Library/LaunchAgents/com.qianliyan.api.plist
+```
+
+监听 `127.0.0.1:8787`。**只绑本机是刻意的**：`QLY_API_KEY` 未设时所有端点无鉴权，
+绝不能暴露到局域网；要对外先设 `QLY_API_KEY`。
+
+主要端点：`/daily`（三视图首页）、`/daily?view=glance|timeline|deep`、`/story/<sig>`
+（单条详情页）、`/digest`（全池简报）、`/items`、`/hotlist`、`/status`。
+
 ## 目录说明
 
 ```

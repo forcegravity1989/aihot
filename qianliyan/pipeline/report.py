@@ -26,8 +26,10 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .. import __version__
 from ..core import paths, utils
+from . import change_intel
 from . import channels as channels_mod
 from . import minitpl
+from . import theme
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,7 @@ OUTPUT_NAME = "digest.html"
 AVATAR_DIR = "builder-avatars"
 HOTLIST_LIMIT = 50
 PERSONALIZED_LIMIT = 30
+HERO_COUNT = 3
 SUMMARY_MAX_CHARS = 160
 MAX_AVATAR_BYTES = 512 * 1024
 
@@ -57,14 +60,19 @@ _REASON_ICONS = {
 }
 
 PAGE_TITLE = "千里眼 · AI 情报简报"
-PAGE_SUBTITLE = "五眼并行采集 · 去重打分 · 频道分发"
+PAGE_SUBTITLE = "多源信息采集 · 交叉验证 · 变更情报"
 
 #: badge → 页面展示文案（spec §1：heavy=📈 重磅，flash=⚡ 一手速报）
 BADGE_LABELS = (("heavy", "📈 重磅"), ("flash", "⚡ 一手速报"))
 
+#: 头像占位底色。这是**唯一允许写死色值**的地方——它不是主题色，是给没有头像的
+#: 人物/信源分配的一组稳定标识色，必须在明暗两种主题下都能压住白色首字母，所以取
+#: 设计系统四个语义色（cyan/emerald/amber/rose）的深色档并向外延展，而不是随手挑
+#: 一把饱和度很高的通用色——那样头像会比正文还抢眼。改配色时这组要跟着 _theme.css
+#: 的 accent 一起调。
 _AVATAR_COLORS = (
-    "#2f6df6", "#ff6a3d", "#0ea5a4", "#7c3aed",
-    "#d946a0", "#0284c7", "#16a34a", "#b45309",
+    "#af5233", "#4c73a5", "#579766", "#ce9042",
+    "#893a1f", "#355781", "#286037", "#774a03",
 )
 
 
@@ -200,6 +208,10 @@ def _view_item(
     sources = [str(s) for s in (item.get("source_list") or []) if s]
     if not sources and item.get("source"):
         sources = [str(item.get("source"))]
+    # 交叉验证展示（参照 Techmeme「More: 媒体A, 媒体B...」的做法）：单源就是普通来源名，
+    # 多源单独起一行，比小灰字标签更醒目——这是这款产品最该借鉴经典日报的地方。
+    lead_source = sources[0] if sources else ""
+    other_sources = sources[1:]
 
     return {
         "anchor": "item-{0}-{1}".format(board_name, sig or str(id(item))),
@@ -210,6 +222,9 @@ def _view_item(
         "summary": _summary_of(item),
         "source": str(item.get("source") or ""),
         "sources_text": " + ".join(sources),
+        "lead_source": lead_source,
+        "other_sources_text": "、".join(other_sources),
+        "cross_refs": len(other_sources),
         "date_text": _humanize(dt, now),
         "date_abs": utils.iso(dt) if dt is not None else "",
         "ts": str(int(dt.timestamp())) if dt is not None else "0",
@@ -222,6 +237,7 @@ def _view_item(
         "avatar_initial": _avatar_initial(item),
         "personal_score": "{0:.4f}".format(_personal_score(item) or 0.0),
         "personal_reasons": _reason_chips(_extra(item).get("personal_reasons")),
+        "image": str(_extra(item).get("og_image") or ""),
     }
 
 
@@ -272,6 +288,81 @@ def _persona_view(
         "avg_engagement": str(persona.get("avg_engagement") or 0),
         "last_active_text": _humanize(last_dt, now) if last_dt is not None else "",
     }
+
+
+#: 变更卡展示上限——全池 200+ 张，全列会把简报压垮；按变动量取头部。
+CHANGE_CARD_LIMIT = 24
+#: extra.corroboration.verdict → 徽章文案与语义色类
+_CORROBORATION_STYLES = {
+    "corroborated": ("🔬 实证", "badge-ok"),
+    "unverified": ("🔬 存疑", "badge-flash"),
+    "contradicted": ("🔬 矛盾", "badge-heavy"),
+}
+
+
+def _change_card_views(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """把 ``change_intel.bind_changes`` 的版本变更卡整理成视图模型。
+
+    这批卡此前是**算了就扔**：``cli.sync`` 调 ``bind_changes`` 拿到结果后既不落盘也不
+    渲染，只有它顺带写进 item 的 corroboration 活了下来。而「哪个版本的提示词涨了多少
+    token」正是本产品自称的王牌之一，不该只存在于内存里。
+    """
+    try:
+        cards = change_intel.bind_changes(list(items or []))
+    except Exception as exc:  # noqa: BLE001 - 变更情报失败不许拖垮简报渲染
+        logger.warning("变更卡构造失败（跳过该版面）: %s", exc)
+        return []
+
+    def _delta(card: Dict[str, Any]) -> int:
+        try:
+            return int(card.get("token_delta") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    cards = sorted(cards, key=lambda c: (abs(_delta(c)), c.get("count") or 0), reverse=True)
+    views: List[Dict[str, Any]] = []
+    for card in cards[:CHANGE_CARD_LIMIT]:
+        delta = _delta(card)
+        urls = [str(u) for u in (card.get("urls") or []) if u]
+        views.append({
+            "subject": str(card.get("subject") or "未知主体"),
+            "version": str(card.get("version") or ""),
+            "delta_text": "{0:+,} tokens".format(delta) if delta else "",
+            # 涨用暖色、跌用冷色：这里没有"好坏"，只是方向，别用红绿暗示对错
+            "delta_cls": "badge-flash" if delta > 0 else ("badge-ok" if delta < 0 else ""),
+            "count_text": "{0} 项改动".format(card.get("count") or 0),
+            # refs 是**关联条目的 sig 列表**不是数字，直接 format 会渲染出 "['abc'] 源"
+            "refs_text": "{0} 条关联".format(len(card.get("refs") or [])) if card.get("refs") else "",
+            "url": urls[0] if urls else "",
+        })
+    return views
+
+
+def _corroboration_views(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """叙事↔实证映射：带 ``extra.corroboration`` 的条目——「他说的被 diff 证实了吗」。"""
+    views: List[Dict[str, Any]] = []
+    for item in items or []:
+        corrob = _extra(item).get("corroboration")
+        if not isinstance(corrob, dict):
+            continue
+        verdict = str(corrob.get("verdict") or "").strip().lower()
+        style = _CORROBORATION_STYLES.get(verdict)
+        if not style:
+            continue
+        label, cls = style
+        views.append({
+            "verdict": verdict,
+            "label": label,
+            "cls": cls,
+            "title": channels_mod.display_title(item),
+            "url": str(item.get("url") or ""),
+            "claim": str(corrob.get("claim") or "").strip(),
+            "evidence": str(corrob.get("evidence") or "").strip(),
+        })
+    # 矛盾 > 存疑 > 实证：反常的排前面，那才是值得看的
+    order = {"contradicted": 0, "unverified": 1, "corroborated": 2}
+    views.sort(key=lambda v: order.get(v["verdict"], 9))
+    return views
 
 
 def _json_blob(rows: Sequence[Dict[str, Any]]) -> str:
@@ -367,8 +458,21 @@ def build_context(
         if isinstance(persona, dict):
             persona_views.append(_persona_view(persona, now, avatar_dir, avatar_cache))
 
+    # 变更情报：版本变更卡 + 叙事↔实证映射。数据在全池这一侧最厚（200+ 张卡、
+    # 50+ 条实证核验），10 条精选的日报页里几乎没有——所以这一版面放在简报页。
+    change_card_views = _change_card_views(pool)
+    corroboration_views = _corroboration_views(pool)
+
+    # 头条区：全池热度最高的 HERO_COUNT 条，做成主体区第一屏（不是另一个"版面"，
+    # 只是热榜前几条的放大呈现——不额外进 palette 索引，避免和热榜版面重复计数）
+    hero_pool = pool_sorted[:HERO_COUNT]
+    hero_views = [_view_item(it, "hero", now, avatar_dir, avatar_cache) for it in hero_pool]
+    hero_main = hero_views[0] if hero_views else None
+    hero_rest = hero_views[1:]
+
     return {
         "version": __version__,
+        "theme_css": theme.load_theme_css(),
         "page_title": PAGE_TITLE,
         "subtitle": PAGE_SUBTITLE,
         "generated_at": now.strftime("%Y-%m-%d %H:%M UTC"),
@@ -377,10 +481,16 @@ def build_context(
         "heavy_count": sum(1 for it in pool if "heavy" in (it.get("badges") or [])),
         "flash_count": sum(1 for it in pool if "flash" in (it.get("badges") or [])),
         "boards": boards,
+        "hero_main": hero_main,
+        "hero_rest": hero_rest,
         "personalized": personalized_views,
         "personalized_count": len(personalized_views),
         "personas": persona_views,
         "personas_count": len(persona_views),
+        "change_cards": change_card_views,
+        "change_count": len(change_card_views),
+        "corroborations": corroboration_views,
+        "corroboration_count": len(corroboration_views),
         "data_json": _json_blob(index_rows),
     }
 

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from qianliyan.core import schema, utils
 from qianliyan.engine import github_trending, html_page, http, remote_sync, youtube
 
 REAL = Path(__file__).resolve().parent / "fixtures" / "real"
@@ -94,6 +95,102 @@ def test_youtube_fetch_is_feed_url_get_parse(monkeypatch):
 
 
 # =========================================================================
+# engine.youtube · CDP 首选路径（feeds/videos.xml 已实测失效，2026-08-28）
+# =========================================================================
+def test_youtube_page_url_supports_handle_directly():
+    """CDP 路径（不同于 feed_url）可以直接用 handle，不需要先在线解析 channel_id。"""
+    assert youtube.page_url({"handle": "@claude"}) == "https://www.youtube.com/@claude/videos"
+    assert youtube.page_url({"channel_id": "UCabc"}) == "https://www.youtube.com/channel/UCabc/videos"
+    assert youtube.page_url({"playlist_id": "PLxyz"}) == "https://www.youtube.com/playlist?list=PLxyz"
+
+
+@pytest.mark.parametrize(
+    "text,expected_days_ago",
+    [
+        ("2天前", 2),
+        ("直播时间：3个月前", 90),   # 前缀不影响解析，只搜数字+单位+"前"
+        ("1年前", 365),
+        ("3周前", 21),
+        ("2 days ago", 2),
+        ("Streamed 3 months ago", 90),
+    ],
+)
+def test_relative_to_date_parses_cn_and_en(text, expected_days_ago):
+    now = utils.parse_date("2026-08-28T00:00:00+00:00")
+    got = utils.parse_date(youtube._relative_to_date(text, now=now))
+    assert got == now - __import__("datetime").timedelta(days=expected_days_ago)
+
+
+def test_relative_to_date_just_now_and_unparseable():
+    now = utils.parse_date("2026-08-28T00:00:00+00:00")
+    assert youtube._relative_to_date("刚刚", now=now) == utils.iso(now)
+    assert youtube._relative_to_date("not a date at all", now=now) is None
+    assert youtube._relative_to_date("", now=now) is None
+
+
+def test_items_from_cdp_videos_real_shape():
+    """喂 2026-08-28 对 @claude/videos 真实抓取脚本返回的原始结构（回归用例）。"""
+    raw = [
+        {"videoId": "x80HVKbZrno", "title": "Claude for Word: Turn a draft into a finished document",
+         "meta": ["1万次观看", "2天前"]},
+        {"videoId": "GMIWm5y90xA", "title": "Code with Claude 2026: Opening Keynote",
+         "meta": ["Claude", "24万次观看", "直播时间：3个月前"]},
+        {"videoId": "", "title": "no id, must be skipped", "meta": []},
+        {"videoId": "abc123", "title": "", "meta": []},   # 空标题也跳过
+    ]
+    items = youtube._items_from_cdp_videos(raw, {"name": "Claude YouTube", "weight": 0.92, "format": "talk"})
+    assert len(items) == 2
+    first = items[0]
+    assert first["url"] == "https://www.youtube.com/watch?v=x80HVKbZrno"
+    assert first["title"] == "Claude for Word: Turn a draft into a finished document"
+    assert first["extra"]["video_id"] == "x80HVKbZrno"
+    assert first["extra"]["format"] == "talk"
+    assert first["weight"] == 0.92
+    assert utils.parse_date(first["date"]) is not None
+    assert schema.validate_item(first) == []
+
+
+def test_fetch_via_cdp_raises_when_no_videos_extracted(monkeypatch):
+    """CDP 页面就绪但抽不到视频时要抛异常（交给 fetch() 回退 feed），不能悄悄返回 []。"""
+    class _FakePage:
+        context = type("C", (), {"add_cookies": lambda self, cookies: None})()
+        def goto(self, url, timeout=None): pass
+        def wait_for_function(self, script, timeout=None): pass
+        def evaluate(self, script): return []
+        def close(self): pass
+
+    class _FakeBrowser:
+        def new_page(self): return _FakePage()
+        def close(self): pass
+
+    class _FakeCdpModule:
+        class CDPUnavailable(Exception):
+            pass
+
+        @staticmethod
+        def connect():
+            return (type("Ctx", (), {"stop": lambda self: None})(), _FakeBrowser())
+
+    # `from . import cdp` 里的 cdp 已经是包 qianliyan.engine 的真实属性（被别的模块提前
+    # import 过），打 sys.modules 补丁打不中——要打包属性本身，getattr 才能拿到假模块。
+    import qianliyan.engine as engine_pkg
+    monkeypatch.setattr(engine_pkg, "cdp", _FakeCdpModule)
+    with pytest.raises(RuntimeError):
+        youtube.fetch_via_cdp({"handle": "@claude"})
+
+
+def test_fetch_falls_back_to_feed_when_cdp_fails(monkeypatch):
+    """CDP 抛异常（无 playwright/连不上/抽不到视频）时 fetch() 要回退 feed 路径，不能整体失败。"""
+    def _boom(cfg=None):
+        raise RuntimeError("CDP 不可用（模拟）")
+
+    monkeypatch.setattr(youtube, "fetch_via_cdp", _boom)
+    monkeypatch.setattr(http, "get", lambda url, timeout=15: _FakeResponse(text=_read("youtube_anthropic.xml")))
+    items = youtube.fetch({"channel_id": "UCrDwWp7EBBv4NwvScIpBDOA", "format": "video"})
+    assert len(items) == 15
+
+
+# =========================================================================
 # engine.github_trending
 # =========================================================================
 def test_github_trending_parse_real_html():
@@ -163,6 +260,55 @@ def test_extract_articles_anthropic_news():
     # 标题优先取锚点内标题
     opus = next(a for a in articles if a["url"].endswith("/news/claude-opus-5"))
     assert opus["title"] == "Introducing Claude Opus 5"
+    # 卡片式列表项：<time>日期</time> 与标题同锚点，日期要被摘成 date 字段，
+    # 不能粘在标题最前面（bug：真实抓取里 hotness 因此集体误判成"现在"）
+    open_weights = next(a for a in articles if a["url"].endswith("/news/position-open-weights-models"))
+    assert open_weights["date"] == "Jul 27, 2026"
+    assert not open_weights["title"].startswith("Jul")
+    assert utils.parse_date(open_weights["date"]) is not None
+
+
+def test_extract_articles_strips_leading_date_segment_from_title():
+    """卡片把 <time> 与标题塞进同一个 <a> 时，日期节点要被摘出去，不进标题（回归用例）。"""
+    html = (
+        '<a href="/news/real-post">'
+        '<time>Jul 27, 2026</time><span>Announcements</span> '
+        '<h2>A real headline that mentions Jul in passing</h2>'
+        "</a>"
+    )
+    articles = html_page.extract_articles(html, r"^/news/[a-z0-9-]+$", base_url="https://x.com/news")
+    assert len(articles) == 1
+    assert articles[0]["date"] == "Jul 27, 2026"
+    assert articles[0]["title"] == "A real headline that mentions Jul in passing"
+
+
+def test_extract_articles_falls_back_to_sibling_heading_for_cta_only_anchor():
+    """整卡可点击站点（Webflow 常见模式）：真标题/日期是锚点外的兄弟元素，锚点自身
+    只有一句"Read more" CTA——要回退用锚点之前最近出现的标题/日期（回归用例，
+    对应真实 claude.com/blog 的抓取质量问题）。
+    """
+    html = (
+        '<div class="card">'
+        '<h2>Claude in Chrome is generally available</h2>'
+        '<div>August 26, 2026</div>'
+        '<div class="clickable_wrap">'
+        '<a href="/blog/claude-in-chrome-generally-available"><span class="sr-only">Read more</span></a>'
+        "</div></div>"
+        '<div class="card">'
+        '<h2>A second real post title</h2>'
+        '<div>April 10, 2026</div>'
+        '<a href="/blog/a-second-real-post"><span>Learn more</span></a>'
+        "</div>"
+    )
+    articles = html_page.extract_articles(html, r"^/blog/[a-z0-9-]+$", base_url="https://claude.com/blog")
+    assert len(articles) == 2
+    first = next(a for a in articles if a["url"].endswith("claude-in-chrome-generally-available"))
+    assert first["title"] == "Claude in Chrome is generally available"
+    assert first["date"] == "August 26, 2026"
+    assert utils.parse_date(first["date"]) is not None
+    second = next(a for a in articles if a["url"].endswith("a-second-real-post"))
+    assert second["title"] == "A second real post title"
+    assert second["date"] == "April 10, 2026"
 
 
 def test_extract_articles_pattern_excludes_non_matching():

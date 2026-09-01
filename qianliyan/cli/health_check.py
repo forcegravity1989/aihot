@@ -12,11 +12,14 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..core import paths
+from ..engine import github_trending as github_trending_engine
 from ..engine import http, remote_sync
+from ..engine import youtube as youtube_engine
 
 logger = logging.getLogger("qianliyan.cli.health_check")
 
@@ -34,27 +37,69 @@ def _is_offline() -> bool:
 # 探测目标收集
 # =========================================================================
 def _local_targets(sources_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
+    """目录源的探测目标。
+
+    **不能只看 ``url`` 字段**：YouTube 源用 ``channel_id`` / ``playlist_id``、
+    github-trending 用 ``lang`` + ``since``，它们都没有 ``url``。早先这里 ``if not url:
+    continue`` 直接跳过，于是 9 个源（4 个 YouTube 频道 + 3 个大会播放列表 + 2 个
+    trending）**从来没被探测过**——和 aihot 那个假 404 是同一类毛病：探测没覆盖真正在抓的东西。
+    """
     out: List[Tuple[str, str, str]] = []
     for src in sources_cfg.get("sources") or []:
         if not isinstance(src, dict):
             continue
-        url = src.get("url") or ""
+        name = str(src.get("name") or "")
+        kind = str(src.get("type") or "")
+        url = str(src.get("url") or "")
+
+        if not url and kind == "youtube":
+            try:
+                url = youtube_engine.feed_url(src)
+            except Exception:  # noqa: BLE001 - handle 型源需在线解析，探测阶段跳过
+                continue
+        if not url and kind == "github-trending":
+            url = github_trending_engine.trending_url(src) if hasattr(
+                github_trending_engine, "trending_url") else "https://github.com/trending"
         if not url:
             continue
-        name = str(src.get("name") or url)
+
         backend = remote_sync.detect_backend(url, src.get("type"))
-        out.append((name, backend, url))
+        out.append((name or url, backend, url))
     return out
 
 
 def _aihot_target(sources_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
+    """aihot 的探测目标 = 配置里**实际在抓的那些 feed**。
+
+    这里曾经写死探老的 REST 接口 ``/api/news?category=llm``——而 aihot 早已迁到 RSS
+    出口（``feeds`` / ``category_feeds``），配置里根本没有 ``endpoint`` 字段，于是探测
+    一直落到默认值上、天天返回 404，把好端端的主信源报成挂了。健康探测**必须探真正
+    在用的地址**，否则它每天喊狼来了，真挂的那天没人信。
+    """
     cfg = sources_cfg.get("aihot") or {}
     base_url = str(cfg.get("base_url") or "https://aihot.virxact.com").rstrip("/")
-    endpoint = str(cfg.get("endpoint") or "/api/news")
-    categories = cfg.get("categories") or ["llm"]
-    category = categories[0] if categories else "llm"
-    url = "{0}{1}?category={2}".format(base_url, endpoint, category)
-    return [("AIHot", "rest", url)]
+
+    targets: List[Tuple[str, str, str]] = []
+    for feed in (cfg.get("feeds") or []):
+        if not isinstance(feed, dict):
+            continue
+        path = str(feed.get("path") or "").strip()
+        if path:
+            kind = str(feed.get("kind") or "feed")
+            targets.append(("AIHot · {0}".format(kind), "rss", base_url + path))
+
+    # 分类 feed 只探第一个——四个是同一套出口，全探纯属拖慢探测
+    category_cfg = cfg.get("category_feeds") or {}
+    slugs = [str(x) for x in (category_cfg.get("slugs") or []) if str(x).strip()]
+    if slugs:
+        targets.append((
+            "AIHot · 分类({0})".format(slugs[0]), "rss",
+            "{0}/feed/category/{1}.xml".format(base_url, slugs[0]),
+        ))
+
+    if not targets:  # 配置缺 feeds 时至少探站点本身，别静默返回空
+        targets.append(("AIHot", "rss", base_url))
+    return targets
 
 
 def _builders_target(builders_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
@@ -88,6 +133,29 @@ def collect_targets() -> List[Tuple[str, str, str]]:
     targets.extend(_insights_target(sources_cfg))
     targets.extend(_local_targets(sources_cfg))
     return targets
+
+
+def egress_domains() -> List[str]:
+    """千里眼出网会访问的**公网域名**清单，供云端环境的网络白名单使用。
+
+    和 :func:`collect_targets` 同源——探测哪些地址就放行哪些域名，两者不会漂。
+    云端 routine 的环境默认是 Trusted 级(只放行包管理器/GitHub/云 SDK)，
+    aihot、YouTube、各家官方 blog 全在墙外；要让云端够得着，得把这份清单填进
+    环境的 Custom 允许域名里(claude.ai/code 消息框上方的云图标 → 环境设置)。
+
+    内网域名(``*.internal``)与本机端口不列入：云端本来也够不到，列了也是空占位。
+    """
+    seen: List[str] = []
+    for _name, _backend, url in collect_targets():
+        match = re.match(r"https?://([^/:\s]+)", str(url))
+        if not match:
+            continue
+        host = match.group(1).lower()
+        if host.endswith(".internal") or host in ("localhost", "127.0.0.1"):
+            continue
+        if host not in seen:
+            seen.append(host)
+    return sorted(seen)
 
 
 # =========================================================================
@@ -194,12 +262,21 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--include-internal", action="store_true", help="额外测试内网 company 的 CDP 连通性",
     )
+    parser.add_argument(
+        "--print-domains", action="store_true",
+        help="只打印出网域名清单（填云端环境的 Custom 白名单用），不做探测",
+    )
     return parser
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+
+    if args.print_domains:
+        for domain in egress_domains():
+            print(domain)
+        return 0
 
     results = run_health_check(include_internal=args.include_internal)
     _print_table(results)

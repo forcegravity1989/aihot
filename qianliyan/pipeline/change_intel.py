@@ -42,8 +42,16 @@ _MODEL_RE = re.compile(
 )
 #: claude code X.Y.Z
 _CCVER_RE = re.compile(r"claude[\s\-]?code[\s\-]*v?(\d+\.\d+\.\d+)", re.IGNORECASE)
-#: 提示词/token 话题
+#: 提示词/token 话题——单独出现太宽泛（"token"在 AI 报道里随处可见，会把完全不相关
+#: 的文章都判成"提示词话题"），只作为 _mentions_claude_code 之外的第二道门槛用，
+#: 两者都命中才算真的在说"Claude Code 的提示词/token 规模变了"。
 _PROMPT_TOPIC_RE = re.compile(r"(prompt|token|提示词|系统提示|system\s*prompt)", re.IGNORECASE)
+#: 判断文本是否真的在说 Claude Code（而不只是恰好出现 token/prompt 这类通用词）
+_CLAUDE_CODE_MENTION_RE = re.compile(r"claude[\s\-]?code", re.IGNORECASE)
+
+
+def _mentions_claude_code(text: str) -> bool:
+    return bool(_CLAUDE_CODE_MENTION_RE.search(text)) or bool(_CCVER_RE.search(text))
 #: 数字断言：80% / 3x / 2倍
 _NUM_CLAIM_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(%|％|percent|pct|x|×|倍)", re.IGNORECASE)
 #: 方向词
@@ -112,8 +120,7 @@ def extract_subject(item: Dict[str, Any]) -> Optional[str]:
         ccver = _CCVER_RE.search(text)
         if ccver:
             return "claude-code-{0}".format(ccver.group(1))
-        low = text.casefold()
-        if "claude code" in low or "claude-code" in low:
+        if _mentions_claude_code(text):
             return "claude-code"
         if _PROMPT_TOPIC_RE.search(text):
             return "prompts"
@@ -202,7 +209,9 @@ def _extract_claim_regex(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "number": number,
         "unit": unit,
         "direction": _claim_direction(text, unit),
-        "is_prompt_topic": bool(_PROMPT_TOPIC_RE.search(text)),
+        # 两道门槛都过：真的提到 Claude Code + 真的在说 prompt/token 规模，
+        # 不能只靠"token"这种通用词单独出现就判定（见上方 _PROMPT_TOPIC_RE 注释）
+        "is_prompt_topic": bool(_PROMPT_TOPIC_RE.search(text)) and _mentions_claude_code(text),
         "text": _snippet(text, match.start()),
     }
 

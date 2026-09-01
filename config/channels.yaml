@@ -25,6 +25,21 @@
 
 defaults:
   limit: 30
+  # 同一信源在单个频道内最多占几席（频道级可用 max_per_source 覆盖，0 = 不限）。
+  # 软上限：铺不满 limit 时按热度回填被压下的条目，所以天生只有一两个源的频道
+  # （trending / change-intel）不会因此变空。
+  max_per_source: 3
+  # 组织级归并：同一家的多个信源算作一个，否则「模型发布」频道 top5 会全是
+  # Anthropic News + Anthropic Engineering + Claude Blog——三个 source，一家公司，
+  # 而这个频道存在的意义正是让你看到不同厂商。
+  # 匹配同 model-sources.yaml：对 source 名做大小写不敏感子串匹配，命中多条取最长 key。
+  source_groups:
+    anthropic:  ["anthropic", "claude blog", "claude code", "claude 官方"]
+    openai:     ["openai"]
+    google:     ["deepmind", "google"]
+    arxiv:      ["arxiv"]
+    github:     ["github trending"]
+    huggingface: ["huggingface"]
 
 channels:
   # —— 头条：跨源热榜（热度 + 交叉验证），聚官方/模型/大会/blog 的高信号条目 ——
@@ -120,6 +135,25 @@ channels:
         - keywords_any:
             ["pretrain", "post-train", "fine-tune", "finetune", "rlhf", "benchmark",
              "scaling law", "distill", "quantization", "推理优化", "强化学习"]
+
+  # —— AI infra（2026-08-31 新增）——
+  # 为什么要单开一个频道而不是靠 tags 蹭进 models/model-dev：频道内按 hotness 降序截断
+  # limit，而 Anthropic/Claude 生态的条目权重高又新鲜，把 infra 条目全挤出前 30。
+  # 加了源却排不进去 = 抓回来也看不见。给 infra 一个只跟同类竞争的位置，
+  # cmd_prepare 的「各频道 top 5」才会把它们带进选稿草案。
+  - name: infra
+    title: AI 基础设施
+    limit: 30
+    match:
+      # 只认信源级信号 + 极具体的技术词。第一版用了 inference/gpu/quantization 这类
+      # 宽泛词，结果被「Claude Code 系统提示词」灌满——那个源 204 条全新鲜、权重又高，
+      # changelog 正文里这些词满地都是。宽 keyword 规则会静默劫持整个频道。
+      any_of:
+        - tags_any: [infra, hardware, framework, serving]
+        - categories: [infra]
+        - keywords_any:
+            ["vllm", "sglang", "tensorrt", "trainium", "kv cache", "kv-cache",
+             "cuda kernel", "推理引擎", "显存占用"]
 
   # —— 插件生态（既有频道，向后兼容）——
   - name: plugins

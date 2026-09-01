@@ -18,6 +18,10 @@ mapping:
   OpenAI: official
   Google DeepMind: official
   DeepMind: official
+  Qwen: official
+  NVIDIA: vendor
+  PyTorch: vendor
+  SemiAnalysis: kol
   Google AI: official
   Meta AI: official
   Microsoft Research: official

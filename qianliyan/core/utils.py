@@ -45,6 +45,8 @@ _FALLBACK_DATE_FORMATS = (
     "%Y%m%d",
     "%d %b %Y",
     "%b %d, %Y",
+    "%B %d, %Y",
+    "%d %B %Y",
 )
 
 
