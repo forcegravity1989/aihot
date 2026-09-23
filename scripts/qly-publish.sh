@@ -49,7 +49,8 @@ print("selected={0}".format(len(picked)))
 print("edited_by={0}".format((draft or {}).get("edited_by") or ("human" if picked else "")))
 print("final={0}".format("yes" if final else "no"))
 finals = (final or {}).get("items") or []
-print("briefs={0}/{1}".format(sum(1 for e in finals if e.get("brief")), len(finals)))
+print("briefs={0}/{1}".format(sum(1 for e in finals if e.get("takeaway") or e.get("brief")), len(finals)))
+print("distilled={0}/{1}".format(sum(1 for e in finals if e.get("takeaway") and e.get("logic")), len(finals)))
 if picked:
     head = picked[0]
     print("headline={0}".format(head.get("title_zh") or head.get("title") or ""))

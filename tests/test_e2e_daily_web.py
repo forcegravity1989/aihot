@@ -726,11 +726,15 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     briefs_file = tmp_data_dir / "briefs.json"
     # 可视化数据：第一条给数字 + 合法对比图；第二条的图里混进非数字，整张图必须被拒（数字不能靠猜）
     viz = {
-        sigs[0]: {"stats": [{"value": "$2/$10", "label": "输入/输出价格"}, {"value": "-50%", "label": "降价幅度"}],
+        sigs[0]: {"takeaway": "这是一句提炼出的结论", "meme": "「一句能传开的话」——某人",
+                  "logic": {"chain": ["起因环节", "关键机制", "最终结果"], "focus": 1,
+                            "evidence": ["证据甲 33.2%"], "caveat": "代价是某件事"},
+                  "stats": [{"value": "$2/$10", "label": "输入/输出价格"}, {"value": "-50%", "label": "降价幅度"}],
                   "chart": {"title": "基准得分对比", "unit": "%", "rows": [
                       {"label": "主角模型", "value": 33.2, "highlight": True},
                       {"label": "对手模型", "value": 16.6, "note": "11.1×"}]}},
-        sigs[1]: {"stats": [], "chart": {"title": "坏图", "unit": "%", "rows": [
+        sigs[1]: {"takeaway": "第二条的结论", "logic": {"chain": ["只有一步的链不成立"]},
+                  "stats": [], "chart": {"title": "坏图", "unit": "%", "rows": [
                       {"label": "甲", "value": "大约三成"}, {"label": "乙", "value": 20}]}},
         sigs[2]: {"chart": {"type": "dumbbell", "title": "前代到新版", "unit": "%",
                             "from_label": "旧版", "to_label": "新版", "rows": [
@@ -766,6 +770,16 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     assert "不该出现的要点" not in index
     # 关键数字与对比图：数值原样上版、条宽按数值归一（33.2 最大 → 100%，16.6 → 50%）
     assert "$2/$10" in index and "降价幅度" in index, "关键数字没上版"
+    # 提炼是日报卡片的主体：结论、梗、逻辑链（关键一环高亮）、证据与代价；
+    # 有结论的条目，细节要点只留在详情页，日报页不再铺一屏字
+    glance = index.split('id="wrap-timeline"', 1)[0]
+    assert "这是一句提炼出的结论" in glance and "「一句能传开的话」——某人" in glance
+    assert '<div class="lg-node is-hl">关键机制</div>' in glance, "逻辑链的关键一环没高亮"
+    assert "起因环节" in glance and "最终结果" in glance and "证据甲 33.2%" in glance and "代价是某件事" in glance
+    assert "任务要点一·" + sigs[0] not in glance, "有结论的条目，要点不该再铺在日报页"
+    story0 = (out / "story" / "{0}.html".format(sigs[0])).read_text(encoding="utf-8")
+    assert "任务要点一·" + sigs[0] in story0 and "这是一句提炼出的结论" in story0, "详情页要有结论也要有细节要点"
+    assert "只有一步的链不成立" not in index, "不成链的逻辑图不该被画出来"
     # 条形图：条长严格按数值（33.2 : 16.6 = 2 : 1），主角高亮
     assert "基准得分对比" in index and "33.2%" in index and "11.1×" in index
     hl = float(re.search(r'<rect class="qc-bar is-hl"[^>]* width="([\d.]+)"', index).group(1))

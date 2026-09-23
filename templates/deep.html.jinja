@@ -85,6 +85,9 @@
     </div>
     {% endif %}
 
+    {% if card.takeaway %}<p class="viz-takeaway">{{ card.takeaway }}</p>{% endif %}
+      {% if card.meme %}<blockquote class="viz-meme">{{ card.meme }}</blockquote>{% endif %}
+      {% if card.logic %}<div class="viz-logic"><div class="lg-chain">{% for n in card.logic.chain %}<div class="lg-node {{ n.cls }}">{{ n.text }}</div>{% endfor %}</div>{% if card.logic.evidence %}<div class="lg-row"><span class="lg-k">证据</span>{% for ev in card.logic.evidence %}<span class="lg-ev">{{ ev }}</span>{% endfor %}</div>{% endif %}{% if card.logic.caveat %}<div class="lg-row lg-caveat"><span class="lg-k">但是</span><span>{{ card.logic.caveat }}</span></div>{% endif %}</div>{% endif %}
     {% if card.stats %}<div class="viz-stats">{% for st in card.stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div>{% endif %}
       {% if card.chart %}<figure class="viz-chart"><figcaption>{{ card.chart.title }}</figcaption>{{ card.chart.svg|safe }}</figure>{% endif %}
     {% if card.brief %}<ul class="report-entry-brief">{% for point in card.brief %}<li>{{ point }}</li>{% endfor %}</ul>{% endif %}
