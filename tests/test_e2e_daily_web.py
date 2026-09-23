@@ -433,24 +433,30 @@ def test_an_undated_article_does_not_stay_fresh_forever(tmp_data_dir, monkeypatc
     fixture = tmp_data_dir / "fixture.jsonl"
     monkeypatch.setattr(sync, "_mock_fixture_path", lambda: fixture)
     base = utils.now_utc()
-    url = "https://example.com/news/an-old-post"
+    # 两种「没日期」都真实存在：None 在建条目时被补成抓取时刻；空串一路留到打分才被当成 now
+    urls = {"none": "https://example.com/news/an-old-post", "empty": "https://example.com/news/another"}
 
     def crawl(at):
-        # 模拟 scrape 源：列表页没有日期，每次抓都只能拿到「现在」
         monkeypatch.setattr(utils, "now_utc", lambda: at)
-        row = schema.make_item(
-            title="An old post with no date", url=url, source="Scraped Blog",
-            source_kind="local", backend="scrape", weight=0.98, date=None,
-        )
-        storage.write_jsonl(fixture, [row])
+        rows = [
+            schema.make_item(
+                title="Old post " + kind, url=url, source="Scraped Blog",
+                source_kind="local", backend="scrape", weight=0.98,
+                date=None if kind == "none" else "",
+            )
+            for kind, url in urls.items()
+        ]
+        storage.write_jsonl(fixture, rows)
         sync.run_sync(eyes=["local"], mock=True, no_html=True, quick=True)
-        return next(it for it in storage.read_jsonl(paths.data_path("items.jsonl")) if it["url"] == url)
+        pool = {it["url"]: it for it in storage.read_jsonl(paths.data_path("items.jsonl"))}
+        return {kind: pool[url] for kind, url in urls.items()}
 
     first = crawl(base)
     later = crawl(base + timedelta(days=3))
 
-    assert later["date"] == first["date"], "没日期的旧文被重新盖上了新的抓取时间"
-    assert later["hotness"] < first["hotness"], "三天后再见到它，热度不该还和第一次一样"
+    for kind in urls:
+        assert later[kind]["date"] == first[kind]["date"], "没日期的旧文（{0}）被重新盖上了新的抓取时间".format(kind)
+        assert later[kind]["hotness"] < first[kind]["hotness"], "三天后再见到它（{0}），热度不该还和第一次一样".format(kind)
 
 
 def test_one_launch_takes_one_seat_and_its_other_reports_stay_reachable(tmp_data_dir, monkeypatch):

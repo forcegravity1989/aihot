@@ -190,13 +190,16 @@ def _git_snapshot(run_id: str) -> None:
 # 主编排
 # =========================================================================
 def _carry_first_seen_dates(
-    new_items: Sequence[Dict[str, Any]], old_items: Sequence[Dict[str, Any]],
+    new_items: Sequence[Dict[str, Any]], old_items: Sequence[Dict[str, Any]], now: datetime,
 ) -> int:
     """源没给日期的条目，沿用池子里上一次见到它时的日期（首见时间），返回沿用了几条。
 
     这类条目的 date 是 ``schema._norm_date`` 补的「抓取时刻」。不沿用的话每轮都被重补成
     now：8 月的旧文、上百个老版本的提示词变更，永远是「0 小时前」，按新鲜度霸占候选池前排。
     首见时间不是发布时间，但它只会往过去走——一篇文章第一次被看到之后，不会再变新。
+
+    有的抓取路径给的是空串日期（不是 None），池子里存的也是空串，要到打分时才被当成 now——
+    这种第一次见到时就地盖上本轮时间，下一轮才有「首见」可沿用。
     """
     first_seen: Dict[str, str] = {}
     for old in old_items or []:
@@ -216,6 +219,8 @@ def _carry_first_seen_dates(
         if prior and prior != item.get("date"):
             item["date"] = prior
             carried += 1
+        elif not prior and not item.get("date"):
+            item["date"] = utils.iso(now)
     return carried
 
 
@@ -263,7 +268,7 @@ def run_sync(
 
     raw_pool_path = paths.data_path("raw_pool.jsonl")
     old_raw = storage.read_jsonl(raw_pool_path)
-    carried = _carry_first_seen_dates(new_items, old_raw)
+    carried = _carry_first_seen_dates(new_items, old_raw, now)
     if carried:
         logger.info("无日期条目沿用首见时间 %d 条", carried)
     max_age_days = os.environ.get("QLY_POOL_MAX_AGE_DAYS")
