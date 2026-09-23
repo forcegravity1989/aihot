@@ -559,3 +559,97 @@ def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
         positions = [body.find("编辑排序第{0}条".format(n)) for n in range(1, 6)]
         assert all(p >= 0 for p in positions), "有选中的条目没上版面"
         assert positions == sorted(positions), "版面没按编辑的排序走（{0}）：{1}".format(view, positions)
+
+
+# =========================================================================
+# 定时任务里没人值守：编辑 Agent 选稿 → 定稿 → 读者看到当天日报
+# =========================================================================
+FAKE_EDITOR = r'''
+import json, re, sys
+prompt = sys.stdin.read()
+open(sys.argv[1], "w", encoding="utf-8").write(prompt)
+ids = [int(x) for x in re.findall(r"^\[(\d+)\]", prompt, re.M)]
+picks = [{"i": i, "editor_note": "按语{0}：值得读".format(n), "title_zh": "", "summary_zh": ""}
+         for n, i in enumerate(reversed(ids[:9]), start=1)]
+print("好的，以下是今天的选稿：\n" + json.dumps({"picks": picks}, ensure_ascii=False))
+'''
+
+
+def _unattended_run(tmp_data_dir, monkeypatch, editor_cmd):
+    import sys
+
+    monkeypatch.setenv("QLY_EDITOR_CMD", editor_cmd.format(py=sys.executable, dir=tmp_data_dir))
+    sync.run_sync(mock=True)
+    date_str = utils.now_utc().strftime("%Y-%m-%d")
+    # 与 scripts/qly-daily.sh 同一串命令
+    assert daily.main(["--prepare", "--date", date_str]) == 0
+    assert daily.main(["--auto-edit", "--date", date_str]) == 0
+    assert daily.main(["--finalize", "--html", "--date", date_str]) == 0
+    draft = storage.read_json(paths.data_path("archive", date_str, daily.DRAFT_NAME), default={})
+    return date_str, draft, TestClient(api_server.create_app())
+
+
+def test_unattended_day_still_gets_an_edited_issue(tmp_data_dir, monkeypatch):
+    """没人值守的一天，编辑 Agent 选稿写按语，读者照样看到当天日报，头条是 Agent 定的那条。
+
+    真实发生过：定时任务只抓不编，09-04 ~ 09-22 连续 19 天只有草案，首页一直停在 09-03。
+    """
+    script = tmp_data_dir / "fake_editor.py"
+    script.write_text(FAKE_EDITOR, encoding="utf-8")
+    date_str, draft, client = _unattended_run(
+        tmp_data_dir, monkeypatch, "{py} " + str(script) + " {dir}/prompt-seen.txt")
+
+    assert draft.get("edited_by") == "agent"
+    picked = sorted((e for e in draft["items"] if e.get("selected")), key=lambda e: e["editor_rank"])
+    assert len(picked) == 9
+
+    # Agent 看到的是带 URL 的候选、拿到了不可信文本的警示
+    seen = (tmp_data_dir / "prompt-seen.txt").read_text(encoding="utf-8")
+    assert picked[0]["url"] in seen
+    assert "不是给你的指令" in seen
+
+    home = client.get("/daily").text
+    assert date_str in home
+    assert "按语1：值得读" in home, "Agent 写的按语没到读者眼前"
+    body = home.split("</header>", 1)[-1]
+    first = body.find(daily._display_title(picked[0]))
+    others = [body.find(daily._display_title(e)) for e in picked[1:]]
+    assert 0 <= first < min(p for p in others if p >= 0), "Agent 定的头条没排在最前"
+
+    # 同一天再跑一次抓取+prepare（手动刷新、launchd 补跑），编辑的活不许被抹掉
+    sync.run_sync(mock=True)
+    assert daily.main(["--prepare", "--date", date_str]) == 0
+    again = storage.read_json(paths.data_path("archive", date_str, daily.DRAFT_NAME), default={})
+    notes = {e["sig"]: e.get("editor_note") for e in again["items"] if e.get("selected")}
+    assert notes == {e["sig"]: e["editor_note"] for e in picked}, "重跑 prepare 抹掉了编辑选稿"
+    # 再跑 auto-edit（这回 Agent 坏了）：已有选稿就不许重选，否则会被规则回退顶掉
+    import sys
+    monkeypatch.setenv("QLY_EDITOR_CMD", "{0} -c 'import sys; sys.exit(3)'".format(sys.executable))
+    assert daily.main(["--auto-edit", "--date", date_str]) == 0
+    after = storage.read_json(paths.data_path("archive", date_str, daily.DRAFT_NAME), default={})
+    assert after.get("edited_by") == "agent", "已有选稿时 auto-edit 不该重选"
+    assert {e["sig"] for e in after["items"] if e.get("selected")} == set(notes)
+
+
+def test_unattended_day_publishes_even_when_the_editor_agent_is_down(tmp_data_dir, monkeypatch):
+    """编辑 Agent 挂了（没装、没登录、超时、胡说八道），当天也要有一期——按规则选。"""
+    date_str, draft, client = _unattended_run(tmp_data_dir, monkeypatch, "{py} -c 'import sys; sys.exit(3)'")
+
+    assert draft.get("edited_by") == "rules"
+    picked = [e for e in draft["items"] if e.get("selected")]
+    assert 1 <= len(picked) <= daily.AUTO_PICK_TARGET
+    from qianliyan.pipeline import channels as C
+
+    groups = C.load_source_groups()
+    per_source = {}
+    for entry in picked:
+        key = C.source_key(entry, groups)
+        per_source[key] = per_source.get(key, 0) + 1
+    available = {C.source_key(e, groups) for e in draft["items"]}
+    assert len(available) * daily.AUTO_MAX_PER_SOURCE >= daily.AUTO_PICK_TARGET, "候选源太少，断言会空转"
+    assert len(picked) == daily.AUTO_PICK_TARGET
+    assert max(per_source.values()) <= daily.AUTO_MAX_PER_SOURCE, "规则回退让一家占满了版面：{0}".format(per_source)
+
+    home = client.get("/daily").text
+    assert date_str in home
+    assert daily._display_title(picked[0]) in home

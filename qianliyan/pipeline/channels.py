@@ -41,6 +41,7 @@ __all__ = [
     "DEFAULT_MAX_PER_SOURCE",
     "diversify",
     "load_source_groups",
+    "source_key",
     "BADGE_EMOJI",
     "load_channels",
     "match_item",
@@ -147,6 +148,11 @@ def load_source_groups() -> Dict[str, str]:
                 if text:
                     flat[text] = str(group)
     return flat
+
+
+def source_key(item: Dict[str, Any], groups: Optional[Dict[str, str]] = None) -> str:
+    """同源判定键（按组织归并后）——日报规则选稿也按这把尺子数席位。"""
+    return _source_key(item, groups)
 
 
 def diversify(items: List[Dict[str, Any]], cap: int, limit: int,

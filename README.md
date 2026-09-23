@@ -56,7 +56,7 @@ env QLY_DATA_DIR  >  <repo根>/paths.local.json  >  config/paths.team.json  >  ~
 
 ## 定时抓取
 
-抓取跑在 launchd 上（macOS），每天 **07:30** 一轮，给编辑留出选稿时间。
+抓取跑在 launchd 上（macOS），每天 **07:30** 一轮：抓取 → 编辑 Agent 选稿 → 定稿出刊。
 
 ```bash
 # 安装
@@ -73,23 +73,39 @@ launchctl load ~/Library/LaunchAgents/com.qianliyan.daily.plist
 **为什么不是 crontab**：这是会合盖休眠的笔记本。到点时机器睡着，cron 那一轮就永久
 错过、第二天才有数据；launchd 会在唤醒后补跑。对「每天抓一次」，差别就是今天有没有日报。
 
-调度入口是 [`scripts/qly-daily.sh`](scripts/qly-daily.sh)，做三件事：
+调度入口是 [`scripts/qly-daily.sh`](scripts/qly-daily.sh)：
 
 | 步骤 | 说明 |
 |------|------|
 | `sync` | 抓取 → 去重打分 → 富化 → 渲染简报 |
-| `daily_digest_all --prepare` | 备好当日选稿草案 |
+| `daily_digest_all --prepare` | 备当日选稿草案（同一事件只留一条；已有的编辑选稿不覆盖） |
+| `daily_digest_all --auto-edit` | 编辑 Agent 选 8~16 条、写按语、定头条；Agent 不可用就按规则选 12 条（无按语） |
+| `daily_digest_all --finalize --html` | 定稿，渲染首页 / 时间轴 / 深读 / 详情页 |
 | 日志 | `$QLY_DATA_DIR/logs/daily-<日期>.log`，保留 30 天 |
 
-**选稿与定稿刻意不自动做**——那两步需要判断力，是编辑（人或 Agent）的活，自动跑只会
-产出一份没人看过的日报。草案备好后由编辑选条目、写 `editor_note`，再 `--finalize --html`。
+选稿曾经刻意留给人做，结果是 09-04 ~ 09-22 连续 19 天只有草案、首页一直停在 09-03。
+无人值守的定时任务里「等人来编」就是不出刊，所以现在由编辑 Agent 在环。想亲自编：改草案
+（`archive/<日期>/digest-draft.json`）的 `selected` / `editor_note` / `editor_rank`，再跑
+`--finalize --html`——重跑 prepare 与 auto-edit 都不会覆盖已有选稿。
+
+**编辑 Agent 的凭据**：默认调 `claude -p`（无工具，候选文本是不可信的外部数据）。launchd
+不读 shell profile，交互登录过期后定时任务里的 claude 会直接失败，退回规则选稿。长期运行用
+`claude setup-token` 生成令牌，写进本机私有文件（不进仓库）：
+
+```bash
+mkdir -p ~/.config/qianliyan && chmod 700 ~/.config/qianliyan
+echo 'export CLAUDE_CODE_OAUTH_TOKEN=<setup-token 输出的令牌>' > ~/.config/qianliyan/env
+chmod 600 ~/.config/qianliyan/env
+```
+
+换编辑实现用 `QLY_EDITOR_CMD`（shlex 语法，prompt 走 stdin、stdout 回 JSON）；设成空串只走规则。
 
 退出码语义（决定要不要报警）：
 
 | 码 | 含义 |
 |----|------|
-| 0 | 当日数据拿到了（主信源 aihot OK） |
-| 1 | 抓取失败 / 主信源挂了 / 全部眼失败——需要人看一眼 |
+| 0 | 当日数据拿到了（主信源 aihot OK），日报出了 |
+| 1 | 抓取失败 / 主信源挂了 / 全部眼失败 / 日报没出来——需要人看一眼 |
 | 2 | 上一轮还在跑，本轮跳过——不是错误 |
 
 **不用 `sync --strict`**：内网 `company` 眼在没有 CDP 浏览器的机器上天天失败，`--strict`
