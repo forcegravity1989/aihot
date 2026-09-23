@@ -732,6 +732,14 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
                       {"label": "对手模型", "value": 16.6, "note": "11.1×"}]}},
         sigs[1]: {"stats": [], "chart": {"title": "坏图", "unit": "%", "rows": [
                       {"label": "甲", "value": "大约三成"}, {"label": "乙", "value": 20}]}},
+        sigs[2]: {"chart": {"type": "dumbbell", "title": "前代到新版", "unit": "%",
+                            "from_label": "旧版", "to_label": "新版", "rows": [
+                      {"label": "指标一", "from": 18, "to": 33}, {"label": "指标二", "from": 65, "to": 73}]}},
+        sigs[3]: {"chart": {"type": "scatter", "title": "得分与成本", "x_label": "每任务成本", "y_label": "得分",
+                            "x_unit": "$", "y_unit": "%", "points": [
+                      {"label": "便宜模型", "x": 0.27, "y": 33.2, "highlight": True},
+                      {"label": "贵模型", "x": 3.0, "y": 26.9},
+                      {"label": "坏点", "x": "很贵", "y": 10}]}},
     }
     briefs_file.write_text(json.dumps({"briefs": [
         dict({"sig": sig, "brief": ["任务要点一·" + sig, "任务要点二·" + sig]}, **viz.get(sig, {}))
@@ -758,10 +766,17 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     assert "不该出现的要点" not in index
     # 关键数字与对比图：数值原样上版、条宽按数值归一（33.2 最大 → 100%，16.6 → 50%）
     assert "$2/$10" in index and "降价幅度" in index, "关键数字没上版"
-    assert "基准得分对比" in index and 'style="width:100.0%"' in index and 'style="width:50.0%"' in index, \
-        "对比图没按数值画出来"
-    assert "33.2%" in index and "11.1×" in index
+    # 条形图：条长严格按数值（33.2 : 16.6 = 2 : 1），主角高亮
+    assert "基准得分对比" in index and "33.2%" in index and "11.1×" in index
+    hl = float(re.search(r'<rect class="qc-bar is-hl"[^>]* width="([\d.]+)"', index).group(1))
+    other = float(re.search(r'<rect class="qc-bar"[^>]* width="([\d.]+)"', index).group(1))
+    assert abs(hl / other - 2.0) < 0.02, "条长没按数值比例画：{0} vs {1}".format(hl, other)
     assert "坏图" not in index, "含非数字的对比图不该被画出来"
+    # 哑铃图：图例用编辑给的前后名称，右侧标变化量
+    assert "前代到新版" in index and "旧版" in index and "+15" in index and "+8" in index
+    # 散点图：两个点、轴标题都在，主角点高亮
+    assert "得分与成本" in index and "每任务成本" in index and 'class="qc-point is-hl"' in index
+    assert "坏点" not in index, "坐标不是数字的点不该被画出来"
     assert not re.search(r'<img[^>]+src="https?://', index), "外站图片留在了发布页里"
     assert 'href="archive/' not in index, "往期死链留在了发布页里"
     stories = re.findall(r'href="(story/[A-Za-z0-9_.-]+\.html)"', index)

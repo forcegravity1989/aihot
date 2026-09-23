@@ -36,7 +36,7 @@ from .. import __version__
 from ..core import llm_client, paths, storage, utils
 from ..engine import article as article_engine
 from ..engine import youtube_transcript
-from ..pipeline import channels, minitpl, theme
+from ..pipeline import channels, minitpl, svg_charts, theme
 
 logger = logging.getLogger("qianliyan.cli.daily_digest_all")
 
@@ -779,9 +779,13 @@ BRIEF_BRIEF = """你是「千里眼」AI 日报的编辑。下面是今天已入
 另外给每条配**可视化数据**，版面会把它们画成大字号数字和条形图（读者先看图、再看字）：
 - stats：2~4 个关键数字，value 是数值本身（如 "$2/$10"、"-50%"、"33.2%"、"725×"，不超过 12 个字符），
   label 是一句短说明（不超过 20 字）。挑读者最该记住的数，不要凑；原文没有像样的数字就给空数组；
-- chart：原文里有同一指标下多个对象的对比（跑分、价格、成本、耗时、占比）时给一张条形图：
-  {{"title": "图标题（含指标名与条件）", "unit": "单位，如 % 或 $", "rows": [{{"label": "对象", "value": 数字, "note": "可选短注", "highlight": 本条主角为 true}}]}}，
-  2~6 行，value 必须是纯数字且同一单位；没有可比数据就给 null。数字一律照抄原文，不换算、不估计。
+- chart：原文里有可比数据时给一张图，三种任选最能说明问题的一种；没有就给 null。数字一律照抄原文，不换算、不估计：
+  · 条形 bar——同一指标下多个对象（跑分、价格、耗时）：
+    {{"type": "bar", "title": "图标题（含指标与条件）", "unit": "% 或 $ 等", "rows": [{{"label": "对象", "value": 数字, "note": "可选短注", "highlight": 主角为 true}}]}}，2~6 行；
+  · 哑铃 dumbbell——同一对象前后两个值（前代→新版、优化前→后）：
+    {{"type": "dumbbell", "title": "...", "unit": "...", "from_label": "Grok 4.6", "to_label": "Grok 4.7", "rows": [{{"label": "指标", "from": 数字, "to": 数字}}]}}，2~6 行，同一单位；
+  · 散点 scatter——两个指标的取舍（如得分 vs 每任务成本）：
+    {{"type": "scatter", "title": "...", "x_label": "横轴含单位", "y_label": "纵轴含单位", "x_unit": "$", "y_unit": "%", "points": [{{"label": "对象", "x": 数字, "y": 数字, "highlight": 主角为 true}}]}}，2~8 个点。
 
 只输出一个 JSON 对象，不要解释、不要 Markdown 代码块：
 {{"briefs": [{{"sig": "条目 sig", "brief": ["要点1", "要点2"], "stats": [{{"value": "$2/$10", "label": "说明"}}], "chart": null}}]}}
@@ -854,32 +858,8 @@ def _clean_stats(raw: Any) -> List[Dict[str, str]]:
 
 
 def _clean_chart(raw: Any) -> Optional[Dict[str, Any]]:
-    """条形图数据：每行必须是纯数字（宽度由代码按数值算，数字不经过任何生成环节）。"""
-    if not isinstance(raw, dict):
-        return None
-    rows: List[Dict[str, Any]] = []
-    for row in raw.get("rows") if isinstance(raw.get("rows"), list) else []:
-        if not isinstance(row, dict) or not str(row.get("label") or "").strip():
-            continue
-        value = row.get("value")
-        if isinstance(value, bool):
-            continue
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
-            continue
-        if number < 0:
-            continue
-        rows.append({
-            "label": str(row["label"]).strip(),
-            "value": number,
-            "note": str(row.get("note") or "").strip(),
-            "highlight": bool(row.get("highlight")),
-        })
-    title = str(raw.get("title") or "").strip()
-    if not title or not (CHART_ROWS[0] <= len(rows) <= CHART_ROWS[1]):
-        return None
-    return {"title": title, "unit": str(raw.get("unit") or "").strip(), "rows": rows}
+    """对比图数据（条形 / 哑铃 / 散点）：交给 svg_charts 校验，任何一格不是数字就不画。"""
+    return svg_charts.clean(raw)
 
 
 def _parse_briefs(raw: Optional[str], sigs: Sequence[str]) -> Dict[str, Dict[str, Any]]:
@@ -1081,30 +1061,12 @@ def _stats_view(entry: Dict[str, Any]) -> List[Dict[str, str]]:
     return _clean_stats(entry.get("stats"))
 
 
-def _fmt_number(value: float) -> str:
-    return ("{0:.2f}".format(value)).rstrip("0").rstrip(".") if value != int(value) else str(int(value))
-
-
 def _chart_view(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """条形图视图：宽度按本图最大值归一，最窄留 2% 让 0 也看得见一根细线。"""
+    """对比图视图：SVG 由 svg_charts 按数据生成（画法取自 ppt-master 图表模板）。"""
     chart = _clean_chart(entry.get("chart"))
     if chart is None:
         return None
-    top = max(row["value"] for row in chart["rows"]) or 1.0
-    unit = chart["unit"]
-    prefix = unit if unit in ("$", "¥", "￥", "€", "£") else ""
-    suffix = "" if prefix else unit
-    rows = []
-    for row in chart["rows"]:
-        width = max(2.0, row["value"] / top * 100.0)
-        rows.append({
-            "label": row["label"],
-            "value_text": "{0}{1}{2}".format(prefix, _fmt_number(row["value"]), suffix),
-            "note": row["note"],
-            "bar_style": "width:{0:.1f}%".format(width),
-            "cls": "is-hl" if row["highlight"] else "",
-        })
-    return {"title": chart["title"], "rows": rows}
+    return {"title": chart["title"], "svg": svg_charts.render(chart)}
 
 
 def _editor_note(entry: Dict[str, Any]) -> str:
