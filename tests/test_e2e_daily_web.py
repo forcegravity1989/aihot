@@ -248,14 +248,19 @@ def test_offline_mode_lets_the_whole_pipeline_finish_without_network(site):
     """QLY_OFFLINE=1 下整条链路必须跑完并出页面——LLM 与正文抓取是增强项不是依赖项。
 
     这个 fixture 全程 QLY_OFFLINE=1 且没有 API key，它能起来本身就是断言：
-    深读提炼走了规则回退，没有因为网络不可用而阻断主链路。
+    深读提炼走了规则回退，没有因为网络不可用而阻断主链路；回退时页面照样有内容可读。
     """
-    client, _ = site
+    client, date_str = site
     deep = client.get("/daily", params={"view": "deep"})
     assert deep.status_code == 200
-    # 回退也必须把 distill 四段渲染齐，不能留空壳
-    for section in ("要点", "脉络", "影响", "局限"):
-        assert section in deep.text, "离线回退没渲染 {0}".format(section)
+    # 回退时每条都得有能读的内容（摘要顶上），而不是一格格「—」的空壳：
+    # 规则回退的「四段提炼」只是原文前三句 + 三个破折号，曾把英文原句和网页报错文字当成要点
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    for entry in final["items"]:
+        summary = daily._summary_text(entry)
+        if summary:
+            assert summary[:20] in deep.text, "离线回退下条目没有内容：{0}".format(entry.get("title"))
+    assert '<span class="dsec-k">脉络</span><p>—</p>' not in deep.text, "深读页留着没有内容的提炼空壳"
 
 
 def test_every_item_on_every_page_carries_a_traceable_url(site):

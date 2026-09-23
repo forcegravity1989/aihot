@@ -104,6 +104,7 @@
     </div>
     {% endif %}
 
+    {% if card.show_distill %}
     <div class="deep-distill">
       <div class="dsec">
         <span class="dsec-k">要点</span>
@@ -114,6 +115,7 @@
       <div class="dsec"><span class="dsec-k">影响</span><p>{% if card.pull %}{{ card.pull }}{% endif %}{% if not card.pull %}—{% endif %}</p></div>
       <div class="dsec"><span class="dsec-k">局限</span><p>{% if card.limits %}{{ card.limits }}{% endif %}{% if not card.limits %}—{% endif %}</p></div>
     </div>
+    {% endif %}
 
     <details class="deep-cross">
       <summary>🔎 交叉验证 · {{ card.source_count }} 源</summary>

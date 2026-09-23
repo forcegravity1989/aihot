@@ -1355,13 +1355,18 @@ def _deep_card(entry: Dict[str, Any], now) -> Dict[str, Any]:
         "has_images": bool(images),
         "theses": theses,
         "kp": kp,
+        # 只有真提炼（编辑或 LLM 写了脉络/影响/局限）才展示四格；规则回退只是把原文前三句
+        # 原样塞进「要点」、其余三格留「—」——英文原句、网页报错文字都会被当成要点，不如不放
+        "show_distill": any(str(distill.get(k) or "").strip() for k in ("chain", "pull", "limits")),
         "chain": str(distill.get("chain") or ""),
         "pull": str(distill.get("pull") or ""),
         "limits": str(distill.get("limits") or ""),
         # format 专属
         "is_video": is_video,
         "has_transcript": has_transcript,
-        "corroboration": _corroboration_view(extra),
+        # 有编辑读原文写的要点时，不再挂机器比对出的「叙事↔实证」——它在非变更类条目上
+        # 常常错配（把 Claude Code 提示词变更当成一篇价格评论的证据），和要点并列只会添乱
+        "corroboration": None if _brief(entry) else _corroboration_view(extra),
         "is_repo": fmt == "repo",
         "is_paper": fmt == "paper",
         "thumbnail": str(extra.get("thumbnail") or "") if is_video else "",
