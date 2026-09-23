@@ -27,6 +27,13 @@
   </div>
   {% endif %}
 
+  {% if brief %}
+  <section class="dt-sec">
+    <div class="dt-sec-label">要点</div>
+    <ul class="report-entry-brief">{% for point in brief %}<li>{{ point }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
   {% if summary %}
   <section class="dt-sec">
     <div class="dt-sec-label">AI 导读</div>

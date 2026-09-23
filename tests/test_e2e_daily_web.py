@@ -567,6 +567,11 @@ def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
 FAKE_EDITOR = r'''
 import json, re, sys
 prompt = sys.stdin.read()
+sigs = re.findall(r"^=== sig: (\S+)", prompt, re.M)
+if sigs:  # 写要点的简报
+    open(sys.argv[1] + ".brief", "w", encoding="utf-8").write(prompt)
+    print(json.dumps({"briefs": [{"sig": s, "brief": ["要点甲·" + s, "要点乙·" + s, "要点丙·" + s]} for s in sigs]}))
+    sys.exit(0)
 open(sys.argv[1], "w", encoding="utf-8").write(prompt)
 ids = [int(x) for x in re.findall(r"^\[(\d+)\]", prompt, re.M)]
 picks = [{"i": i, "editor_note": "按语{0}：值得读".format(n), "title_zh": "", "summary_zh": ""}
@@ -584,7 +589,7 @@ def _unattended_run(tmp_data_dir, monkeypatch, editor_cmd):
     # 与 scripts/qly-daily.sh 同一串命令
     assert daily.main(["--prepare", "--date", date_str]) == 0
     assert daily.main(["--auto-edit", "--date", date_str]) == 0
-    assert daily.main(["--finalize", "--html", "--date", date_str]) == 0
+    assert daily.main(["--finalize", "--auto-brief", "--html", "--date", date_str]) == 0
     draft = storage.read_json(paths.data_path("archive", date_str, daily.DRAFT_NAME), default={})
     return date_str, draft, TestClient(api_server.create_app())
 
@@ -611,6 +616,16 @@ def test_unattended_day_still_gets_an_edited_issue(tmp_data_dir, monkeypatch):
     home = client.get("/daily").text
     assert date_str in home
     assert "按语1：值得读" in home, "Agent 写的按语没到读者眼前"
+    # 要点是每条的正文：日报页上直接展开，不用点进原文
+    brief_seen = (tmp_data_dir / "prompt-seen.txt.brief").read_text(encoding="utf-8")
+    glance = client.get("/daily", params={"view": "glance"}).text
+    deep = client.get("/daily", params={"view": "deep"}).text
+    for entry in picked:
+        assert "要点甲·" + entry["sig"] in glance, "要点没直接展开在日报（浅读）页上"
+        assert "要点甲·" + entry["sig"] in deep, "深读页没有要点"
+        assert entry["url"] in brief_seen, "写要点的简报里没带原文出处"
+    story = client.get("/story/{0}.html".format(picked[0]["sig"])).text
+    assert "要点乙·" + picked[0]["sig"] in story, "详情页没有要点"
     body = home.split("</header>", 1)[-1]
     first = body.find(daily._display_title(picked[0]))
     others = [body.find(daily._display_title(e)) for e in picked[1:]]
@@ -697,6 +712,23 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
                            capture_output=True, text=True, cwd="/")
     assert "不覆盖" in again.stdout
 
+    # 任务读原文写要点 → 写进定稿、重渲染；日报页上直接看到
+    brief_prompt = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "brief-prompt", date_str],
+                                  capture_output=True, text=True, cwd="/")
+    assert brief_prompt.returncode == 0, brief_prompt.stderr
+    sigs = re.findall(r"^=== sig: (\S+)", brief_prompt.stdout, re.M)
+    assert sorted(sigs) == sorted(e["sig"] for e in chosen)
+    briefs_file = tmp_data_dir / "briefs.json"
+    briefs_file.write_text(json.dumps({"briefs": [
+        {"sig": sig, "brief": ["任务要点一·" + sig, "任务要点二·" + sig]} for sig in sigs
+    ] + [{"sig": "not-a-pick", "brief": ["不该出现的要点"]}]}, ensure_ascii=False), encoding="utf-8")
+    applied = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "apply-briefs", str(briefs_file), date_str],
+                             capture_output=True, text=True, cwd="/")
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+    status = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "status", date_str],
+                            capture_output=True, text=True, cwd="/").stdout
+    assert "briefs={0}/{0}".format(len(sigs)) in status
+
     # 给页面塞一张外站图，确认发布前会被剥掉
     root_page = paths.data_path("daily.html")
     root_page.write_text(root_page.read_text(encoding="utf-8").replace(
@@ -707,6 +739,8 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     assert staged.returncode == 0, staged.stderr
     index = (out / "index.html").read_text(encoding="utf-8")
     assert "任务按语1" in index
+    assert all("任务要点一·" + sig in index for sig in sigs), "要点没进发布页"
+    assert "不该出现的要点" not in index
     assert not re.search(r'<img[^>]+src="https?://', index), "外站图片留在了发布页里"
     assert 'href="archive/' not in index, "往期死链留在了发布页里"
     stories = re.findall(r'href="(story/[A-Za-z0-9_.-]+\.html)"', index)

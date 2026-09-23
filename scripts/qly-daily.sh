@@ -1,8 +1,8 @@
 #!/bin/bash
 # scripts/qly-daily.sh —— 千里眼每日抓取的调度入口（给 launchd / cron 调用）。
 #
-# 做四件事：抓取（sync）→ 备当日选稿草案（--prepare）→ 编辑 Agent 选稿写按语（--auto-edit）
-# → 定稿渲染（--finalize --html）。
+# 做五件事：抓取（sync）→ 备当日选稿草案（--prepare）→ 编辑 Agent 选稿写按语（--auto-edit）
+# → 定稿（--finalize，抓入选条目正文）→ 编辑 Agent 读正文写要点并渲染（--auto-brief --html）。
 #
 # 选稿原本刻意留给人做，结果是 09-04 ~ 09-22 连续 19 天只有草案、首页停在 09-03——
 # 「等人来编」在无人值守的定时任务里等于不出刊。现在由编辑 Agent（默认 `claude -p`，
@@ -116,7 +116,8 @@ published=0
 if "$PY" -m qianliyan.cli.daily_digest_all --prepare --date "$DAY" >>"$LOG_FILE" 2>&1; then
     "$PY" -m qianliyan.cli.daily_digest_all --auto-edit --date "$DAY" >>"$LOG_FILE" 2>&1 \
         || log "⚠ 自动选稿失败"
-    if "$PY" -m qianliyan.cli.daily_digest_all --finalize --html --date "$DAY" >>"$LOG_FILE" 2>&1; then
+    # --auto-brief：定稿抓完正文后，编辑 Agent 为每条写要点（日报的正文）；不可用则沿用摘要
+    if "$PY" -m qianliyan.cli.daily_digest_all --finalize --auto-brief --html --date "$DAY" >>"$LOG_FILE" 2>&1; then
         published=1
         log "日报已出：$DAY（$(grep -o '自动选稿完成.*\|草案里已有编辑选稿.*' "$LOG_FILE" | tail -1)）"
     else

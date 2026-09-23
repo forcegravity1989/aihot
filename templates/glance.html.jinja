@@ -34,6 +34,7 @@
         <button type="button" class="gread" data-sig="{{ item.sig }}">标记已读</button>
       </div>
       <h3 class="report-entry-title"><a class="gtitle" href="{{ item.detail_href }}">{{ item.title }}</a></h3>
+      {% if item.brief %}<ul class="report-entry-brief">{% for point in item.brief %}<li>{{ point }}</li>{% endfor %}</ul>{% endif %}
       {% if item.summary %}<p class="report-entry-summary">{{ item.summary }}</p>{% endif %}
       {% if item.editor_note %}<p class="editor-note"><b>编辑短评</b> · {{ item.editor_note }}</p>{% endif %}
       <div class="report-entry-meta" style="margin-top:8px">

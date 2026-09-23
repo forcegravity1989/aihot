@@ -8,6 +8,8 @@
 #   status  [DAY]        当天出刊状态：草案/选稿/编辑身份/定稿（key=value 行）
 #   prompt  [DAY]        打印选稿简报（候选 + 选稿标准 + picks JSON 格式）
 #   apply   FILE [DAY]   把 picks JSON 写进草案（替换规则回退的选稿）并定稿渲染
+#   brief-prompt [DAY]   打印写要点的简报（入选条目 + 原文）
+#   apply-briefs FILE [DAY]  把要点 JSON 写进定稿并重新渲染
 #   stage   OUT_DIR      把数据根的 daily.html 与它链接的详情页整理进 OUT_DIR，供发布 artifact
 #
 # DAY 缺省为今天（UTC，与 qly-daily.sh 一致）。
@@ -46,6 +48,8 @@ print("candidates={0}".format(len(items)))
 print("selected={0}".format(len(picked)))
 print("edited_by={0}".format((draft or {}).get("edited_by") or ("human" if picked else "")))
 print("final={0}".format("yes" if final else "no"))
+finals = (final or {}).get("items") or []
+print("briefs={0}/{1}".format(sum(1 for e in finals if e.get("brief")), len(finals)))
 if picked:
     head = picked[0]
     print("headline={0}".format(head.get("title_zh") or head.get("title") or ""))
@@ -65,6 +69,18 @@ PYEOF
         printf '%s\n' "$out" | grep -v -i 'warn'
         [ $rc -eq 0 ] || exit $rc
         "$PY" -m qianliyan.cli.daily_digest_all --finalize --html --date "$DAY" 2>&1 | grep -v -i 'warn'
+        exit "${PIPESTATUS[0]}"
+        ;;
+    brief-prompt)
+        DAY="${1:-$(date -u +%Y-%m-%d)}"
+        "$PY" -m qianliyan.cli.daily_digest_all --write-brief-prompt --date "$DAY" >/dev/null 2>&1 \
+            || { echo "生成要点简报失败（还没定稿？先 apply 或跑 scripts/qly-daily.sh）" >&2; exit 1; }
+        cat "$QLY_DATA_DIR/archive/$DAY/brief-prompt.md"
+        ;;
+    apply-briefs)
+        FILE="${1:?用法: qly-publish.sh apply-briefs FILE [DAY]}"
+        DAY="${2:-$(date -u +%Y-%m-%d)}"
+        "$PY" -m qianliyan.cli.daily_digest_all --apply-briefs "$FILE" --html --date "$DAY" 2>&1 | grep -v -i 'warn'
         exit "${PIPESTATUS[0]}"
         ;;
     stage)
@@ -105,7 +121,7 @@ print("files=daily.html " + " ".join(stories))
 PYEOF
         ;;
     *)
-        sed -n '2,14p' "$0"
+        sed -n '2,16p' "$0"
         exit 1
         ;;
 esac
