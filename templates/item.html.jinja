@@ -27,6 +27,9 @@
   </div>
   {% endif %}
 
+  {% if stats %}<section class="dt-sec"><div class="viz-stats">{% for st in stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div></section>{% endif %}
+  {% if chart %}<section class="dt-sec"><figure class="viz-chart"><figcaption>{{ chart.title }}</figcaption>{% for r in chart.rows %}<div class="viz-row {{ r.cls }}"><span class="viz-label">{{ r.label }}</span><span class="viz-track"><span class="viz-bar" style="{{ r.bar_style }}"></span></span><span class="viz-val">{{ r.value_text }}{% if r.note %}<i>{{ r.note }}</i>{% endif %}</span></div>{% endfor %}</figure></section>{% endif %}
+
   {% if brief %}
   <section class="dt-sec">
     <div class="dt-sec-label">要点</div>

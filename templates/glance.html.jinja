@@ -26,7 +26,7 @@
       <span class="report-section-count">{{ group.count }} 条</span>
     </div>
     {% for item in group.items %}
-    <article class="report-entry glance-row" data-sig="{{ item.sig }}">
+    <article class="report-entry glance-row{% if item.is_lead %} is-lead{% endif %}" data-sig="{{ item.sig }}">
       <div class="report-entry-meta">
         <span class="timeline-source">{{ item.source }}</span>
         {% for badge in item.badges %}<span class="badge {{ badge.cls }}">{{ badge.text }}</span>{% endfor %}
@@ -34,7 +34,10 @@
         <button type="button" class="gread" data-sig="{{ item.sig }}">标记已读</button>
       </div>
       <h3 class="report-entry-title"><a class="gtitle" href="{{ item.detail_href }}">{{ item.title }}</a></h3>
-      {% if item.brief %}<ul class="report-entry-brief">{% for point in item.brief %}<li>{{ point }}</li>{% endfor %}</ul>{% endif %}
+      {% if item.stats %}<div class="viz-stats">{% for st in item.stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div>{% endif %}
+      {% if item.chart %}<figure class="viz-chart"><figcaption>{{ item.chart.title }}</figcaption>{% for r in item.chart.rows %}<div class="viz-row {{ r.cls }}"><span class="viz-label">{{ r.label }}</span><span class="viz-track"><span class="viz-bar" style="{{ r.bar_style }}"></span></span><span class="viz-val">{{ r.value_text }}{% if r.note %}<i>{{ r.note }}</i>{% endif %}</span></div>{% endfor %}</figure>{% endif %}
+      {% if item.brief_head %}<ul class="report-entry-brief">{% for point in item.brief_head %}<li>{{ point }}</li>{% endfor %}</ul>{% endif %}
+      {% if item.brief_more %}<details class="brief-more"><summary>展开其余 {{ item.brief_more_n }} 条要点</summary><ul class="report-entry-brief">{% for point in item.brief_more %}<li>{{ point }}</li>{% endfor %}</ul></details>{% endif %}
       {% if item.summary %}<p class="report-entry-summary">{{ item.summary }}</p>{% endif %}
       {% if item.editor_note %}<p class="editor-note"><b>编辑短评</b> · {{ item.editor_note }}</p>{% endif %}
       <div class="report-entry-meta" style="margin-top:8px">

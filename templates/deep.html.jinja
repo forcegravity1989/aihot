@@ -85,6 +85,8 @@
     </div>
     {% endif %}
 
+    {% if card.stats %}<div class="viz-stats">{% for st in card.stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div>{% endif %}
+      {% if card.chart %}<figure class="viz-chart"><figcaption>{{ card.chart.title }}</figcaption>{% for r in card.chart.rows %}<div class="viz-row {{ r.cls }}"><span class="viz-label">{{ r.label }}</span><span class="viz-track"><span class="viz-bar" style="{{ r.bar_style }}"></span></span><span class="viz-val">{{ r.value_text }}{% if r.note %}<i>{{ r.note }}</i>{% endif %}</span></div>{% endfor %}</figure>{% endif %}
     {% if card.brief %}<ul class="report-entry-brief">{% for point in card.brief %}<li>{{ point }}</li>{% endfor %}</ul>{% endif %}
     {% if card.lead %}<p class="deep-summary">{{ card.lead }}</p>{% endif %}
     {% if card.editor_note %}<p class="editor-note"><b>编辑短评</b> · {{ card.editor_note }}</p>{% endif %}

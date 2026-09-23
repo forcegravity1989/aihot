@@ -724,8 +724,18 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     sigs = re.findall(r"^=== sig: (\S+)", brief_prompt.stdout, re.M)
     assert sorted(sigs) == sorted(e["sig"] for e in chosen)
     briefs_file = tmp_data_dir / "briefs.json"
+    # 可视化数据：第一条给数字 + 合法对比图；第二条的图里混进非数字，整张图必须被拒（数字不能靠猜）
+    viz = {
+        sigs[0]: {"stats": [{"value": "$2/$10", "label": "输入/输出价格"}, {"value": "-50%", "label": "降价幅度"}],
+                  "chart": {"title": "基准得分对比", "unit": "%", "rows": [
+                      {"label": "主角模型", "value": 33.2, "highlight": True},
+                      {"label": "对手模型", "value": 16.6, "note": "11.1×"}]}},
+        sigs[1]: {"stats": [], "chart": {"title": "坏图", "unit": "%", "rows": [
+                      {"label": "甲", "value": "大约三成"}, {"label": "乙", "value": 20}]}},
+    }
     briefs_file.write_text(json.dumps({"briefs": [
-        {"sig": sig, "brief": ["任务要点一·" + sig, "任务要点二·" + sig]} for sig in sigs
+        dict({"sig": sig, "brief": ["任务要点一·" + sig, "任务要点二·" + sig]}, **viz.get(sig, {}))
+        for sig in sigs
     ] + [{"sig": "not-a-pick", "brief": ["不该出现的要点"]}]}, ensure_ascii=False), encoding="utf-8")
     applied = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "apply-briefs", str(briefs_file), date_str],
                              capture_output=True, text=True, cwd="/")
@@ -746,6 +756,12 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     assert "任务按语1" in index
     assert all("任务要点一·" + sig in index for sig in sigs), "要点没进发布页"
     assert "不该出现的要点" not in index
+    # 关键数字与对比图：数值原样上版、条宽按数值归一（33.2 最大 → 100%，16.6 → 50%）
+    assert "$2/$10" in index and "降价幅度" in index, "关键数字没上版"
+    assert "基准得分对比" in index and 'style="width:100.0%"' in index and 'style="width:50.0%"' in index, \
+        "对比图没按数值画出来"
+    assert "33.2%" in index and "11.1×" in index
+    assert "坏图" not in index, "含非数字的对比图不该被画出来"
     assert not re.search(r'<img[^>]+src="https?://', index), "外站图片留在了发布页里"
     assert 'href="archive/' not in index, "往期死链留在了发布页里"
     stories = re.findall(r'href="(story/[A-Za-z0-9_.-]+\.html)"', index)

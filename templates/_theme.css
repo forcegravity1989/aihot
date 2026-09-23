@@ -405,11 +405,49 @@ img { max-width: 100%; }
 .report-section-kicker { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); }
 .report-section-count { margin-left: auto; font-size: 12px; color: var(--text-2);
   font-variant-numeric: tabular-nums; }
-.report-entry { padding: 16px 0; border-bottom: 1px solid var(--border-soft); }
-.report-entry:last-child { border-bottom: 0; }
 .report-entry-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
 .report-entry-title { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.45; }
 .report-entry-title a:hover { color: var(--accent-cyan-fg); }
+/* 日报条目 = 卡片。一条一张，扫读时眼睛按卡片跳，而不是在一整屏字里找边界 */
+.report-entry {
+  margin: 14px 0; padding: 16px 18px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface-card); box-shadow: var(--shadow-card);
+}
+.report-entry.is-lead { border-color: var(--theme-accent); box-shadow: 0 0 0 1px var(--theme-accent-soft), var(--shadow-soft); }
+.report-entry.is-lead .report-entry-title { font-size: 19px; }
+
+/* 关键数字：大字号数值 + 一行说明。数值是编辑从原文照抄的，代码只负责排 */
+.viz-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 12px 0 4px; }
+.viz-stat { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--theme-accent-soft); }
+.viz-stat b { display: block; font-size: 22px; font-weight: 800; line-height: 1.15; letter-spacing: -.01em;
+  color: var(--theme-accent-fg); font-variant-numeric: tabular-nums; word-break: keep-all; }
+.viz-stat span { display: block; margin-top: 4px; font-size: 12px; line-height: 1.4; color: var(--text-1); }
+
+/* 对比条形图：宽度由代码按数值归一，主角一行用强调色 */
+.viz-chart { margin: 12px 0 4px; padding: 12px 14px; border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm); background: var(--surface-0); }
+.viz-chart figcaption { margin-bottom: 8px; font-size: 12.5px; font-weight: 700; color: var(--text-1); }
+.viz-row { display: grid; grid-template-columns: minmax(84px, 34%) 1fr auto; align-items: center;
+  gap: 10px; padding: 3px 0; font-size: 12.5px; }
+.viz-label { color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viz-track { height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; }
+.viz-bar { display: block; height: 100%; border-radius: 5px; background: var(--accent-cyan); }
+.viz-val { font-family: var(--font-mono); font-size: 12px; color: var(--text-0); white-space: nowrap;
+  font-variant-numeric: tabular-nums; }
+.viz-val i { margin-left: 6px; font-style: normal; color: var(--text-2); font-family: var(--font-body); }
+.viz-row.is-hl .viz-label, .viz-row.is-hl .viz-val { color: var(--theme-accent-fg); font-weight: 700; }
+.viz-row.is-hl .viz-bar { background: var(--theme-accent); }
+
+/* 折叠的其余要点：不跑 JS 也能展开 */
+.brief-more { margin-top: 2px; }
+.brief-more summary { cursor: pointer; font-size: 12.5px; color: var(--accent-cyan-fg); padding: 2px 0; }
+
+@media (max-width: 560px) {
+  .viz-row { grid-template-columns: 1fr auto; }
+  .viz-row .viz-track { grid-column: 1 / -1; grid-row: 2; }
+  .viz-stat b { font-size: 19px; }
+}
+
 /* 要点：每条的正文。日报的信息量在这里，不在标题——字号与行距按正文排，不按注脚排 */
 .report-entry-brief { margin: 8px 0 0; padding-left: 20px; font-size: 14.5px; line-height: var(--line-height-relaxed); color: var(--text-0); }
 .report-entry-brief li { margin: 4px 0; }
