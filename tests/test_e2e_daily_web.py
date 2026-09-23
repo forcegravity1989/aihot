@@ -394,3 +394,27 @@ def test_one_source_cannot_monopolize_a_channel(tmp_data_dir):
     # 只有一个源的频道不许被饿空
     single = C.route(pool[:10], [channel])["t"]
     assert len(single) == 10, "频道只有一个源时，上限不该把它砍掉"
+
+
+def test_archive_nav_keeps_past_issues_when_recent_days_only_have_drafts(site):
+    """往期归档不许被「只有草案、没定稿」的日子挤掉。
+
+    真实发生过：定时任务每天只备草案、连续 19 天没人定稿，侧栏 14 天窗口被这些空目录占满，
+    之前所有出过的日报从导航里消失，读者只看得到当天。
+    """
+    import shutil
+
+    client, date_str = site
+    archive = paths.data_path("archive")
+    # 一期很早以前真出过的日报
+    shutil.copytree(archive / date_str, archive / "2000-01-01")
+    # 之后 20 天只有草案
+    for day in range(1, 21):
+        stub = archive / "2000-02-{0:02d}".format(day)
+        stub.mkdir()
+        (stub / daily.DRAFT_NAME).write_text('{"items": []}', encoding="utf-8")
+
+    assert daily.cmd_html_only(date_str) == 0
+    home = client.get("/daily").text
+    assert "2000-01-01/digest.html" in home, "出过的日报被只有草案的日子挤出了往期归档"
+    assert "2000-02-01" not in home, "没定稿的日子不该出现在往期归档"

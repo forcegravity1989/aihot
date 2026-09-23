@@ -1203,11 +1203,13 @@ def _archive_days(current: str, current_count: int = 0, limit: int = 14) -> List
         except OSError:
             names = []
 
+    # 先滤出「真出过日报」的日期再截窗口。反过来做的话，只有草案、没定稿的目录会白占名额——
+    # 实测连续 19 天只有草案，把此前所有定稿挤出了 14 天窗口，侧栏只剩当天一行。
+    names = [n for n in names if n == current or (root / n / MERGED_NAME).is_file()]
+
     days: List[Dict[str, Any]] = []
     for name in names[:limit]:
         is_current = name == current
-        if not is_current and not (root / name / MERGED_NAME).is_file():
-            continue
         if is_current:
             count = current_count
         else:
