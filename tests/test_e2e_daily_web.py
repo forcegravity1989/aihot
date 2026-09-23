@@ -418,3 +418,36 @@ def test_archive_nav_keeps_past_issues_when_recent_days_only_have_drafts(site):
     home = client.get("/daily").text
     assert "2000-01-01/digest.html" in home, "出过的日报被只有草案的日子挤出了往期归档"
     assert "2000-02-01" not in home, "没定稿的日子不该出现在往期归档"
+
+
+def test_an_undated_article_does_not_stay_fresh_forever(tmp_data_dir, monkeypatch):
+    """源不给日期的旧文，第二天再抓到时不许又变成「刚发布」。
+
+    真实发生过：Anthropic News 的 8 月旧文、两百多个老版本的提示词变更，每轮 sync 都被补成
+    当前时刻，永远 0 小时前、热度 0.98，把真正的新闻挤出候选池前排。
+    """
+    from datetime import timedelta
+
+    from qianliyan.core import schema
+
+    fixture = tmp_data_dir / "fixture.jsonl"
+    monkeypatch.setattr(sync, "_mock_fixture_path", lambda: fixture)
+    base = utils.now_utc()
+    url = "https://example.com/news/an-old-post"
+
+    def crawl(at):
+        # 模拟 scrape 源：列表页没有日期，每次抓都只能拿到「现在」
+        monkeypatch.setattr(utils, "now_utc", lambda: at)
+        row = schema.make_item(
+            title="An old post with no date", url=url, source="Scraped Blog",
+            source_kind="local", backend="scrape", weight=0.98, date=None,
+        )
+        storage.write_jsonl(fixture, [row])
+        sync.run_sync(eyes=["local"], mock=True, no_html=True, quick=True)
+        return next(it for it in storage.read_jsonl(paths.data_path("items.jsonl")) if it["url"] == url)
+
+    first = crawl(base)
+    later = crawl(base + timedelta(days=3))
+
+    assert later["date"] == first["date"], "没日期的旧文被重新盖上了新的抓取时间"
+    assert later["hotness"] < first["hotness"], "三天后再见到它，热度不该还和第一次一样"
