@@ -451,3 +451,67 @@ def test_an_undated_article_does_not_stay_fresh_forever(tmp_data_dir, monkeypatc
 
     assert later["date"] == first["date"], "没日期的旧文被重新盖上了新的抓取时间"
     assert later["hotness"] < first["hotness"], "三天后再见到它，热度不该还和第一次一样"
+
+
+def test_one_launch_takes_one_seat_and_its_other_reports_stay_reachable(tmp_data_dir, monkeypatch):
+    """同一次发布的多条报道，在选稿草案里只占一个席位；其余报道留在详情页可点。
+
+    真实发生过：GPT-6 Sol 发布在 09-23 的候选池里占了 5 席（其中两条标题只差「较/比」一个字），
+    编辑要自己认出它们是一回事。但也不能合过头——点评、下游产品更新、同系列的另一款模型
+    都是别的新闻。
+    """
+    from qianliyan.core import schema
+
+    now = utils.iso(utils.now_utc())
+
+    def row(title, source, kind="aihot", weight=0.85):
+        return schema.make_item(
+            title=title, url="https://example.com/" + str(abs(hash(title))),
+            source=source, source_kind=kind, backend="rss", weight=weight, date=now,
+            tags=["models"],
+        )
+
+    launch = [
+        row("Introducing GPT‑6 Sol and Luna", "OpenAI News", kind="local", weight=0.95),
+        row("OpenAI 发布 GPT-6 Sol 和 GPT-6 Luna，API 价格较 GPT-5.6 促销价低 50%", "AIHOT"),
+        row("OpenAI 发布 GPT-6 Sol 和 GPT-6 Luna，API 价格比 GPT-5.6 促销价低 50%", "AIHOT"),
+        row("OpenAI GPT-6 Sol 和 GPT-6 Luna 上线 OpenRouter", "AIHOT"),
+    ]
+    others = [
+        row("Sam Altman 称 GPT-6 Sol 和 Luna 按任务定价在市场上没有对手", "AIHOT"),
+        row("Claude Opus 5.5 发布：较 Opus 5 降价提速", "AIHOT"),
+        row("Claude Code v2.1.280 发布，新增 Claude Opus 5.5 为默认 Opus 模型", "AIHOT"),
+        row("Qwen 发布 Qwen3.8-LiveTranslate 实时同传模型", "AIHOT"),
+        row("Qwen 发布原生全模态模型 Qwen3.8-Omni-Flash", "AIHOT"),
+        # 字面几乎一样、数字不同：两次不同的变更，不是同一条快讯的两次转述
+        row("Claude Code 2.1.261 提示词变更 · +1,296 tokens · 9 项", "Claude Code 系统提示词", kind="local"),
+        row("Claude Code 2.1.64 提示词变更 · +1,291 tokens · 9 项", "Claude Code 系统提示词", kind="local"),
+    ]
+    fixture = tmp_data_dir / "fixture.jsonl"
+    storage.write_jsonl(fixture, launch + others)
+    monkeypatch.setattr(sync, "_mock_fixture_path", lambda: fixture)
+
+    sync.run_sync(eyes=["aihot", "local"], mock=True, no_html=True)
+    date_str = utils.now_utc().strftime("%Y-%m-%d")
+    assert daily.cmd_prepare(date_str) == 0
+    draft_path = paths.data_path("archive", date_str, daily.DRAFT_NAME)
+    draft = storage.read_json(draft_path, default={})
+    titles = [e["title"] for e in draft["items"]]
+
+    seats = [t for t in titles if t in {r["title"] for r in launch}]
+    assert len(seats) == 1, "同一次发布占了 {0} 个席位：{1}".format(len(seats), seats)
+    for other in others:
+        assert other["title"] in titles, "不是同一件事却被并掉了：{0}".format(other["title"])
+
+    head = next(e for e in draft["items"] if e["title"] in seats)
+    assert {"OpenAI News", "AIHOT"} <= set(head["source_list"]), "被并掉的报道没有计入来源"
+
+    for entry in draft["items"]:
+        entry["selected"] = entry is head
+    storage.write_json(draft_path, draft)
+    assert daily.cmd_finalize(date_str, do_html=True) == 0
+
+    client = TestClient(api_server.create_app())
+    story = client.get("/story/{0}.html".format(head["sig"])).text
+    assert "同一事件的其它报道" in story
+    assert "上线 OpenRouter" in story, "被并掉的报道在详情页上找不到了"

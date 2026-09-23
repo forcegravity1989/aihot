@@ -344,6 +344,43 @@ def _make_client() -> Tuple[Optional["llm_client.LLMClient"], bool]:
 # =========================================================================
 # --prepare
 # =========================================================================
+#: 一条候选最多挂几条「同一事件的其它报道」
+MAX_RELATED = 8
+
+
+def _one_per_story(ranked: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """同一事件（``extra.story_key`` 相同）只留排名最高的一条，其余并进它的来源。
+
+    不合并的话，一次发布的五种转述（官方公告、两条只差一个字的快讯、上线 OpenRouter、
+    Arena 开测）各占一个候选席位，编辑要自己去认出它们是一回事。被并掉的报道不丢：
+    来源并进 ``source_list``（多源佐证照常计数），标题与链接留在 ``extra.related``。
+    """
+    heads: "Dict[str, Dict[str, Any]]" = {}
+    out: List[Dict[str, Any]] = []
+    for item in ranked:
+        key = str(_extra(item).get("story_key") or item.get("sig") or "")
+        head = heads.get(key)
+        if head is None:
+            head = dict(item)
+            head["extra"] = dict(_extra(item))
+            head["source_list"] = list(item.get("source_list") or [item.get("source")])
+            heads[key] = head
+            out.append(head)
+            continue
+        for name in item.get("source_list") or [item.get("source")]:
+            if name and name not in head["source_list"]:
+                head["source_list"].append(name)
+        head["cross_refs"] = max(0, len(head["source_list"]) - 1)
+        related = head["extra"].setdefault("related", [])
+        if len(related) < MAX_RELATED:
+            related.append({
+                "title": item.get("title") or "",
+                "url": item.get("url") or "",
+                "source": item.get("source") or "",
+            })
+    return out
+
+
 def cmd_prepare(date_str: str) -> int:
     """候选按 personal_score（回退 hotness）取全局 top 40 ∪ 各频道 top 5，写选稿草案。"""
     items = storage.read_jsonl(paths.data_path("items.jsonl"))
@@ -355,7 +392,7 @@ def cmd_prepare(date_str: str) -> int:
     # 实测「Claude Code 系统提示词」凭 204 条全新鲜的条目独占 87 条候选里的 30 条，
     # 编辑打开草案看到的三分之一是同一个源的 changelog。用的是频道那把尺子（含组织级归并），
     # 同样是软上限：铺不满 TOP_N_GLOBAL 时按分数回填，不会让候选变少。
-    ranked = sorted(items, key=_rank_key, reverse=True)
+    ranked = _one_per_story(sorted(items, key=_rank_key, reverse=True))
     chosen: "Dict[str, Dict[str, Any]]" = {}
     for item in channels.diversify(
         ranked, PREPARE_MAX_PER_SOURCE, TOP_N_GLOBAL, channels.load_source_groups(),
@@ -365,7 +402,7 @@ def cmd_prepare(date_str: str) -> int:
             chosen.setdefault(sig, item)
 
     channel_defs = channels.load_channels()
-    routed = channels.route(items, channel_defs)
+    routed = channels.route(ranked, channel_defs)
     for _, channel_items in routed.items():
         for item in channel_items[:TOP_N_CHANNEL]:
             sig = item.get("sig")
@@ -940,6 +977,13 @@ def _item_context(entry: Dict[str, Any], now, back_href: str) -> Dict[str, Any]:
         "date_rel": _reltime(entry, now) if dt is not None else "",
         "score_text": score["text"],
         "score_cls": score["cls"],
+        # 选稿时并进这一条的同一事件其它报道（见 _one_per_story）
+        "related": [
+            {"title": str(r.get("title") or ""), "url": str(r.get("url") or ""),
+             "source": str(r.get("source") or "")}
+            for r in (_extra(entry).get("related") or [])
+            if isinstance(r, dict) and r.get("url")
+        ],
     })
     return card
 

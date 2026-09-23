@@ -434,6 +434,9 @@ img { max-width: 100%; }
 .dt-meta { font-size: 12.5px; color: var(--text-2-on-page); }
 .dt-sec { margin-top: 26px; }
 .dt-sec-label { margin-bottom: 8px; font-size: 13px; font-weight: 700; color: var(--theme-accent-fg); }
+.dt-related { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.7; }
+.dt-related a { color: var(--text-0); }
+.dt-related-src { color: var(--text-2); font-size: var(--text-size-xs); }
 .dt-body { margin: 0; font-size: 15px; line-height: var(--line-height-relaxed); color: var(--text-1); }
 .dt-list { margin: 0; padding-left: 20px; font-size: 14.5px; line-height: var(--line-height-relaxed);
   color: var(--text-1); }

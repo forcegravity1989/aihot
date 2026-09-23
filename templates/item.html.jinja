@@ -118,6 +118,16 @@
     </div>
   </section>
 
+  {% if related %}
+  <hr class="dt-rule">
+  <section class="dt-sec">
+    <div class="dt-sec-label">同一事件的其它报道</div>
+    <ul class="dt-related">
+      {% for r in related %}<li><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.title }}</a> <span class="dt-related-src">{{ r.source }}</span></li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   <hr class="dt-rule">
   <div class="dt-sec">
     <a class="dt-back" href="{{ back_href }}">← 返回日报</a>

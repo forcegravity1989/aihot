@@ -7,20 +7,27 @@
 本 agent 处理的是「标题不同但说的是同一件事」的软聚合。
 
 **回退公约（spec §5）**：LLM 不可用或任何异常 → ``story_key = sig``（各自成题），
-即退化为「不聚合」，功能仍可用。绝不向上抛。
+再叠一层**规则聚合**（:func:`rule_merge`）：同一「发布实体」的发布类标题、同一天的近重复
+标题归为一题。LLM 分批（每批 30 条）只能在批内聚合，规则层也负责把跨批的同一事件接起来。
+绝不向上抛。
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Sequence
+import re
+import unicodedata
+from datetime import timedelta
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from ..core import utils
 
 from ..core import llm_client
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["BATCH_SIZE", "FIELD", "fallback_story_key", "annotate"]
+__all__ = ["BATCH_SIZE", "FIELD", "fallback_story_key", "release_entity", "rule_merge", "annotate"]
 
 BATCH_SIZE = 30
 FIELD = "story_key"
@@ -35,6 +42,153 @@ SYSTEM_PROMPT = (
 def fallback_story_key(item: Dict[str, Any]) -> str:
     """规则回退：``story_key = sig``（各自成题）。"""
     return str(item.get("sig") or "")
+
+
+# ---------------------------------------------------------------------------
+# 规则聚合
+# ---------------------------------------------------------------------------
+#: 模型/产品品牌。长的在前——「claude code」要先于「claude」、「muse spark」先于「muse」被匹配。
+_BRANDS = (
+    "claude code", "gpt", "claude", "opus", "sonnet", "haiku", "fable", "mythos",
+    "gemini", "gemma", "qwen", "glm", "kimi", "deepseek", "grok", "llama",
+    "muse spark", "muse", "mimo", "step", "hunyuan", "hy", "doubao", "minimax",
+    "mistral", "phi", "pytorch", "vllm", "sglang",
+)
+#: 版本号后常跟的型号词（GPT-6 Sol、GLM-5.3-FlashX、Qwen3.8-Max……）
+_VARIANTS = (
+    "flashx", "flash", "sol", "luna", "astra", "pro", "max", "mini", "nano", "turbo",
+    "preview", "cyber", "lite", "plus", "ultra", "air", "coder", "vl", "thinking",
+)
+#: 型号词两种接法：连字符紧跟的任意词（Qwen3.8-LiveTranslate、Qwen3.8-Omni 是两款模型，
+#: 不能都算成 qwen 3.8），或空格后跟的已知型号词（GPT-6 Sol；空格后的 release/发布 不算型号）
+_ENTITY_RE = re.compile(
+    r"(?<![a-z0-9])({brands})[ -]?v?(\d+(?:\.\d+)*)(?:-([a-z]+)|[ ]({variants}))?(?![a-z0-9.])".format(
+        brands="|".join(re.escape(b) for b in _BRANDS),
+        variants="|".join(_VARIANTS),
+    )
+)
+_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)*")
+#: 标题里出现这些词，才算「在报这次发布本身」，而不是借题评论
+_LAUNCH_RE = re.compile(
+    r"发布|上线|推出|开源|亮相|登场|introduc|launch|release|announc|unveil|debut|"
+    r"now available|is here|\bmeet\b|\bships?\b"
+)
+_DASHES_RE = re.compile("[\u2010-\u2015\u2212]")
+#: 同一事件的报道最多相隔多久
+STORY_WINDOW = timedelta(hours=72)
+#: 同一天两条标题的字二元组 Jaccard 超过它就算近重复（只差「较/比」一个字的那种）
+NEAR_DUP_JACCARD = 0.7
+
+
+def _norm(text: Any) -> str:
+    text = unicodedata.normalize("NFKC", str(text or "")).casefold()
+    return _DASHES_RE.sub("-", text)
+
+
+def release_entity(title: Any) -> str:
+    """标题里第一个「品牌 + 版本号 (+ 型号)」，如 ``gpt 6 sol`` / ``opus 5.5``；没有则空串。
+
+    取**第一个**：「Claude Code v2.1.280 发布，新增 Claude Opus 5.5」讲的是 Claude Code 的版本，
+    不是 Opus 5.5 的发布，主语在前。
+    """
+    match = _ENTITY_RE.search(_norm(title))
+    if not match:
+        return ""
+    brand, version = match.group(1), match.group(2)
+    variant = match.group(3) or match.group(4) or ""
+    return " ".join(part for part in (brand, version, variant) if part)
+
+
+def _is_launch(title: Any) -> bool:
+    return bool(_LAUNCH_RE.search(_norm(title)))
+
+
+def _bigrams(title: Any) -> set:
+    text = utils.normalize_title(title)
+    return {text[i:i + 2] for i in range(len(text) - 1)}
+
+
+def _when(item: Dict[str, Any]):
+    return utils.parse_date(item.get("date"))
+
+
+def _close_in_time(a, b) -> bool:
+    if a is None or b is None:
+        return True
+    return abs(a - b) <= STORY_WINDOW
+
+
+def rule_merge(items: Sequence[Dict[str, Any]]) -> int:
+    """原地把同一事件的条目改成同一个 ``story_key``，返回被并进别组的条目数。
+
+    两条规则，都要求 72 小时内：
+
+    * **同一发布**：标题的发布实体相同，且两条都是发布类标题（发布/上线/Introducing……）；
+    * **近重复**：同一天、标题字二元组 Jaccard ≥ 0.7（同一条快讯的两次转述）。
+
+    合并时整组取已有 key 里最小的一个——LLM 已经分好的组也会被顺带接上。
+    """
+    rows = [it for it in (items or []) if isinstance(it, dict)]
+    parent = list(range(len(rows)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i: int, j: int) -> None:
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            parent[max(ri, rj)] = min(ri, rj)
+
+    when = [_when(it) for it in rows]
+    by_entity: "Dict[str, List[int]]" = {}
+    by_day: "Dict[str, List[int]]" = {}
+    for idx, item in enumerate(rows):
+        title = item.get("title")
+        entity = release_entity(title)
+        if entity and _is_launch(title):
+            by_entity.setdefault(entity, []).append(idx)
+        by_day.setdefault(str(item.get("date") or "")[:10], []).append(idx)
+
+    for members in by_entity.values():
+        for pos, i in enumerate(members):
+            for j in members[pos + 1:]:
+                if _close_in_time(when[i], when[j]):
+                    union(i, j)
+
+    # 近重复要求标题里的数字一模一样：「Claude Code 2.1.280 提示词变更 · +1,283 tokens」和
+    # 「2.1.268 … -13,613 tokens」字面几乎相同，却是两次不同的变更；只差「较/比」一个字的两条
+    # 快讯，数字则完全一致。
+    numbers = [tuple(_NUMBER_RE.findall(_norm(it.get("title")))) for it in rows]
+    for members in by_day.values():
+        grams = {i: _bigrams(rows[i].get("title")) for i in members}
+        for pos, i in enumerate(members):
+            for j in members[pos + 1:]:
+                if numbers[i] != numbers[j]:
+                    continue
+                a, b = grams[i], grams[j]
+                if a and b and len(a & b) / len(a | b) >= NEAR_DUP_JACCARD:
+                    union(i, j)
+
+    groups: "Dict[int, List[int]]" = {}
+    for idx in range(len(rows)):
+        groups.setdefault(find(idx), []).append(idx)
+
+    merged = 0
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        keys = {str((rows[i].get("extra") or {}).get(FIELD) or fallback_story_key(rows[i])) for i in members}
+        canonical = min(keys)
+        for item in rows:
+            if str((item.get("extra") or {}).get(FIELD) or "") in keys:
+                _set_key(item, canonical)
+        for i in members:
+            _set_key(rows[i], canonical)
+        merged += len(members) - 1
+    return merged
 
 
 def _set_key(item: Dict[str, Any], value: str) -> None:
@@ -98,7 +252,8 @@ def annotate(items: Sequence[Dict[str, Any]]) -> None:
         logger.warning("LLM 可用性判定异常，按不可用处理: %s", exc)
         available = False
     if not available or client is None:
-        logger.debug("headline_cluster_agent: LLM 不可用，story_key 全部回退为 sig")
+        logger.debug("headline_cluster_agent: LLM 不可用，story_key 回退为 sig + 规则聚合")
+        rule_merge(rows)
         return
 
     batches = [rows[i:i + BATCH_SIZE] for i in range(0, len(rows), BATCH_SIZE)]
@@ -106,6 +261,7 @@ def annotate(items: Sequence[Dict[str, Any]]) -> None:
         replies = client.batch_json([_build_prompt(b) for b in batches], system=SYSTEM_PROMPT)
     except Exception as exc:  # noqa: BLE001 - 回退公约：绝不向上抛
         logger.warning("同题聚合调用失败，story_key 沿用 sig: %s", exc)
+        rule_merge(rows)
         return
 
     for batch, reply in zip(batches, replies or []):
@@ -119,3 +275,4 @@ def annotate(items: Sequence[Dict[str, Any]]) -> None:
         for index, value in parsed.items():
             if value:
                 _set_key(batch[index], value)
+    rule_merge(rows)
