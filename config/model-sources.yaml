@@ -19,6 +19,7 @@ mapping:
   Google DeepMind: official
   DeepMind: official
   Qwen: official
+  Z.ai: official
   NVIDIA: vendor
   PyTorch: vendor
   SemiAnalysis: kol
