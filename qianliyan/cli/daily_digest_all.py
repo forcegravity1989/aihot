@@ -94,7 +94,7 @@ DRAFT_FIELDS = (
 #: 编辑（Agent 或人）可直接写进草案条目的字段——``--finalize`` 一律**尊重已写入的值**，
 #: 不用自动生成覆盖。这是本项目「Agent 在环」的落点：选稿、中文化、深读提炼这些需要
 #: 判断力的活由编辑做，代码只负责取原料（正文/字幕）与渲染。
-EDITOR_FIELDS = ("title_zh", "summary_zh", "editor_note", "distill")
+EDITOR_FIELDS = ("title_zh", "summary_zh", "editor_note", "distill", "editor_rank")
 #: 摘要短于此字符数就认为"深读没有原料"，去抓正文（索引页抓取常只有标题，摘要为空）
 THIN_SUMMARY_CHARS = 200
 #: 正文抓取上限，避免个别超长文把草案撑爆
@@ -751,14 +751,38 @@ def _weekday_cn(dt) -> str:
     return "星期{0}".format("一二三四五六日"[dt.weekday()])
 
 
+def _editor_rank(entry: Dict[str, Any]) -> Optional[int]:
+    """编辑给的轻重排序（1 = 头条）；没给或不是正整数返回 None。"""
+    try:
+        rank = int(entry.get("editor_rank"))
+    except (TypeError, ValueError):
+        return None
+    return rank if rank > 0 else None
+
+
+def _by_editor_rank(items: Sequence[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+    """编辑排过序就按编辑的来（没排的垫底、彼此保持原序）；一条都没排返回 None。"""
+    if not any(_editor_rank(e) is not None for e in items):
+        return None
+    big = 10 ** 6
+    return [e for _, e in sorted(
+        enumerate(items), key=lambda pair: (_editor_rank(pair[1]) or big, pair[0])
+    )]
+
+
 def _grouped_by_format(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, Any]]:
     """按 format 分组（FORMAT_ORDER 优先），**组内按时间轴倒序**（新的在前）。
 
     浅读是"扫一遍就知道今天发生了什么"，时间顺序比热度顺序更符合这个用途——
     热度排序留给聚合页 digest.html。
+
+    **编辑排了序（``editor_rank``）就以编辑为准**：分区按区内最靠前的一条排、区内按 rank 排。
+    固定的 format 顺序会埋掉头条——09-23 的 GPT-6 Sol 官方公告属于「博客」，被排在
+    「资讯」区的 Meta 漏洞后面，成了全页第 7 条。
     """
     buckets: "Dict[str, List[Dict[str, Any]]]" = {}
-    items = sorted(items, key=_timeline_key, reverse=True)
+    edited = _by_editor_rank(items)
+    items = edited if edited is not None else sorted(items, key=_timeline_key, reverse=True)
     for entry in items:
         fmt = infer_format(entry)
         sig = str(entry.get("sig") or "")
@@ -779,8 +803,11 @@ def _grouped_by_format(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, A
         }
         buckets.setdefault(fmt, []).append(row)
 
-    ordered_fmts = [f for f in FORMAT_ORDER if f in buckets]
-    ordered_fmts += [f for f in buckets if f not in FORMAT_ORDER]
+    if edited is not None:
+        ordered_fmts = list(buckets)  # 已按 rank 排过，桶的插入顺序就是各区最靠前一条的顺序
+    else:
+        ordered_fmts = [f for f in FORMAT_ORDER if f in buckets]
+        ordered_fmts += [f for f in buckets if f not in FORMAT_ORDER]
     groups: List[Dict[str, Any]] = []
     for fmt in ordered_fmts:
         groups.append({
@@ -1206,7 +1233,7 @@ MERGED_SHELL = """<!doctype html>
 
 
 def _hot_rows(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """首页顶部「今日热点」——全池按 hotness 取前 HOT_TOPICS_N 条。
+    """首页顶部「今日热点」——全池按 hotness 取前 HOT_TOPICS_N 条；编辑排过序（editor_rank）则按编辑的。
 
     热榜链到**详情页**而不是外链原文：这一榜是本页的导览，点进去应该还在千里眼里，
     要不要跳外站由读者在详情页决定。
@@ -1218,7 +1245,9 @@ def _hot_rows(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
             return 0.0
 
     rows: List[Dict[str, Any]] = []
-    for rank, entry in enumerate(sorted(items, key=_hot, reverse=True)[:HOT_TOPICS_N], start=1):
+    edited = _by_editor_rank(items)
+    ordered = edited if edited is not None else sorted(items, key=_hot, reverse=True)
+    for rank, entry in enumerate(ordered[:HOT_TOPICS_N], start=1):
         rows.append({
             "rank": str(rank),
             "title": _display_title(entry),

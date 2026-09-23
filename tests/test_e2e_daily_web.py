@@ -515,3 +515,41 @@ def test_one_launch_takes_one_seat_and_its_other_reports_stay_reachable(tmp_data
     story = client.get("/story/{0}.html".format(head["sig"])).text
     assert "同一事件的其它报道" in story
     assert "上线 OpenRouter" in story, "被并掉的报道在详情页上找不到了"
+
+
+def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
+    """编辑定的头条必须排在页面最前——不管它属于哪个格式分区、发布得早还是晚。
+
+    真实发生过：OpenAI 官方的 GPT-6 Sol 公告属于「博客」格式，版面固定先排「资讯」区、区内按
+    时间排，头条于是成了全页第 7 条，压在一条安全漏洞后面。
+    """
+    sync.run_sync(mock=True)
+    date_str = utils.now_utc().strftime("%Y-%m-%d")
+    assert daily.cmd_prepare(date_str) == 0
+    draft_path = paths.data_path("archive", date_str, daily.DRAFT_NAME)
+    draft = storage.read_json(draft_path, default={})
+    # 挑跨格式的条目：同一格式里排序本来就可能碰巧对，跨区才考得出分区顺序
+    picked, seen = [], set()
+    for entry in draft["items"]:
+        fmt = daily.infer_format(entry)
+        if fmt not in seen or len(picked) >= 3:
+            picked.append(entry)
+            seen.add(fmt)
+        if len(picked) == 5:
+            break
+    assert len(seen) >= 2, "候选里凑不出两种格式，断言会空转"
+    # 编辑把默认版面里最靠后的那条定为头条：倒着排
+    for rank, entry in enumerate(reversed(picked), start=1):
+        entry["selected"] = True
+        entry["editor_rank"] = rank
+        entry["title_zh"] = "编辑排序第{0}条".format(rank)
+    storage.write_json(draft_path, draft)
+    assert daily.cmd_finalize(date_str, do_html=True) == 0
+
+    client = TestClient(api_server.create_app())
+    for view in ("glance", None):
+        page = client.get("/daily", params={"view": view} if view else {}).text
+        body = page.split("</header>", 1)[-1]
+        positions = [body.find("编辑排序第{0}条".format(n)) for n in range(1, 6)]
+        assert all(p >= 0 for p in positions), "有选中的条目没上版面"
+        assert positions == sorted(positions), "版面没按编辑的排序走（{0}）：{1}".format(view, positions)
