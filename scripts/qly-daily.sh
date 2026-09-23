@@ -22,6 +22,8 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="$REPO_ROOT/.venv/bin/python"
+# `python -m qianliyan…` 靠当前目录找包（没装进 venv）：从任意目录调用都先切到仓库
+cd "$REPO_ROOT" || exit 1
 
 # launchd 给的环境极简，PATH 必须自己补全（git / curl 等子进程要用）
 # ~/.local/bin 是 claude CLI 的默认安装位置（编辑 Agent 要用）

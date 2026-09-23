@@ -653,3 +653,62 @@ def test_unattended_day_publishes_even_when_the_editor_agent_is_down(tmp_data_di
     home = client.get("/daily").text
     assert date_str in home
     assert daily._display_title(picked[0]) in home
+
+
+def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(tmp_data_dir, monkeypatch):
+    """定时任务那条路：规则回退先出了一期 → 任务读简报、写 picks → 替换回退选稿 → 整理发布目录。
+
+    发布目录要能直接当 artifact 发：外站图片会被 artifact 的内容安全策略拦成破图，
+    往期链接在只发当天一期时是死链——两样都不许留下；详情页的「返回日报」要能落地。
+    """
+    import json
+    import subprocess
+    import sys
+
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parent.parent
+
+    date_str, draft, _ = _unattended_run(tmp_data_dir, monkeypatch, "{py} -c 'import sys; sys.exit(3)'")
+    assert draft["edited_by"] == "rules"
+
+    prompt_run = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "prompt", date_str],
+                                capture_output=True, text=True, cwd="/")
+    assert prompt_run.returncode == 0, prompt_run.stderr
+    ids = [int(x) for x in re.findall(r"^\[(\d+)\]", prompt_run.stdout, re.M)]
+    assert len(ids) == len(draft["items"])
+
+    picks = [{"i": i, "editor_note": "任务按语{0}".format(n), "title_zh": "", "summary_zh": ""}
+             for n, i in enumerate(ids[-9:], start=1)]
+    picks_file = tmp_data_dir / "picks.json"
+    picks_file.write_text(json.dumps({"picks": picks}, ensure_ascii=False), encoding="utf-8")
+    applied = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "apply", str(picks_file), date_str],
+                             capture_output=True, text=True, cwd="/")
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+
+    after = storage.read_json(paths.data_path("archive", date_str, daily.DRAFT_NAME), default={})
+    assert after["edited_by"] == "agent"
+    chosen = sorted((e for e in after["items"] if e.get("selected")), key=lambda e: e["editor_rank"])
+    assert [e["editor_note"] for e in chosen] == ["任务按语{0}".format(n) for n in range(1, 10)], \
+        "规则回退的选稿没被任务的选稿干净替换"
+
+    # 编辑过的草案不许被再一次 apply 覆盖
+    again = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "apply", str(picks_file), date_str],
+                           capture_output=True, text=True, cwd="/")
+    assert "不覆盖" in again.stdout
+
+    # 给页面塞一张外站图，确认发布前会被剥掉
+    root_page = paths.data_path("daily.html")
+    root_page.write_text(root_page.read_text(encoding="utf-8").replace(
+        "</body>", '<img src="https://pbs.twimg.com/x.jpg" alt="x"></body>'), encoding="utf-8")
+    out = tmp_data_dir / "stage"
+    staged = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "stage", str(out)],
+                            capture_output=True, text=True, cwd="/")
+    assert staged.returncode == 0, staged.stderr
+    index = (out / "index.html").read_text(encoding="utf-8")
+    assert "任务按语1" in index
+    assert not re.search(r'<img[^>]+src="https?://', index), "外站图片留在了发布页里"
+    assert 'href="archive/' not in index, "往期死链留在了发布页里"
+    stories = re.findall(r'href="(story/[A-Za-z0-9_.-]+\.html)"', index)
+    assert stories and all((out / s).is_file() for s in stories), "首页链接的详情页没一起整理进来"
+    assert (out / "daily.html").is_file(), "详情页的「返回日报」会落空"

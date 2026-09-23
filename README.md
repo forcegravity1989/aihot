@@ -100,6 +100,19 @@ chmod 600 ~/.config/qianliyan/env
 
 换编辑实现用 `QLY_EDITOR_CMD`（shlex 语法，prompt 走 stdin、stdout 回 JSON）；设成空串只走规则。
 
+### 每天怎么看到日报
+
+出刊只落在本机（`$QLY_DATA_DIR/daily.html`、`http://127.0.0.1:8787/daily`），离开这台 Mac 就看不到。
+送达由 Claude 桌面 App 的定时任务 `qianliyan-daily-delivery`（每天 08:00，接在 07:30 的抓取之后）完成：
+
+1. `scripts/qly-publish.sh status` 看当天出刊状态；没抓过就补跑 `scripts/qly-daily.sh`；
+2. 若当天只有规则回退的选稿（`edited_by=rules`），任务本身担任编辑：`qly-publish.sh prompt` 读简报 →
+   写 picks JSON → `qly-publish.sh apply <文件>` 定稿（人或 Agent 编过的草案不覆盖）；
+3. `qly-publish.sh stage <目录>` 整理发布目录（剥掉 artifact 不放行的外站图片与往期死链），
+   发布到固定的私有 artifact 链接，并推送当天头条。
+
+任务用的是桌面 App 自己的登录，不依赖本机 `claude` CLI 的令牌；App 没开时到点不跑，下次打开补跑。
+
 退出码语义（决定要不要报警）：
 
 | 码 | 含义 |

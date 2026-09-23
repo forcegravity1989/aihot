@@ -490,44 +490,24 @@ def cmd_check(date_str: str) -> int:
 # --write-prompt
 # =========================================================================
 def cmd_write_prompt(date_str: str) -> int:
-    """生成 ``archive/<date>/prompt.md``：给 Agent 的选稿提示词。"""
+    """生成 ``archive/<date>/prompt.md``：与编辑 Agent 收到的同一份选稿简报。
+
+    给「人或外部 Agent 手工选稿」用：读完 prompt，按其中的 JSON 格式写一个 picks 文件，
+    再 ``--apply-picks <文件>``——和 ``--auto-edit`` 走同一条校验与落盘路径。
+    """
     draft = _load_draft(date_str)
     if draft is None:
         print("draft 不存在: {0}（请先执行 --prepare）".format(_archive_path(date_str, DRAFT_NAME)))
         return 1
-
     entries = draft.get("items") or []
-    lines: List[str] = [
-        "# 千里眼日报选稿提示词 · {0}".format(date_str),
-        "",
-        "## 转述四条铁律（Agent 必须遵循）",
-    ]
-    lines.extend(IRON_LAWS)
-    lines.append("")
-    lines.append("## 待选稿目录（{0} 条）".format(len(entries)))
-    for idx, entry in enumerate(entries, start=1):
-        title = entry.get("title") or ""
-        hotness = entry.get("hotness")
-        sources = "+".join(entry.get("source_list") or [entry.get("source") or ""])
-        lines.append(
-            "{0}. [{1:.4f}] {2}（{3}） — {4}".format(idx, float(hotness or 0.0), title, sources, entry.get("url") or "")
-        )
-    lines.append("")
-    lines.append("## 回写说明")
-    lines.append("1. 打开 `archive/{0}/digest-draft.json`；".format(date_str))
-    lines.append("2. 把入选条目的 `selected` 改为 `true`，可在 `editor_note` 写选稿理由；")
-    lines.append(
-        "3. 保存后执行 `python -m qianliyan.cli.daily_digest_all --date {0} --check` 校验；".format(date_str)
+    text = _editor_prompt(date_str, entries) + (
+        "\n---\n回写：把上面的 JSON 存成文件，执行 "
+        "`python -m qianliyan.cli.daily_digest_all --date {0} --apply-picks <文件>`，"
+        "再 `--finalize --html`。\n".format(date_str)
     )
-    lines.append(
-        "4. 校验通过后执行 "
-        "`python -m qianliyan.cli.daily_digest_all --date {0} --finalize --html` 生成最终简报。".format(date_str)
-    )
-    lines.append("")
-
     path = _archive_path(date_str, PROMPT_NAME)
     try:
-        path.write_text("\n".join(lines), encoding="utf-8")
+        path.write_text(text, encoding="utf-8")
     except OSError as exc:
         print("写 prompt.md 失败: {0}".format(exc))
         return 1
@@ -719,6 +699,20 @@ def cmd_auto_edit(date_str: str) -> int:
         picks = _rule_picks(entries)
         edited_by = "rules"
 
+    _apply_picks(date_str, draft, picks, edited_by)
+    print("自动选稿完成：{0} 条（{1}）".format(
+        len(picks), "编辑 Agent" if edited_by == "agent" else "规则回退，无按语"))
+    return 0
+
+
+def _apply_picks(date_str: str, draft: Dict[str, Any], picks: Sequence[Dict[str, Any]], edited_by: str) -> None:
+    """把选稿结果写进草案：先清空旧选择，再按 picks 顺序写 selected / editor_rank / 按语。"""
+    entries = draft.get("items") or []
+    for entry in entries:
+        entry["selected"] = False
+        for field in EDITOR_FIELDS:
+            entry.pop(field, None)
+        entry["editor_note"] = ""
     for rank, pick in enumerate(picks, start=1):
         entry = entries[pick["i"]]
         entry["selected"] = True
@@ -729,8 +723,34 @@ def cmd_auto_edit(date_str: str) -> int:
                 entry[field] = pick[field]
     draft["edited_by"] = edited_by
     storage.write_json(_archive_path(date_str, DRAFT_NAME), draft)
-    print("自动选稿完成：{0} 条（{1}）".format(
-        len(picks), "编辑 Agent" if edited_by == "agent" else "规则回退，无按语"))
+
+
+def cmd_apply_picks(date_str: str, picks_path: str, edited_by: str = "agent") -> int:
+    """读一个 picks JSON 文件（``--write-prompt`` 规定的格式）写进草案。
+
+    会替换**规则回退**的选稿（那只是保底）；人或 Agent 已经编过的草案不覆盖。
+    """
+    draft = _load_draft(date_str)
+    if draft is None:
+        print("draft 不存在: {0}（请先执行 --prepare）".format(_archive_path(date_str, DRAFT_NAME)))
+        return 1
+    entries = draft.get("items") or []
+    already = any(entry.get("selected") for entry in entries)
+    if already and draft.get("edited_by") != "rules":
+        print("草案里已有编辑选稿（{0}），不覆盖。".format(draft.get("edited_by") or "人工"))
+        return 0
+    try:
+        raw = open(picks_path, encoding="utf-8").read()
+    except OSError as exc:
+        print("读不到 picks 文件: {0}".format(exc))
+        return 1
+    picks = _parse_picks(raw, len(entries))
+    if picks is None:
+        print("picks 不合格：需要 {0}~{1} 条、编号在 0~{2} 之间且不重复、每条都有 editor_note。".format(
+            AUTO_PICK_MIN, AUTO_PICK_MAX, len(entries) - 1))
+        return 1
+    _apply_picks(date_str, draft, picks, edited_by)
+    print("选稿已写入草案：{0} 条（{1}）".format(len(picks), edited_by))
     return 0
 
 
@@ -1741,6 +1761,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--write-prompt", action="store_true", help="生成选稿提示词 prompt.md")
     parser.add_argument("--auto-edit", action="store_true",
                         help="草案无人选稿时由编辑 Agent 选稿写按语（不可用则规则回退）")
+    parser.add_argument("--apply-picks", metavar="FILE", default=None,
+                        help="把编辑写好的 picks JSON 写进草案（替换规则回退的选稿）")
+    parser.add_argument("--edited-by", default="agent", help="--apply-picks 时记在草案里的编辑身份")
     parser.add_argument("--finalize", action="store_true", help="读入已选条目，深读增强写 digest-final.json")
     parser.add_argument("--html", action="store_true", help="渲染浅读/深读/合并页（通常与 --finalize 连用）")
     parser.add_argument("--date", default=None, help="YYYY-MM-DD，缺省今天 (UTC)")
@@ -1752,7 +1775,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
     date_str = args.date or _today()
 
-    if not any([args.prepare, args.check, args.write_prompt, args.auto_edit, args.finalize, args.html]):
+    if not any([args.prepare, args.check, args.write_prompt, args.auto_edit, args.apply_picks,
+                args.finalize, args.html]):
         parser.print_help()
         return 1
 
@@ -1765,6 +1789,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         exit_code = exit_code or cmd_write_prompt(date_str)
     if args.auto_edit:
         exit_code = exit_code or cmd_auto_edit(date_str)
+    if args.apply_picks:
+        exit_code = exit_code or cmd_apply_picks(date_str, args.apply_picks, args.edited_by)
     if args.finalize:
         exit_code = exit_code or cmd_finalize(date_str, args.html)
     elif args.html:
