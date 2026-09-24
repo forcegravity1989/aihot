@@ -38,10 +38,13 @@ DAILY_ROOT_NAME = "daily.html"
 DETAIL_DIR = "story"
 #: 详情页文件名白名单——只允许 sig 那种字符集，挡掉 ../ 之类的路径穿越
 DETAIL_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+#: 原文配图文件名：daily_digest_all._download_image 的命名规则（sha1 前 16 位 + 扩展名）
+MEDIA_NAME_RE = re.compile(r"^[0-9a-f]{16}\.(png|jpg|gif|webp)$")
+MEDIA_TYPES = {"png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
 
 try:  # fastapi/uvicorn 属可选依赖，缺失时降级而不拖垮 import（spec §10.3）
     from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
-    from fastapi.responses import HTMLResponse, PlainTextResponse
+    from fastapi.responses import HTMLResponse, PlainTextResponse, Response
     from pydantic import BaseModel
 
     FASTAPI_AVAILABLE = True
@@ -230,6 +233,20 @@ def create_app() -> FastAPI:  # type: ignore[name-defined]
         if not path.is_file():
             raise HTTPException(status_code=404, detail="详情页不存在，请先执行 daily_digest_all --html")
         return HTMLResponse(content=path.read_text(encoding="utf-8"))
+
+    @app.get("/media/{name}")
+    def get_media(name: str):  # type: ignore[no-untyped-def]
+        """原文配图（issue #52）：定稿时下载到数据根 ``media/`` 的图片。
+
+        同详情页一样先过白名单：只认 ``<十六进制>.<图片扩展名>``，不许带目录、不许 ``..``。
+        """
+        match = MEDIA_NAME_RE.match(str(name or ""))
+        if not match:
+            raise HTTPException(status_code=404, detail="配图不存在")
+        path = paths.data_path("media", name)
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="配图不存在")
+        return Response(content=path.read_bytes(), media_type=MEDIA_TYPES[match.group(1)])
 
     @app.post("/history")
     def post_history(body: HistoryBody) -> Dict[str, bool]:  # type: ignore[name-defined]

@@ -79,13 +79,12 @@
     <div class="deep-tag-line">📄 论文摘要{% if card.arxiv_url %} · <a href="{{ card.arxiv_url }}" target="_blank" rel="noopener noreferrer">arXiv</a>{% endif %}</div>
     {% endif %}
 
+    {% if card.takeaway %}<p class="viz-takeaway">{{ card.takeaway }}</p>{% endif %}
     {% if card.has_images %}
     <div class="deep-images">
-      {% for img in card.images %}<img src="{{ img }}" alt="配图" loading="lazy">{% endfor %}
+      {% for fig in card.images %}<figure class="src-fig"><img src="{{ fig.src }}" alt="{{ fig.alt }}" loading="lazy">{% if fig.caption %}<figcaption><span>{{ fig.caption }}</span></figcaption>{% endif %}</figure>{% endfor %}
     </div>
     {% endif %}
-
-    {% if card.takeaway %}<p class="viz-takeaway">{{ card.takeaway }}</p>{% endif %}
       {% if card.meme %}<blockquote class="viz-meme">{{ card.meme }}</blockquote>{% endif %}
       {% if card.logic %}<div class="viz-logic"><div class="lg-chain">{% for n in card.logic.chain %}<div class="lg-node {{ n.cls }}">{{ n.text }}</div>{% endfor %}</div>{% if card.logic.evidence %}<div class="lg-row"><span class="lg-k">证据</span>{% for ev in card.logic.evidence %}<span class="lg-ev">{{ ev }}</span>{% endfor %}</div>{% endif %}{% if card.logic.caveat %}<div class="lg-row lg-caveat"><span class="lg-k">但是</span><span>{{ card.logic.caveat }}</span></div>{% endif %}</div>{% endif %}
     {% if card.stats %}<div class="viz-stats">{% for st in card.stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div>{% endif %}

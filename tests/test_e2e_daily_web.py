@@ -114,17 +114,31 @@ def test_homepage_offers_three_views_without_javascript(site):
     assert 'data-view="deep"' not in home
 
 
-def test_homepage_shows_the_full_three_column_chrome(site):
-    """顶栏 + 左栏（往期归档 / 类目）+ 主列 + 右栏（热榜 / 信源分布 / 交叉验证说明）。"""
+def test_sidebar_is_a_table_of_contents_for_this_issue(site):
+    """左栏是「本期导读」：每条正文的标题都在目录里、点了能落到那一条；关注开关在侧栏里
+    （模型发布必看、不给开关）；往期压成一行。右栏是「30 秒读完今天」：每条一句话、能跳。
+
+    旧版左栏是一串往期日期 + 「时间轴天数 / 重磅 0」这类统计，右栏热度榜与版面顺序重复——
+    都不帮读者找到自己要读的东西（issue #51）。
+    """
     client, date_str = site
     home = client.get("/daily").text
+    draft = storage.read_json(paths.data_path("archive", date_str, daily.DRAFT_NAME), default={})
+    picked = [e for e in draft["items"] if e.get("selected")]
+    assert picked
 
-    assert 'class="qly-topbar"' in home
-    assert 'class="qly-sidebar"' in home
-    assert 'class="qly-rail"' in home
-    assert "往期归档" in home and "is-current" in home
-    assert date_str[5:].replace("-", "/") in home, "当天要出现在归档导航里"
-    assert "热度榜" in home and "信源分布" in home and "交叉验证" in home
+    sidebar = home.split('<aside class="qly-sidebar"', 1)[1].split("</aside>", 1)[0]
+    rail = home.split('<aside class="qly-rail"', 1)[1].split("</aside>", 1)[0]
+    glance = home.split('id="wrap-glance"', 1)[1].split('id="wrap-timeline"', 1)[0]
+    for entry in picked:
+        sig, title = entry["sig"], daily._display_title(entry)
+        assert 'href="#e-{0}"'.format(sig) in sidebar and title in sidebar, "目录里少了一条：{0}".format(title)
+        assert 'id="e-{0}"'.format(sig) in glance, "目录链接落不到日报页上的那一条"
+        assert 'href="#e-{0}"'.format(sig) in rail, "30 秒速览里少了一条"
+    assert "30 秒读完今天" in rail
+    assert 'data-follow="agent"' in sidebar and 'data-follow="models"' not in sidebar
+    assert "往期" in sidebar and date_str[5:].replace("-", "/") in sidebar, "当天要出现在往期条里"
+    assert "热度榜" not in home and "信源分布" not in home and "时间轴天数" not in home
 
 
 def test_editor_note_reaches_the_reader_in_every_view(site):
@@ -874,8 +888,8 @@ def test_page_is_organised_by_track_with_model_releases_for_everyone(tmp_data_di
     # 编辑标到训练的两条（不管规则怎么判）落在训练栏
     assert "正文3" in secs["training"][1] and "正文8" in secs["training"][1]
     # 关注开关：模型发布不在开关里（必看），Agent 默认按下
-    assert re.search(r'data-track="agent" aria-pressed="true"', glance)
-    assert not re.search(r'class="trk-chip" data-track="models"', glance), "必看的方向不该能被取消关注"
+    assert re.search(r'data-follow="agent" aria-pressed="true"', glance)
+    assert 'data-follow="models"' not in glance, "必看的方向不该能被取消关注"
     # 快讯：挂在编辑标的方向栏尾，一行标题 + 一句话；和正文重复的那条被丢掉
     for n in (1, 2, 3):
         assert "快讯标题{0}".format(n) in secs["infra"][1] and "快讯一句话{0}".format(n) in secs["infra"][1]
@@ -954,3 +968,149 @@ def test_rule_fallback_gives_every_track_with_fresh_news_a_seat(tmp_data_dir, mo
     assert echo["sig"] not in {q["sig"] for q in quick}, "快讯里挂了正文那次发布的转述"
     glance = TestClient(api_server.create_app()).get("/daily", params={"view": "glance"}).text
     assert daily._display_title(quick[0]) in glance
+
+
+# =========================================================================
+# 原文配图（issue #52）：卡片主视觉用原文自己的图，下载到本地随页发布
+# =========================================================================
+#: 1×1 的合法 PNG——_download_image 按文件头认格式
+_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d4944415478da63f8cfc0f01f0005000201a5a3a3a50000000049454e44ae426082")
+
+
+class _FakeHTTP:
+    def __init__(self, pages):
+        self.pages = pages
+        self.requested = []
+
+    def get(self, url, timeout=15, headers=None, max_bytes=None):
+        from qianliyan.engine import http
+
+        self.requested.append(url)
+        if url in self.pages:
+            body, ctype = self.pages[url]
+            return _Resp(body.encode("utf-8"), ctype, url)
+        if "fig3-h100-performance" in url:
+            # 超过上限的图：http.get 的 max_bytes 会静默截断，截断的就是半张坏图
+            return _Resp(_PNG + b"\0" * (max_bytes or 3000000), "image/png", url)
+        if any(host in url for host in ("pytorch.org/wp-content/", "cdn.prod.website-files.com", "pbs.twimg.com",
+                                        "epoch.ai/assets/", "substackcdn.com", "pbs.substack.com")):
+            return _Resp(_PNG, "image/png", url)
+        raise http.OfflineError("测试里没有这个地址: " + url)
+
+
+class _Resp:
+    def __init__(self, content, ctype, url):
+        self.content, self.url, self.status_code = content, url, 200
+        self.headers = {"content-type": ctype}
+        # 同 requests：响应头没声明 charset 的 text/html 按 ISO-8859-1 解
+        self.text = content.decode("utf-8" if "charset=utf-8" in ctype else "latin-1", "replace")
+
+
+def test_article_figures_become_the_card_visual_and_ship_with_the_page(tmp_data_dir, monkeypatch):
+    """原文里的实验图、架构图才是最有信息量的东西：日报卡片的主视觉用原文配图（带原图注），
+    logo / 头像不许混进来；原文有图时，日报页不再画我们自己的对比图（详情页照留）。
+    图片下载到本地、随页发布——外站地址在 artifact 里会被拦成破图。"""
+    import subprocess
+    from pathlib import Path
+
+    from qianliyan.engine import http
+
+    fixtures = Path(__file__).resolve().parent / "fixtures" / "real"
+    pytorch_url = "https://pytorch.org/blog/hardware-agnostic-models-in-vllm/"
+    claude_url = "https://claude.com/blog/what-a-task-costs-on-opus-5-5"
+    epoch_url = "https://epoch.ai/publications/the-plunging-price-of-thought"
+    latent_url = "https://www.latent.space/p/ainews-xiaomi-mimo-v26-pro-1t-a42b"
+    html_utf8 = "text/html; charset=utf-8"
+    fake = _FakeHTTP({
+        pytorch_url: ((fixtures / "pytorch_vllm_article.html").read_text(encoding="utf-8"), html_utf8),
+        claude_url: ((fixtures / "claude_blog_task_cost.html").read_text(encoding="utf-8"), html_utf8),
+        # epoch.ai 真实响应头就不带 charset
+        epoch_url: ((fixtures / "epoch_article.html").read_text(encoding="utf-8"), "text/html"),
+        latent_url: ((fixtures / "latent_space_ainews.html").read_text(encoding="utf-8"), html_utf8),
+    })
+    monkeypatch.setattr(http, "get", fake.get)
+
+    sync.run_sync(mock=True)
+    date_str = utils.now_utc().strftime("%Y-%m-%d")
+    assert daily.cmd_prepare(date_str) == 0
+    draft_path = paths.data_path("archive", date_str, daily.DRAFT_NAME)
+    draft = storage.read_json(draft_path, default={})
+    a, b, c, d, e = draft["items"][:5]
+    for rank, entry in enumerate((a, b, c, d, e), start=1):
+        entry["selected"], entry["editor_rank"] = True, rank
+    a["url"], a["title_zh"] = pytorch_url, "vLLM 走向硬件无关"
+    a["chart"] = {"type": "bar", "title": "我们自绘的对比图", "unit": "%",
+                  "rows": [{"label": "甲", "value": 30}, {"label": "乙", "value": 20}]}
+    b["url"], b["title_zh"] = claude_url, "一个任务花多少钱"
+    c["url"], c["title_zh"] = "https://x.com/someone/status/1", "一条推文"
+    c.setdefault("extra", {})["images"] = ["https://pbs.twimg.com/media/X.jpg?format=jpg&amp;name=large"]
+    d["url"], d["title_zh"] = epoch_url, "AI 降价比任何技术都快"
+    e["url"], e["title_zh"] = latent_url, "小米 MiMo 登顶开放权重"
+    storage.write_json(draft_path, draft)
+    assert daily.cmd_finalize(date_str, do_html=True) == 0
+
+    assert not [u for u in fake.requested if "logo" in u.lower() or "avatar" in u.lower()], \
+        "logo / 头像被当成配图下载了"
+    assert "https://pbs.twimg.com/media/X.jpg?format=jpg&name=large" in fake.requested, "推文配图地址里的 &amp; 没解码"
+
+    client = TestClient(api_server.create_app())
+    home = client.get("/daily").text
+    glance = home.split('id="wrap-glance"', 1)[1].split('id="wrap-timeline"', 1)[0]
+
+    def card(sig):
+        return glance.split('id="e-{0}"'.format(sig), 1)[1].split("</article>", 1)[0]
+
+    # /daily 回的是归档页（archive/<日期>/digest.html），图片路径是 ../../media/x——从 /daily 解析正好落到 /media/x
+    srcs = re.findall(r'<img src="(?:\.\./)*(media/[0-9a-f]{16}\.png)"', card(a["sig"]))
+    assert srcs, "原文配图没当卡片主视觉"
+    assert (paths.data_path() / srcs[0]).is_file()
+    assert "我们自绘的对比图" not in card(a["sig"]), "原文有图时日报页不该再画自绘对比图"
+    assert "Fig A. Price per million tokens." in card(b["sig"]), "图注没用原文的 figcaption"
+    assert "图源" in card(b["sig"])
+    assert re.search(r'<img src="(?:\.\./)*media/[0-9a-f]{16}\.png"', card(c["sig"])), "推文配图没上卡片"
+    # Epoch 的主图是交互图表，静态版在 <noscript> 里；页面不声明 charset，图注里的「–」不能解成乱码
+    assert "figure-1.png" in " ".join(fake.requested), "noscript 里的主图没收"
+    assert "(2021–26)" in card(d["sig"]), "页面没按 UTF-8 解码，图注成了乱码"
+    # Substack：正文里的推文截图和两张图表要，正文外的刊物 logo、40px 头像不要；
+    # 图片地址本身带逗号（w_1456,c_limit,…），srcset 切错就会拼出不存在的地址
+    latent = [u for u in fake.requested if "substack" in u]
+    assert "https://pbs.substack.com/media/HSxCs7wa0AANR91.jpg" in latent, "正文里的推文截图没收"
+    charts = [u for u in latent if u.startswith("https://substackcdn.com/image/fetch/") and ",c_limit," in u]
+    assert len(charts) == 2, "srcset 没按「逗号 + 空白」切：{0}".format(latent)
+    assert not [u for u in latent if "e_trim" in u or "w_40,h_40" in u], "刊物 logo / 头像被当成配图"
+
+    story_a = client.get("/story/{0}.html".format(a["sig"])).text
+    assert "我们自绘的对比图" in story_a, "详情页要保留自绘对比图"
+    assert len(re.findall(r'<img src="\.\./media/', story_a)) == 2, "超过大小上限（会被截断）的图不该下载"
+    story_b = client.get("/story/{0}.html".format(b["sig"])).text
+    assert len(re.findall(r'<img src="\.\./media/[0-9a-f]{16}\.png"', story_b)) == 4, "详情页要放全部原文配图"
+    assert "Fig D. Migration from Opus 4.8" in story_b
+
+    got = client.get("/" + srcs[0])
+    assert got.status_code == 200 and got.headers["content-type"] == "image/png" and got.content == _PNG
+    assert client.get("/media/..%2Fitems.jsonl").status_code == 404
+    (paths.data_path() / "0123456789abcdef.png").write_bytes(_PNG)   # 数据根下、media/ 外
+    assert client.get("/media/..%2F0123456789abcdef.png").status_code == 404, "配图路由能被路径穿越"
+    assert client.get("/media/0123456789abcdef.svg").status_code == 404
+
+    # 归档页（archive/<日期>/digest.html）里的相对路径要能落到同一张图
+    archive_page = paths.data_path("archive", date_str, daily.MERGED_NAME)
+    rel = re.search(r'<img src="(\.\./\.\./media/[0-9a-f]{16}\.png)"', archive_page.read_text(encoding="utf-8"))
+    assert rel and (archive_page.parent / rel.group(1)).resolve().is_file()
+
+    # 数据根的首页（对外入口、也是发布的来源）用 media/x
+    root_page = paths.data_path("daily.html").read_text(encoding="utf-8")
+    assert '<img src="{0}"'.format(srcs[0]) in root_page
+
+    # 发布目录：本地配图一起带上，<img> 保留
+    repo = Path(__file__).resolve().parent.parent
+    out = tmp_data_dir / "stage"
+    staged = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "stage", str(out)],
+                            capture_output=True, text=True, cwd="/")
+    assert staged.returncode == 0, staged.stderr
+    files = staged.stdout.split("files=", 1)[1].split()
+    assert srcs[0] in files and (out / srcs[0]).is_file(), "配图没随页进发布目录"
+    assert '<img src="{0}"'.format(srcs[0]) in (out / "index.html").read_text(encoding="utf-8")
+    assert '<img src="../media/' in (out / "story" / "{0}.html".format(b["sig"])).read_text(encoding="utf-8")
