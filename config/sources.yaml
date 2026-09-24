@@ -45,6 +45,11 @@ sources:
   #    Qwen 官方 blog 最新一篇停在 2025-09-22，收录的 44 条全是存档；留着是因为它一旦复更就能接上，
   #    但别指望它进日报。
   - {name: Qwen Blog,     type: rss, url: "https://qwenlm.github.io/blog/index.xml", weight: 0.88, format: blog, category: models, tags: [official, qwen, alibaba, models]}
+  #    Z.ai（智谱）的博客 z.ai/blog 是 SPA：无 RSS、站点地图不收博客、索引包里也没有文章列表——
+  #    09-17 那篇 RSI 披露（GLM 自建推理基础设施）就是这么漏掉的。能稳定拿到的官方口径只有
+  #    docs.z.ai 的 release notes（Mintlify changelog），每个模型上线都会记一笔；它的 <title>
+  #    只是日期，rss 引擎会拿正文第一句补标题。博客本身仍需 CDP 或 X 才抓得到。
+  - {name: Z.ai Release Notes, type: rss, url: "https://docs.z.ai/release-notes/new-released/rss.xml", weight: 0.9, format: news, category: models, tags: [official, zhipu, glm, models]}
 
   # —— 官方 YouTube（频道 feed，真实可达）——
   - {name: Claude YouTube,          type: youtube, channel_id: UCV03SRZXJEz-hchIAogeJOg, weight: 0.92, format: video, category: talks, tags: [official, anthropic, claude, video, talks]}

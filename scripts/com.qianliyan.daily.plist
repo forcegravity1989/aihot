@@ -26,7 +26,7 @@
         <string>__REPO__/scripts/qly-daily.sh</string>
     </array>
 
-    <!-- 07:30 抓取，给编辑留出选稿时间，日报 8:00 前能发出去 -->
+    <!-- 07:30 抓取 → 编辑 Agent 选稿 → 定稿，日报 8:00 前出刊 -->
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>

@@ -1,13 +1,17 @@
 #!/bin/bash
 # scripts/qly-daily.sh —— 千里眼每日抓取的调度入口（给 launchd / cron 调用）。
 #
-# 做三件事：抓取（sync）→ 备好当日选稿草案（daily_digest_all --prepare）→ 打印摘要。
-# 选稿与定稿**刻意不自动做**：那两步需要判断力，是编辑（人或 Agent）的活，
-# 自动跑只会产出一份没人看过的日报。
+# 做五件事：抓取（sync）→ 备当日选稿草案（--prepare）→ 编辑 Agent 选稿写按语（--auto-edit）
+# → 定稿（--finalize，抓入选条目正文）→ 编辑 Agent 读正文写要点并渲染（--auto-brief --html）。
+#
+# 选稿原本刻意留给人做，结果是 09-04 ~ 09-22 连续 19 天只有草案、首页停在 09-03——
+# 「等人来编」在无人值守的定时任务里等于不出刊。现在由编辑 Agent（默认 `claude -p`，
+# 无工具）选稿；Agent 不可用就按规则选，保证当天有一期。人想亲自编：改草案的 selected
+# 后重跑 `--finalize --html` 即可，重跑 prepare / auto-edit 都不会覆盖已有选稿。
 #
 # 退出码语义（决定 launchd 要不要报警）：
-#   0  当日数据拿到了（主信源 aihot OK）
-#   1  抓取失败 / 主信源挂了 / 全部眼失败 —— 需要人看一眼
+#   0  当日数据拿到了、日报出了
+#   1  抓取失败 / 主信源挂了 / 全部眼失败 / 日报没出来 —— 需要人看一眼
 #   2  上一轮还在跑（拿不到锁），本轮跳过 —— 不是错误，不该告警
 #
 # **不用 `sync --strict`**：内网 company 眼在没有 CDP 浏览器的机器上天天失败，
@@ -18,9 +22,19 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="$REPO_ROOT/.venv/bin/python"
+# `python -m qianliyan…` 靠当前目录找包（没装进 venv）：从任意目录调用都先切到仓库
+cd "$REPO_ROOT" || exit 1
 
 # launchd 给的环境极简，PATH 必须自己补全（git / curl 等子进程要用）
-export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+# ~/.local/bin 是 claude CLI 的默认安装位置（编辑 Agent 要用）
+export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
+# 本机私有环境（不进仓库）：放编辑 Agent 的长期凭据，如 `claude setup-token` 生成的
+#   export CLAUDE_CODE_OAUTH_TOKEN=...
+# launchd 不读 shell profile，交互登录的会话过期后定时任务里的 claude 会直接失败。
+QLY_ENV_FILE="${QLY_ENV_FILE:-$HOME/.config/qianliyan/env}"
+# shellcheck disable=SC1090
+[ -r "$QLY_ENV_FILE" ] && . "$QLY_ENV_FILE"
 
 # 数据目录：尊重外部已设的值，否则让 paths.py 的四级解析自己决定
 if [ -z "${QLY_DATA_DIR:-}" ]; then
@@ -95,16 +109,32 @@ PYEOF
 data_rc=$?
 log "信源结果：$verdict"
 
-# ---- 备好当日选稿草案（选稿/定稿留给编辑）------------------------------------
-"$PY" -m qianliyan.cli.daily_digest_all --prepare >>"$LOG_FILE" 2>&1 \
-    && log "选稿草案已备好，等编辑选条目并写 editor_note" \
-    || log "⚠ 选稿草案生成失败（不影响已抓到的数据）"
+# ---- 选稿草案 → 编辑 Agent 选稿 → 定稿渲染 ------------------------------------
+# 日期显式给出：三步必须落在同一天的草案上，不能各自去算「今天」。
+DAY="$(date -u +%Y-%m-%d)"
+published=0
+if "$PY" -m qianliyan.cli.daily_digest_all --prepare --date "$DAY" >>"$LOG_FILE" 2>&1; then
+    "$PY" -m qianliyan.cli.daily_digest_all --auto-edit --date "$DAY" >>"$LOG_FILE" 2>&1 \
+        || log "⚠ 自动选稿失败"
+    # --auto-brief：定稿抓完正文后，编辑 Agent 为每条写要点（日报的正文）；不可用则沿用摘要
+    if "$PY" -m qianliyan.cli.daily_digest_all --finalize --auto-brief --html --date "$DAY" >>"$LOG_FILE" 2>&1; then
+        published=1
+        log "日报已出：$DAY（$(grep -o '自动选稿完成.*\|草案里已有编辑选稿.*' "$LOG_FILE" | tail -1)）"
+    else
+        log "❌ 定稿渲染失败，今天的日报没出来"
+    fi
+else
+    log "❌ 选稿草案生成失败，今天的日报没出来"
+fi
 
 # ---- 日志留存 ---------------------------------------------------------------
 find "$LOG_DIR" -name 'daily-*.log' -type f -mtime +$LOG_KEEP_DAYS -delete 2>/dev/null
 
 if [ $data_rc -ne 0 ]; then
     log "❌ 主信源未拿到数据，今天的日报没有原料"
+    exit 1
+fi
+if [ $published -ne 1 ]; then
     exit 1
 fi
 log "✅ 完成"

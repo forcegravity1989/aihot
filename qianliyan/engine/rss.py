@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import html
 import logging
+import re
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional
 
@@ -28,6 +30,35 @@ def _local_tag(el: ET.Element) -> str:
     return tag if isinstance(tag, str) else ""
 
 
+#: 标题只是一个日期（Mintlify 等 changelog feed 的通病：<title>2026-08-26</title>）
+_DATE_ONLY_TITLE = re.compile(r"^\s*\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s*$")
+_TAG_RE = re.compile(r"<[^>]+>")
+_SENTENCE_END = re.compile(r"(?<=[.!?。！？])\s")
+#: 补出来的标题最长多少字符
+DERIVED_TITLE_MAX = 90
+
+
+def _plain(markup: str) -> str:
+    return re.sub(r"\s+", " ", html.unescape(_TAG_RE.sub(" ", markup or ""))).strip()
+
+
+def _derive_title(title: str, body: str) -> str:
+    """标题只是日期时，用正文第一句补成「日期 · 第一句」。
+
+    只有日期的标题进了日报就是一行「2026-08-26」——读者看不出发生了什么，编辑也没法判断
+    要不要选。正文第一句通常就是这次更新的要点。
+    """
+    if not _DATE_ONLY_TITLE.match(title or ""):
+        return title
+    text = _plain(body)
+    if not text:
+        return title
+    first = _SENTENCE_END.split(text, 1)[0].strip()
+    if len(first) > DERIVED_TITLE_MAX:
+        first = first[:DERIVED_TITLE_MAX].rstrip() + "…"
+    return "{0} · {1}".format(title.strip(), first)
+
+
 def _parse_rss2(root: ET.Element) -> List[Dict[str, Any]]:
     """RSS 2.0（及大部分 RSS 变体）：``channel > item``，字段取 title/link/description/pubDate。"""
     items: List[Dict[str, Any]] = []
@@ -37,6 +68,7 @@ def _parse_rss2(root: ET.Element) -> List[Dict[str, Any]]:
         title = ""
         link = ""
         summary = ""
+        content = ""
         date = ""
         for child in item_el:
             tag = _local_tag(child)
@@ -46,8 +78,13 @@ def _parse_rss2(root: ET.Element) -> List[Dict[str, Any]]:
                 link = _text(child) or (child.attrib.get("href") or "")
             elif tag in ("description", "summary") and not summary:
                 summary = _text(child)
+            elif tag == "encoded" and not content:  # content:encoded
+                content = _text(child)
             elif tag in ("pubDate", "date") and not date:
                 date = _text(child)
+        if not summary and content:
+            summary = _plain(content)
+        title = _derive_title(title, content or summary)
         if title or link:
             items.append({"title": title, "url": link, "summary": summary, "date": date})
     return items

@@ -27,6 +27,19 @@
   </div>
   {% endif %}
 
+  <section class="dt-sec">{% if takeaway %}<p class="viz-takeaway">{{ takeaway }}</p>{% endif %}
+      {% if meme %}<blockquote class="viz-meme">{{ meme }}</blockquote>{% endif %}
+      {% if logic %}<div class="viz-logic"><div class="lg-chain">{% for n in logic.chain %}<div class="lg-node {{ n.cls }}">{{ n.text }}</div>{% endfor %}</div>{% if logic.evidence %}<div class="lg-row"><span class="lg-k">证据</span>{% for ev in logic.evidence %}<span class="lg-ev">{{ ev }}</span>{% endfor %}</div>{% endif %}{% if logic.caveat %}<div class="lg-row lg-caveat"><span class="lg-k">但是</span><span>{{ logic.caveat }}</span></div>{% endif %}</div>{% endif %}</section>
+  {% if stats %}<section class="dt-sec"><div class="viz-stats">{% for st in stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div></section>{% endif %}
+  {% if chart %}<section class="dt-sec"><figure class="viz-chart"><figcaption>{{ chart.title }}</figcaption>{{ chart.svg|safe }}</figure></section>{% endif %}
+
+  {% if brief %}
+  <section class="dt-sec">
+    <div class="dt-sec-label">细节要点</div>
+    <ul class="report-entry-brief">{% for point in brief %}<li>{{ point }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
   {% if summary %}
   <section class="dt-sec">
     <div class="dt-sec-label">AI 导读</div>
@@ -79,6 +92,7 @@
   </section>
   {% endif %}
 
+  {% if show_distill %}
   <hr class="dt-rule">
   <section class="dt-sec">
     <div class="dt-sec-label">深读提炼</div>
@@ -101,6 +115,7 @@
       </div>
     </div>
   </section>
+  {% endif %}
 
   {% if has_images %}
   <hr class="dt-rule">
@@ -117,6 +132,16 @@
       {% for src in source_list %}<span class="chip">{{ src.name }}</span>{% endfor %}
     </div>
   </section>
+
+  {% if related %}
+  <hr class="dt-rule">
+  <section class="dt-sec">
+    <div class="dt-sec-label">同一事件的其它报道</div>
+    <ul class="dt-related">
+      {% for r in related %}<li><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.title }}</a> <span class="dt-related-src">{{ r.source }}</span></li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
 
   <hr class="dt-rule">
   <div class="dt-sec">

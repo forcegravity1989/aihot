@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from qianliyan.core import schema, utils
-from qianliyan.engine import github_trending, html_page, http, remote_sync, youtube
+from qianliyan.engine import github_trending, html_page, http, remote_sync, rss, youtube
 
 REAL = Path(__file__).resolve().parent / "fixtures" / "real"
 
@@ -401,3 +401,23 @@ def test_fetch_source_dispatches_scrape(monkeypatch):
     assert len(entries) >= 10
     assert all(e["url"].startswith("https://www.anthropic.com/news/") for e in entries)
     assert entries[0]["extra"]["format"] == "blog"
+
+
+# =========================================================================
+# engine.rss —— changelog 类 feed：<title> 只有日期
+# =========================================================================
+def test_rss_changelog_feed_with_date_only_titles_gets_readable_titles():
+    """Z.ai 官方 release notes（Mintlify changelog）的 <title> 只是「2026-08-26」。
+
+    原样进日报就是一行日期，读者和编辑都看不出发生了什么；要用正文第一句补出标题，
+    正文只在 content:encoded 里，description 为空时摘要也要从那里来。
+    """
+    items = rss.parse(_read("zai_release_notes.xml"))
+    assert len(items) == 3
+    for item in items:
+        assert item["title"].startswith("20"), item["title"]
+        assert " · " in item["title"], "标题只剩日期：{0}".format(item["title"])
+        assert len(item["title"]) > 20
+        assert item["summary"] and "<" not in item["summary"]
+        assert item["url"].startswith("https://docs.z.ai/")
+    assert any("GLM-5.3" in it["title"] or "GLM-5.3" in it["summary"] for it in items)

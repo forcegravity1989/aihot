@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+    <channel>
+        <title><![CDATA[New Released]]></title>
+        <description><![CDATA[Follow along with updates across Z.AI’s models]]></description>
+        <link>https://docs.z.ai</link>
+        <generator>Mintlify</generator>
+        <lastBuildDate>Wed, 23 Sep 2026 02:36:12 GMT</lastBuildDate>
+        <atom:link href="https://docs.z.ai/release-notes/new-released/rss.xml" rel="self" type="application/rss+xml"/>
+        <copyright><![CDATA[Overview - Z.AI DEVELOPER DOCUMENT]]></copyright>
+        <docs>https://docs.z.ai</docs>
+        <item>
+            <title><![CDATA[2026-08-26]]></title>
+            <link>https://docs.z.ai/release-notes/new-released#2026-08-26</link>
+            <guid isPermaLink="false">5a241cead74dd8e0</guid>
+            <pubDate>Wed, 26 Aug 2026 14:16:05 GMT</pubDate>
+            <content:encoded><![CDATA[<ul>
+<li>
+<p>Native visual capabilities enable the model to observe interfaces, rendering results, and interaction feedback—creating a closed loop across code, browsers, and GUIs.</p>
+</li>
+<li>
+<p>Efficient hybrid architecture: Combines linear and sparse attention with 320B total parameters and 18B activated, significantly reducing compute and KV-cache requirements.</p>
+</li>
+<li>
+<p>Beyond coding: Supports office document and financial research workflows, autonomously breaking down goals, using tools, and refining outputs. Learn more in our <a href="https://docs.z.ai/guides/vlm/glm-5.3-flash">documentation</a>.*</p>
+</li>
+</ul>]]></content:encoded>
+        </item>
+        <item>
+            <title><![CDATA[2026-08-18]]></title>
+            <link>https://docs.z.ai/release-notes/new-released#2026-08-18</link>
+            <guid isPermaLink="false">957b015179e5dd16</guid>
+            <pubDate>Tue, 18 Aug 2026 17:06:49 GMT</pubDate>
+            <content:encoded><![CDATA[<ul>
+<li>
+<p>Stronger Coding Capabilities: GLM-5.3 delivers a significant improvement in coding capabilities, achieving a 50% gain over GLM-5.2 on Z.ai Code Bench and reaching state-of-the-art (SOTA) performance among open-source models on public benchmarks, including Terminal Bench 3.0.</p>
+</li>
+<li>
+<p>Emergent Cybersecurity Capabilities: GLM-5.3 matches Mythos 5 in white-box code review and vulnerability discovery. In collaboration with multiple cybersecurity teams, it has been tested on real-world targets and has identified a total of 2,436 vulnerabilities, including 1,097 medium- and high-severity vulnerabilities.Learn more in our <a href="https://docs.z.ai/guides/llm/glm-5.3">documentation</a>.*</p>
+</li>
+</ul>]]></content:encoded>
+        </item>
+        <item>
+            <title><![CDATA[2026-06-16]]></title>
+            <link>https://docs.z.ai/release-notes/new-released#2026-06-16</link>
+            <guid isPermaLink="false">1a454d0fb19d2d3f</guid>
+            <pubDate>Thu, 18 Jun 2026 03:13:43 GMT</pubDate>
+            <content:encoded><![CDATA[<ul>
+<li>
+<p>Supports 1M lossless context, significantly improving long-horizon task capabilities and reducing context drift and goal forgetting in complex tasks</p>
+</li>
+<li>
+<p>Achieves open-source SOTA performance on coding and long-horizon task benchmarks, delivering more stable results in complex system engineering and deep debugging</p>
+</li>
+<li>
+<p>Significantly improves the real-world developer experience, with more reliable project-level context handling, adherence to engineering standards, and multi-platform development. Learn more in our <a href="https://docs.z.ai/guides/llm/glm-5.2">documentation</a>.*</p>
+</li>
+</ul>]]></content:encoded>
+        </item>
+    </channel>
+</rss>
