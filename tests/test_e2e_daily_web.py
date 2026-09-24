@@ -114,17 +114,31 @@ def test_homepage_offers_three_views_without_javascript(site):
     assert 'data-view="deep"' not in home
 
 
-def test_homepage_shows_the_full_three_column_chrome(site):
-    """顶栏 + 左栏（往期归档 / 类目）+ 主列 + 右栏（热榜 / 信源分布 / 交叉验证说明）。"""
+def test_sidebar_is_a_table_of_contents_for_this_issue(site):
+    """左栏是「本期导读」：每条正文的标题都在目录里、点了能落到那一条；关注开关在侧栏里
+    （模型发布必看、不给开关）；往期压成一行。右栏是「30 秒读完今天」：每条一句话、能跳。
+
+    旧版左栏是一串往期日期 + 「时间轴天数 / 重磅 0」这类统计，右栏热度榜与版面顺序重复——
+    都不帮读者找到自己要读的东西（issue #51）。
+    """
     client, date_str = site
     home = client.get("/daily").text
+    draft = storage.read_json(paths.data_path("archive", date_str, daily.DRAFT_NAME), default={})
+    picked = [e for e in draft["items"] if e.get("selected")]
+    assert picked
 
-    assert 'class="qly-topbar"' in home
-    assert 'class="qly-sidebar"' in home
-    assert 'class="qly-rail"' in home
-    assert "往期归档" in home and "is-current" in home
-    assert date_str[5:].replace("-", "/") in home, "当天要出现在归档导航里"
-    assert "热度榜" in home and "信源分布" in home and "交叉验证" in home
+    sidebar = home.split('<aside class="qly-sidebar"', 1)[1].split("</aside>", 1)[0]
+    rail = home.split('<aside class="qly-rail"', 1)[1].split("</aside>", 1)[0]
+    glance = home.split('id="wrap-glance"', 1)[1].split('id="wrap-timeline"', 1)[0]
+    for entry in picked:
+        sig, title = entry["sig"], daily._display_title(entry)
+        assert 'href="#e-{0}"'.format(sig) in sidebar and title in sidebar, "目录里少了一条：{0}".format(title)
+        assert 'id="e-{0}"'.format(sig) in glance, "目录链接落不到日报页上的那一条"
+        assert 'href="#e-{0}"'.format(sig) in rail, "30 秒速览里少了一条"
+    assert "30 秒读完今天" in rail
+    assert 'data-follow="agent"' in sidebar and 'data-follow="models"' not in sidebar
+    assert "往期" in sidebar and date_str[5:].replace("-", "/") in sidebar, "当天要出现在往期条里"
+    assert "热度榜" not in home and "信源分布" not in home and "时间轴天数" not in home
 
 
 def test_editor_note_reaches_the_reader_in_every_view(site):
@@ -529,7 +543,7 @@ def test_one_launch_takes_one_seat_and_its_other_reports_stay_reachable(tmp_data
 
 
 def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
-    """编辑定的头条必须排在页面最前——不管它属于哪个格式分区、发布得早还是晚。
+    """编辑定的头条必须排在页面最前——不管它属于哪个方向、发布得早还是晚；同一栏里按编辑排序。
 
     真实发生过：OpenAI 官方的 GPT-6 Sol 公告属于「博客」格式，版面固定先排「资讯」区、区内按
     时间排，头条于是成了全页第 7 条，压在一条安全漏洞后面。
@@ -557,13 +571,23 @@ def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
     storage.write_json(draft_path, draft)
     assert daily.cmd_finalize(date_str, do_html=True) == 0
 
+    # 版面按方向分栏（issue #49）：头条单独在最前；同一栏里按编辑的排序
+    from qianliyan.pipeline import tracks
+
+    cfg = tracks.load()
+    track_of = {"编辑排序第{0}条".format(rank): tracks.track_of(entry, cfg)
+                for rank, entry in enumerate(reversed(picked), start=1)}
     client = TestClient(api_server.create_app())
     for view in ("glance", None):
         page = client.get("/daily", params={"view": view} if view else {}).text
-        body = page.split("</header>", 1)[-1]
-        positions = [body.find("编辑排序第{0}条".format(n)) for n in range(1, 6)]
-        assert all(p >= 0 for p in positions), "有选中的条目没上版面"
-        assert positions == sorted(positions), "版面没按编辑的排序走（{0}）：{1}".format(view, positions)
+        body = page.split('id="wrap-timeline"', 1)[0].split("</header>", 1)[-1]
+        positions = {t: body.find(t) for t in track_of}
+        assert all(p >= 0 for p in positions.values()), "有选中的条目没上版面"
+        assert positions["编辑排序第1条"] == min(positions.values()), "编辑定的头条没排在最前（{0}）".format(view)
+        for tid in set(track_of.values()):
+            ranked = [positions[t] for t in sorted(track_of, key=lambda t: int(re.search(r"\d+", t).group()))
+                      if track_of[t] == tid and t != "编辑排序第1条"]
+            assert ranked == sorted(ranked), "{0} 栏内没按编辑排序（{1}）".format(tid, view)
 
 
 # =========================================================================
@@ -796,3 +820,297 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     stories = re.findall(r'href="(story/[A-Za-z0-9_.-]+\.html)"', index)
     assert stories and all((out / s).is_file() for s in stories), "首页链接的详情页没一起整理进来"
     assert (out / "daily.html").is_file(), "详情页的「返回日报」会落空"
+
+
+# =========================================================================
+# 按方向分栏（issue #49）：模型发布所有人必看，其余方向由读者选关注
+# =========================================================================
+TRACK_EDITOR = r'''
+import json, re, sys
+prompt = sys.stdin.read()
+sigs = re.findall(r"^=== sig: (\S+)", prompt, re.M)
+if sigs:
+    print(json.dumps({"briefs": [{"sig": s, "takeaway": "结论·" + s} for s in sigs]}))
+    sys.exit(0)
+open(sys.argv[1], "w", encoding="utf-8").write(prompt)
+rows = re.findall(r"^\[(\d+)\].*\n.*规则方向：(\w+)", prompt, re.M)
+ids = [int(i) for i, _ in rows]
+# 编辑的方向判断优先于规则：前 9 条轮流标到各个方向（和规则怎么判无关），再挑 3 条快讯
+order = ["agent", "models", "training", "infra", "research", "agent", "models", "training", "infra"]
+picks = [{"i": i, "track": order[n], "editor_note": "按语{0}".format(n + 1), "title_zh": "正文{0}".format(n + 1)}
+         for n, i in enumerate(ids[:9])]
+quick = [{"i": i, "track": "infra", "title_zh": "快讯标题{0}".format(n), "summary_zh": "快讯一句话{0}".format(n)}
+         for n, i in enumerate(ids[9:12], start=1)]
+quick.append({"i": ids[0], "track": "infra", "title_zh": "和正文重复的快讯", "summary_zh": "不该出现"})
+print(json.dumps({"picks": picks, "quick": quick}, ensure_ascii=False))
+'''
+
+
+def _sections(page: str) -> dict:
+    """把日报页切成 {方向 id: (section 开标签, section 内容)}，按页面顺序。"""
+    out = {}
+    for m in re.finditer(r'(<section class="report-section trk-sec[^"]*" id="trk-(\w+)"[^>]*>)(.*?)</section>',
+                         page, re.S):
+        out[m.group(2)] = (m.group(1), m.group(3))
+    return out
+
+
+def test_page_is_organised_by_track_with_model_releases_for_everyone(tmp_data_dir, monkeypatch):
+    """读者关心的方向不一样：模型发布所有人都要看，其余方向默认只展开 Agent 实践，
+    别的方向收成「标题 + 一句结论」、由读者自己选关注；每栏尾挂这个方向的快讯。
+
+    编辑标的方向说了算（规则只是兜底），和正文同一条的快讯不许重复出现。
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = tmp_data_dir / "track_editor.py"
+    script.write_text(TRACK_EDITOR, encoding="utf-8")
+    date_str, draft, client = _unattended_run(
+        tmp_data_dir, monkeypatch, "{py} " + str(script) + " {dir}/prompt-seen.txt")
+    assert draft.get("edited_by") == "agent"
+
+    seen = (tmp_data_dir / "prompt-seen.txt").read_text(encoding="utf-8")
+    assert "models：模型发布" in seen and "所有人必看" in seen, "选稿简报里没告诉编辑有哪些方向"
+    assert "规则方向：" in seen
+
+    glance = client.get("/daily", params={"view": "glance"}).text
+    secs = _sections(glance)
+    ids = list(secs)
+    assert ids[0] == "lead" and "正文1" in secs["lead"][1], "编辑定的头条没单独放在最前"
+    assert ids[1] == "models" and "is-everyone" in secs["models"][0], "模型发布没排在头条之后、没标必看"
+    assert "正文2" in secs["models"][1] and "正文7" in secs["models"][1]
+    # 默认关注 Agent 实践：展开；没关注的方向折叠（只看标题和结论）
+    assert "is-compact" not in secs["agent"][0] and "正文6" in secs["agent"][1]
+    for tid in ("training", "infra", "research"):
+        assert "is-compact" in secs[tid][0], "{0} 默认该折叠".format(tid)
+    # 编辑标到训练的两条（不管规则怎么判）落在训练栏
+    assert "正文3" in secs["training"][1] and "正文8" in secs["training"][1]
+    # 关注开关：模型发布不在开关里（必看），Agent 默认按下
+    assert re.search(r'data-follow="agent" aria-pressed="true"', glance)
+    assert 'data-follow="models"' not in glance, "必看的方向不该能被取消关注"
+    # 快讯：挂在编辑标的方向栏尾，一行标题 + 一句话；和正文重复的那条被丢掉
+    for n in (1, 2, 3):
+        assert "快讯标题{0}".format(n) in secs["infra"][1] and "快讯一句话{0}".format(n) in secs["infra"][1]
+    assert "和正文重复的快讯" not in glance
+
+    repo = Path(__file__).resolve().parent.parent
+    status = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "status", date_str],
+                            capture_output=True, text=True, cwd="/").stdout
+    assert "tracks=models:2,agent:2,training:2,infra:2,research:1,industry:0" in status, status
+    assert "empty_tracks=industry" in status and "quick=3" in status, status
+
+    # 重跑抓取 + prepare（launchd 补跑），编辑挑的快讯和方向不许丢
+    sync.run_sync(mock=True)
+    assert daily.main(["--prepare", "--date", date_str]) == 0
+    assert daily.main(["--finalize", "--html", "--date", date_str]) == 0
+    glance = client.get("/daily", params={"view": "glance"}).text
+    secs = _sections(glance)
+    assert "快讯一句话2" in secs["infra"][1], "重跑 prepare 抹掉了编辑挑的快讯"
+    assert "正文3" in secs["training"][1], "重跑 prepare 抹掉了编辑标的方向"
+    del sys
+
+
+def test_rule_fallback_gives_every_track_with_fresh_news_a_seat(tmp_data_dir, monkeypatch):
+    """编辑 Agent 挂了、按规则选稿时，也不许让分数最高的方向占满 12 席：
+    每个有新鲜候选的方向至少分到一席，其余新鲜候选进快讯（不和正文重复）。"""
+    from datetime import timedelta
+
+    from qianliyan.pipeline import tracks
+
+    import sys
+    monkeypatch.setenv("QLY_EDITOR_CMD", "{0} -c 'import sys; sys.exit(3)'".format(sys.executable))
+    sync.run_sync(mock=True)
+    date_str = utils.now_utc().strftime("%Y-%m-%d")
+    assert daily.main(["--prepare", "--date", date_str]) == 0
+    draft_path = paths.data_path("archive", date_str, daily.DRAFT_NAME)
+    draft = storage.read_json(draft_path, default={})
+    cfg = tracks.load()
+    # 让排在草案**末尾**（分数最低）的训练、产品行业条目各一条变新鲜：只按分数取的话它们进不了前 12
+    fresh_at = utils.iso(utils.now_utc() - timedelta(hours=2))
+    want = ("training", "industry")
+    low = [next(e for e in reversed(draft["items"]) if tracks.rule_track(e, cfg) == tid) for tid in want]
+    positions = [draft["items"].index(e) for e in low]
+    assert min(positions) >= daily.AUTO_PICK_TARGET, "这两条本来就排进前 12，断言会空转"
+    # 别的候选都新鲜、这两个方向只剩这两条新鲜：名额只能按方向分，
+    # 不能靠「别的都太旧」或同方向的高分条目碰巧挤进来
+    stale_at = utils.iso(utils.now_utc() - timedelta(days=10))
+    for entry in draft["items"]:
+        stale = tracks.rule_track(entry, cfg) in want and entry not in low
+        entry["date"] = stale_at if stale else fresh_at
+    storage.write_json(draft_path, draft)
+
+    assert daily.main(["--auto-edit", "--date", date_str]) == 0
+    draft = storage.read_json(draft_path, default={})
+    # 人工编过的旧草案没有快讯：定稿时按规则补挑，且不许和正文讲同一个发布
+    # （09-23 头条是 GPT-6 Sol，规则快讯里又挂了官方公告、Altman 的话、ChatGPT 推送三条转述）
+    for entry in draft["items"]:
+        entry.pop("quick", None)
+    selected = [e for e in draft["items"] if e.get("selected")]
+    echo = next(e for e in draft["items"] if not e.get("selected"))
+    selected[-1]["title"] = "Introducing GPT-9 Nova"
+    echo["title"] = "GPT-9 Nova 在 ChatGPT 推送"
+    storage.write_json(draft_path, draft)
+    assert daily.main(["--finalize", "--html", "--date", date_str]) == 0
+    draft = storage.read_json(draft_path, default={})
+    assert draft.get("edited_by") == "rules"
+    picked = [e for e in draft["items"] if e.get("selected")]
+    assert len(picked) == daily.AUTO_PICK_TARGET
+    got = {tracks.track_of(e, cfg) for e in picked}
+    assert set(want) <= got, "有新鲜稿的方向没分到一席：{0}".format(got)
+    assert {e["sig"] for e in low} <= {e["sig"] for e in picked}
+
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    quick = final.get("quick") or []
+    assert quick, "规则兜底没挑快讯"
+    assert not {q["sig"] for q in quick} & {e["sig"] for e in picked}, "快讯和正文重复"
+    assert echo["sig"] not in {q["sig"] for q in quick}, "快讯里挂了正文那次发布的转述"
+    glance = TestClient(api_server.create_app()).get("/daily", params={"view": "glance"}).text
+    assert daily._display_title(quick[0]) in glance
+
+
+# =========================================================================
+# 原文配图（issue #52）：卡片主视觉用原文自己的图，下载到本地随页发布
+# =========================================================================
+#: 1×1 的合法 PNG——_download_image 按文件头认格式
+_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d4944415478da63f8cfc0f01f0005000201a5a3a3a50000000049454e44ae426082")
+
+
+class _FakeHTTP:
+    def __init__(self, pages):
+        self.pages = pages
+        self.requested = []
+
+    def get(self, url, timeout=15, headers=None, max_bytes=None):
+        from qianliyan.engine import http
+
+        self.requested.append(url)
+        if url in self.pages:
+            body, ctype = self.pages[url]
+            return _Resp(body.encode("utf-8"), ctype, url)
+        if "fig3-h100-performance" in url:
+            # 超过上限的图：http.get 的 max_bytes 会静默截断，截断的就是半张坏图
+            return _Resp(_PNG + b"\0" * (max_bytes or 3000000), "image/png", url)
+        if any(host in url for host in ("pytorch.org/wp-content/", "cdn.prod.website-files.com", "pbs.twimg.com",
+                                        "epoch.ai/assets/", "substackcdn.com", "pbs.substack.com")):
+            return _Resp(_PNG, "image/png", url)
+        raise http.OfflineError("测试里没有这个地址: " + url)
+
+
+class _Resp:
+    def __init__(self, content, ctype, url):
+        self.content, self.url, self.status_code = content, url, 200
+        self.headers = {"content-type": ctype}
+        # 同 requests：响应头没声明 charset 的 text/html 按 ISO-8859-1 解
+        self.text = content.decode("utf-8" if "charset=utf-8" in ctype else "latin-1", "replace")
+
+
+def test_article_figures_become_the_card_visual_and_ship_with_the_page(tmp_data_dir, monkeypatch):
+    """原文里的实验图、架构图才是最有信息量的东西：日报卡片的主视觉用原文配图（带原图注），
+    logo / 头像不许混进来；原文有图时，日报页不再画我们自己的对比图（详情页照留）。
+    图片下载到本地、随页发布——外站地址在 artifact 里会被拦成破图。"""
+    import subprocess
+    from pathlib import Path
+
+    from qianliyan.engine import http
+
+    fixtures = Path(__file__).resolve().parent / "fixtures" / "real"
+    pytorch_url = "https://pytorch.org/blog/hardware-agnostic-models-in-vllm/"
+    claude_url = "https://claude.com/blog/what-a-task-costs-on-opus-5-5"
+    epoch_url = "https://epoch.ai/publications/the-plunging-price-of-thought"
+    latent_url = "https://www.latent.space/p/ainews-xiaomi-mimo-v26-pro-1t-a42b"
+    html_utf8 = "text/html; charset=utf-8"
+    fake = _FakeHTTP({
+        pytorch_url: ((fixtures / "pytorch_vllm_article.html").read_text(encoding="utf-8"), html_utf8),
+        claude_url: ((fixtures / "claude_blog_task_cost.html").read_text(encoding="utf-8"), html_utf8),
+        # epoch.ai 真实响应头就不带 charset
+        epoch_url: ((fixtures / "epoch_article.html").read_text(encoding="utf-8"), "text/html"),
+        latent_url: ((fixtures / "latent_space_ainews.html").read_text(encoding="utf-8"), html_utf8),
+    })
+    monkeypatch.setattr(http, "get", fake.get)
+
+    sync.run_sync(mock=True)
+    date_str = utils.now_utc().strftime("%Y-%m-%d")
+    assert daily.cmd_prepare(date_str) == 0
+    draft_path = paths.data_path("archive", date_str, daily.DRAFT_NAME)
+    draft = storage.read_json(draft_path, default={})
+    a, b, c, d, e = draft["items"][:5]
+    for rank, entry in enumerate((a, b, c, d, e), start=1):
+        entry["selected"], entry["editor_rank"] = True, rank
+    a["url"], a["title_zh"] = pytorch_url, "vLLM 走向硬件无关"
+    a["chart"] = {"type": "bar", "title": "我们自绘的对比图", "unit": "%",
+                  "rows": [{"label": "甲", "value": 30}, {"label": "乙", "value": 20}]}
+    b["url"], b["title_zh"] = claude_url, "一个任务花多少钱"
+    c["url"], c["title_zh"] = "https://x.com/someone/status/1", "一条推文"
+    c.setdefault("extra", {})["images"] = ["https://pbs.twimg.com/media/X.jpg?format=jpg&amp;name=large"]
+    d["url"], d["title_zh"] = epoch_url, "AI 降价比任何技术都快"
+    e["url"], e["title_zh"] = latent_url, "小米 MiMo 登顶开放权重"
+    storage.write_json(draft_path, draft)
+    assert daily.cmd_finalize(date_str, do_html=True) == 0
+
+    assert not [u for u in fake.requested if "logo" in u.lower() or "avatar" in u.lower()], \
+        "logo / 头像被当成配图下载了"
+    assert "https://pbs.twimg.com/media/X.jpg?format=jpg&name=large" in fake.requested, "推文配图地址里的 &amp; 没解码"
+
+    client = TestClient(api_server.create_app())
+    home = client.get("/daily").text
+    glance = home.split('id="wrap-glance"', 1)[1].split('id="wrap-timeline"', 1)[0]
+
+    def card(sig):
+        return glance.split('id="e-{0}"'.format(sig), 1)[1].split("</article>", 1)[0]
+
+    # /daily 回的是归档页（archive/<日期>/digest.html），图片路径是 ../../media/x——从 /daily 解析正好落到 /media/x
+    srcs = re.findall(r'<img src="(?:\.\./)*(media/[0-9a-f]{16}\.png)"', card(a["sig"]))
+    assert srcs, "原文配图没当卡片主视觉"
+    assert (paths.data_path() / srcs[0]).is_file()
+    assert "我们自绘的对比图" not in card(a["sig"]), "原文有图时日报页不该再画自绘对比图"
+    assert "Fig A. Price per million tokens." in card(b["sig"]), "图注没用原文的 figcaption"
+    assert "图源" in card(b["sig"])
+    assert re.search(r'<img src="(?:\.\./)*media/[0-9a-f]{16}\.png"', card(c["sig"])), "推文配图没上卡片"
+    # Epoch 的主图是交互图表，静态版在 <noscript> 里；页面不声明 charset，图注里的「–」不能解成乱码
+    assert "figure-1.png" in " ".join(fake.requested), "noscript 里的主图没收"
+    assert "(2021–26)" in card(d["sig"]), "页面没按 UTF-8 解码，图注成了乱码"
+    # Substack：正文里的推文截图和两张图表要，正文外的刊物 logo、40px 头像不要；
+    # 图片地址本身带逗号（w_1456,c_limit,…），srcset 切错就会拼出不存在的地址
+    latent = [u for u in fake.requested if "substack" in u]
+    assert "https://pbs.substack.com/media/HSxCs7wa0AANR91.jpg" in latent, "正文里的推文截图没收"
+    charts = [u for u in latent if u.startswith("https://substackcdn.com/image/fetch/") and ",c_limit," in u]
+    assert len(charts) == 2, "srcset 没按「逗号 + 空白」切：{0}".format(latent)
+    assert not [u for u in latent if "e_trim" in u or "w_40,h_40" in u], "刊物 logo / 头像被当成配图"
+
+    story_a = client.get("/story/{0}.html".format(a["sig"])).text
+    assert "我们自绘的对比图" in story_a, "详情页要保留自绘对比图"
+    assert len(re.findall(r'<img src="\.\./media/', story_a)) == 2, "超过大小上限（会被截断）的图不该下载"
+    story_b = client.get("/story/{0}.html".format(b["sig"])).text
+    assert len(re.findall(r'<img src="\.\./media/[0-9a-f]{16}\.png"', story_b)) == 4, "详情页要放全部原文配图"
+    assert "Fig D. Migration from Opus 4.8" in story_b
+
+    got = client.get("/" + srcs[0])
+    assert got.status_code == 200 and got.headers["content-type"] == "image/png" and got.content == _PNG
+    assert client.get("/media/..%2Fitems.jsonl").status_code == 404
+    (paths.data_path() / "0123456789abcdef.png").write_bytes(_PNG)   # 数据根下、media/ 外
+    assert client.get("/media/..%2F0123456789abcdef.png").status_code == 404, "配图路由能被路径穿越"
+    assert client.get("/media/0123456789abcdef.svg").status_code == 404
+
+    # 归档页（archive/<日期>/digest.html）里的相对路径要能落到同一张图
+    archive_page = paths.data_path("archive", date_str, daily.MERGED_NAME)
+    rel = re.search(r'<img src="(\.\./\.\./media/[0-9a-f]{16}\.png)"', archive_page.read_text(encoding="utf-8"))
+    assert rel and (archive_page.parent / rel.group(1)).resolve().is_file()
+
+    # 数据根的首页（对外入口、也是发布的来源）用 media/x
+    root_page = paths.data_path("daily.html").read_text(encoding="utf-8")
+    assert '<img src="{0}"'.format(srcs[0]) in root_page
+
+    # 发布目录：本地配图一起带上，<img> 保留
+    repo = Path(__file__).resolve().parent.parent
+    out = tmp_data_dir / "stage"
+    staged = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "stage", str(out)],
+                            capture_output=True, text=True, cwd="/")
+    assert staged.returncode == 0, staged.stderr
+    files = staged.stdout.split("files=", 1)[1].split()
+    assert srcs[0] in files and (out / srcs[0]).is_file(), "配图没随页进发布目录"
+    assert '<img src="{0}"'.format(srcs[0]) in (out / "index.html").read_text(encoding="utf-8")
+    assert '<img src="../media/' in (out / "story" / "{0}.html".format(b["sig"])).read_text(encoding="utf-8")

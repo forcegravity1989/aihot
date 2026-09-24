@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en-US" class="no-js">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+<title>Hardware-Agnostic Models in vLLM &#8211; PyTorch</title>
+<meta name='robots' content='max-image-preview:large' />
+<link rel='dns-prefetch' href='//use.fontawesome.com' />
+<link rel="alternate" type="application/rss+xml" title="PyTorch &raquo; Feed" href="https://pytorch.org/feed/" />
+<link rel="alternate" type="application/rss+xml" title="PyTorch &raquo; Comments Feed" href="https://pytorch.org/comments/feed/" />
+<link rel="alternate" type="text/calendar" title="PyTorch &raquo; iCal Feed" href="https://pytorch.org/event-calendar/?ical=1" />
+
+
+
+<link rel='stylesheet' id='tribe-events-pro-mini-calendar-block-styles-css' href='https://pytorch.org/wp-content/plugins/events-calendar-pro/build/css/tribe-events-pro-mini-calendar-block.css?ver=7.8.3' media='all' />
+
+
+
+
+
+<link rel='stylesheet' id='people-grid-style-css' href='https://pytorch.org/wp-content/themes/salient-child/vc-addons/css/people.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='salient-child-featherlight-style-css' href='https://pytorch.org/wp-content/themes/salient-child/vc-addons/css/featherlight.css?ver=7.1.2' media='all' />
+<link rel='stylesheet' id='search-filter-plugin-styles-css' href='https://pytorch.org/wp-content/plugins/search-filter-pro/public/assets/css/search-filter.min.css?ver=2.5.21' media='all' />
+<link rel='stylesheet' id='youtube-playlist-css' href='https://pytorch.org/wp-content/themes/salient-child/vc-addons/css/youtube-playlist.css?ver=1.0.0' media='all' />
+<link rel='stylesheet' id='cookie-settings-style-css' href='https://pytorch.org/wp-content/themes/salient-child/includes/cookie-settings/cookie-settings.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='salient-child-style-css' href='https://pytorch.org/wp-content/themes/salient-child/style.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='vc-addons-style-css' href='https://pytorch.org/wp-content/themes/salient-child/vc-addons/css/vc-addons.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='templates-style-css' href='https://pytorch.org/wp-content/themes/salient-child/templates/css/templates.css?ver=1790126469' media='all' />
+<link rel='stylesheet' id='widgets-style-css' href='https://pytorch.org/wp-content/themes/salient-child/widgets/css/widgets.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='results-style-css' href='https://pytorch.org/wp-content/themes/salient-child/search-filter/css/results.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='fonts-style-css' href='https://pytorch.org/wp-content/themes/salient-child/fonts/fonts.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='events-calendar-style-css' href='https://pytorch.org/wp-content/themes/salient-child/css/events-calendar.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='linux-foundation-components-style-css' href='https://pytorch.org/wp-content/themes/salient-child/vc-addons/css/linux-foundation-components.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='latest-posts-style-css' href='https://pytorch.org/wp-content/themes/salient-child/vc-addons/css/latest-posts.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='projects-style-css' href='https://pytorch.org/wp-content/themes/salient-child/vc-addons/css/projects.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='members-style-css' href='https://pytorch.org/wp-content/themes/salient-child/vc-addons/css/members.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='insights-style-css' href='https://pytorch.org/wp-content/themes/salient-child/templates/css/insights.css?ver=1790126469' media='all' />
+<link rel='stylesheet' id='font-awesome-css' href='https://use.fontawesome.com/releases/v6.0.0/css/all.css?ver=6.0.0' media='all' />
+<link rel='stylesheet' id='font-awesome-shim-css' href='https://use.fontawesome.com/releases/v6.0.0/css/v4-shims.css?ver=6.0.0' media='all' />
+<link rel='stylesheet' id='salient-grid-system-css' href='https://pytorch.org/wp-content/themes/salient/css/build/grid-system.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='main-styles-css' href='https://pytorch.org/wp-content/themes/salient/css/build/style.css?ver=18.3.0' media='all' />
+
+<link rel='stylesheet' id='nectar-header-secondary-nav-css' href='https://pytorch.org/wp-content/themes/salient/css/build/header/header-secondary-nav.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='nectar-single-styles-css' href='https://pytorch.org/wp-content/themes/salient/css/build/single.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='nectar-element-page-submenu-css' href='https://pytorch.org/wp-content/themes/salient/css/build/elements/element-page-submenu.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='nectar-basic-events-calendar-css' href='https://pytorch.org/wp-content/themes/salient/css/build/third-party/events-calendar.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='nectar-brands-css' href='https://pytorch.org/wp-content/themes/salient/css/nectar-brands.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='responsive-css' href='https://pytorch.org/wp-content/themes/salient/css/build/responsive.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='skin-original-css' href='https://pytorch.org/wp-content/themes/salient/css/build/skin-original.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='salient-wp-menu-dynamic-css' href='https://pytorch.org/wp-content/uploads/salient/menu-dynamic.css?ver=79352' media='all' />
+<link rel='stylesheet' id='dynamic-css-css' href='https://pytorch.org/wp-content/uploads/salient/salient-dynamic-styles.css?ver=14558' media='all' />
+
+<link rel='stylesheet' id='pytorch-style-css' href='https://pytorch.org/wp-content/themes/salient-child/sites/pytorch/pytorch.css?ver=18.3.0' media='all' />
+<link rel='stylesheet' id='prism-styles-css' href='https://pytorch.org/wp-content/themes/salient-child/vc-addons/css/prism.css?ver=18.3.0' media='all' />
+
+
+
+
+
+<link rel="EditURI" type="application/rsd+xml" title="RSD" href="https://pytorch.org/xmlrpc.php?rsd" />
+<meta name="generator" content="WordPress 7.1.2" />
+<link rel="canonical" href="https://pytorch.org/blog/hardware-agnostic-models-in-vllm/" />
+<link rel='shortlink' href='https://pytorch.org/?p=169750' />
+<meta name="tec-api-version" content="v1"><meta name="tec-api-origin" content="https://pytorch.org"><link rel="alternate" href="https://pytorch.org/wp-json/tribe/events/v1/" />
+<!-- Google Tag Manager -->
+
+<!-- End Google Tag Manager --><meta name="generator" content="Powered by WPBakery Page Builder - drag and drop page builder for WordPress."/>
+<link rel="icon" href="https://pytorch.org/wp-content/uploads/2024/10/cropped-favicon-32x32.webp" sizes="32x32" />
+<link rel="icon" href="https://pytorch.org/wp-content/uploads/2024/10/cropped-favicon-192x192.webp" sizes="192x192" />
+<link rel="apple-touch-icon" href="https://pytorch.org/wp-content/uploads/2024/10/cropped-favicon-180x180.webp" />
+<meta name="msapplication-TileImage" content="https://pytorch.org/wp-content/uploads/2024/10/cropped-favicon-270x270.webp" />
+
+<noscript></noscript><link rel='stylesheet' id='js_composer_front-css' href='https://pytorch.org/wp-content/themes/salient/css/build/plugins/js_composer.css?ver=18.3.0' media='all' />
+<link data-pagespeed-no-defer data-nowprocket data-wpacu-skip data-no-optimize data-noptimize rel='stylesheet' id='main-styles-non-critical-css' href='https://pytorch.org/wp-content/themes/salient/css/build/style-non-critical.css?ver=18.3.0' media='all' />
+<link data-pagespeed-no-defer data-nowprocket data-wpacu-skip data-no-optimize data-noptimize rel='stylesheet' id='fancyBox-css' href='https://pytorch.org/wp-content/themes/salient/css/build/plugins/jquery.fancybox.css?ver=3.3.1' media='all' />
+<link data-pagespeed-no-defer data-nowprocket data-wpacu-skip data-no-optimize data-noptimize rel='stylesheet' id='nectar-ocm-core-css' href='https://pytorch.org/wp-content/themes/salient/css/build/off-canvas/core.css?ver=18.3.0' media='all' />
+<link data-pagespeed-no-defer data-nowprocket data-wpacu-skip data-no-optimize data-noptimize rel='stylesheet' id='nectar-ocm-slide-out-right-hover-css' href='https://pytorch.org/wp-content/themes/salient/css/build/off-canvas/slide-out-right-hover.css?ver=18.3.0' media='all' />
+
+</head><body class="wp-singular post-template-default single single-post postid-169750 single-format-standard wp-theme-salient wp-child-theme-salient-child tribe-no-js original language-py wpb-js-composer js-comp-ver-8.7.3 vc_responsive tribe-theme-salient" data-footer-reveal="false" data-footer-reveal-shadow="none" data-header-format="default" data-body-border="off" data-boxed-style="" data-header-breakpoint="1000" data-dropdown-style="minimal" data-cae="easeOutCubic" data-cad="750" data-megamenu-width="contained" data-aie="none" data-ls="fancybox" data-apte="standard" data-hhun="0" data-fancy-form-rcs="default" data-form-style="default" data-form-submit="regular" data-is="minimal" data-button-style="slightly_rounded" data-user-account-button="false" data-flex-cols="true" data-col-gap="default" data-header-inherit-rc="false" data-header-search="true" data-animated-anchors="true" data-ajax-transitions="false" data-full-width-header="false" data-slide-out-widget-area="true" data-slide-out-widget-area-style="slide-out-from-right-hover" data-user-set-ocm="off" data-loading-animation="none" data-bg-header="false" data-responsive="1" data-ext-responsive="true" data-ext-padding="90" data-header-resize="1" data-header-color="custom" data-cart="false" data-remove-m-parallax="" data-remove-m-video-bgs="" data-m-animate="0" data-force-header-trans-color="light" data-smooth-scrolling="0" data-permanent-transparent="false" >
+    
+    <!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-T8XT4PS"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) --><nav aria-label="Skip links" class="nectar-skip-to-content-wrap" data-nosnippet><a href="#ajax-content-wrap" class="nectar-skip-to-content">Skip to main content</a></nav>	
+	<div id="header-space" data-secondary-header-display="full" data-header-mobile-fixed='1'></div> 
+	
+	    <div id="header-outer" data-has-menu="true" data-has-buttons="yes" data-header-button_style="default" data-using-pr-menu="false" data-mobile-fixed="1" data-ptnm="false" data-lhe="animated_underline" data-user-set-bg="#222222" data-format="default" data-permanent-transparent="false" data-megamenu-rt="0" data-remove-fixed="0" data-header-resize="1" data-cart="false" data-transparency-option="" data-box-shadow="large" data-shrink-num="6" data-using-secondary="1" data-using-logo="1" data-logo-height="40" data-m-logo-height="30" data-padding="20" data-full-width="false" data-condense="false" >
+        
+	<div id="header-secondary-outer" class="default" data-mobile="display_full" data-remove-fixed="0" data-lhe="animated_underline" data-secondary-text="true" data-full-width="false" data-mobile-fixed="1" data-permanent-transparent="false" >
+		<div class="container">
+			<nav aria-label="Secondary Navigation">
+				<div class="nectar-center-text"><a href="https://events.linuxfoundation.org/pytorch-conference-north-america/register/?utm_source=pytorch&#038;utm_medium=ribbon-banner&#038;utm_campaign=PyTorch-Conference-NA-2026&#038;utm_content=hero">Join us at PyTorch Conference North America · Oct 20-21 · San Jose, CA</a></div>
+			</nav>
+		</div>
+	</div>
+
+
+<div id="search-outer" class="nectar" data-nosnippet>
+	<div id="search">
+		<div class="container">
+			 <div id="search-box">
+				 <div class="inner-wrap">
+					 <div class="col span_12">
+						  <form role="search" action="https://pytorch.org/" method="GET">
+															<input type="text" name="s"  value="Start Typing..." aria-label="Search" data-placeholder="Start Typing..." />
+							
+						
+						<button aria-label="Search" class="search-box__button" type="submit">Search</button>						</form>
+					</div><!--/span_12-->
+				</div><!--/inner-wrap-->
+			 </div><!--/search-box-->
+			 <div id="close"><a href="#" role="button"><span class="screen-reader-text">Close Search</span>
+				<span class="icon-salient-x" aria-hidden="true"></span>				 </a></div>
+		 </div><!--/container-->
+	</div><!--/search-->
+</div><!--/search-outer-->
+
+<header id="top" role="banner" aria-label="Main Menu">
+		<div class="container">
+		<div class="row">
+			<div class="col span_3">
+								<a id="logo" href="https://pytorch.org" data-supplied-ml-starting-dark="false" data-supplied-ml-starting="false" data-supplied-ml="false" class="disable-opacity-transition">
+					<img class="stnd skip-lazy" width="" height="" alt="PyTorch Logo" src="https://pytorch.org/wp-content/uploads/2024/10/logo.svg"  />				</a>
+							</div><!--/span_3-->
+
+			<div class="col span_9 col_last">
+									<div class="nectar-mobile-only mobile-header"><div class="inner"></div></div>
+									<a class="mobile-search" href="#searchbox"><span class="nectar-icon icon-salient-search" aria-hidden="true"></span><span class="screen-reader-text">search</span></a>
+														<div class="slide-out-widget-area-toggle mobile-icon slide-out-from-right-hover" data-custom-color="false" data-icon-animation="simple-transform">
+						<div> <a href="#slide-out-widget-area" role="button" aria-label="Navigation Menu" aria-expanded="false" class="closed">
+							<span class="screen-reader-text">Menu</span><span aria-hidden="true"> <i class="lines-button x2"> <i class="lines"></i> </i> </span>						</a></div>
+					</div>
+				
+									<nav aria-label="Main Menu">
+													<ul class="sf-menu">
+								<li id="menu-item-89" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children nectar-regular-menu-item sf-with-ul menu-item-89"><a href="#" aria-haspopup="true" aria-expanded="false"><span class="menu-title-text">Learn</span><span class="sf-sub-indicator"><i class="fa fa-angle-down icon-in-menu" aria-hidden="true"></i></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-2296" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-2296"><a href="https://pytorch.org/get-started/locally/"><span class="menu-title-text">Get Started</span></a></li>
+	<li id="menu-item-90" class="menu-item menu-item-type-custom menu-item-object-custom nectar-regular-menu-item menu-item-90"><a href="https://pytorch.org/tutorials/"><span class="menu-title-text">Tutorials</span></a></li>
+	<li id="menu-item-91" class="menu-item menu-item-type-custom menu-item-object-custom nectar-regular-menu-item menu-item-91"><a href="https://pytorch.org/tutorials/beginner/basics/intro.html"><span class="menu-title-text">Learn the Basics</span></a></li>
+	<li id="menu-item-92" class="menu-item menu-item-type-custom menu-item-object-custom nectar-regular-menu-item menu-item-92"><a href="https://docs.pytorch.org/tutorials/recipes_index.html"><span class="menu-title-text">PyTorch Recipes</span></a></li>
+	<li id="menu-item-93" class="menu-item menu-item-type-custom menu-item-object-custom nectar-regular-menu-item menu-item-93"><a href="https://pytorch.org/tutorials/beginner/introyt.html"><span class="menu-title-text">Intro to PyTorch &#8211; YouTube Series</span></a></li>
+	<li id="menu-item-2200" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-2200"><a href="https://pytorch.org/webinars/"><span class="menu-title-text">Videos</span></a></li>
+	<li id="menu-item-113097" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-113097"><a href="https://pytorch.org/pytorch-certification/"><span class="menu-title-text">PyTorch Certification</span></a></li>
+</ul>
+</li>
+<li id="menu-item-94" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children nectar-regular-menu-item sf-with-ul menu-item-94"><a href="#" aria-haspopup="true" aria-expanded="false"><span class="menu-title-text">Community</span><span class="sf-sub-indicator"><i class="fa fa-angle-down icon-in-menu" aria-hidden="true"></i></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-2299" class="menu-item menu-item-type-custom menu-item-object-custom nectar-regular-menu-item menu-item-2299"><a href="https://landscape.pytorch.org/"><span class="menu-title-text">Landscape</span></a></li>
+	<li id="menu-item-3291" class="menu-item menu-item-type-custom menu-item-object-custom nectar-regular-menu-item menu-item-3291"><a href="/join-ecosystem"><span class="menu-title-text">Join the Ecosystem</span></a></li>
+	<li id="menu-item-3724" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-3724"><a href="https://pytorch.org/community-hub/"><span class="menu-title-text">Community Hub</span></a></li>
+	<li id="menu-item-95" class="menu-item menu-item-type-custom menu-item-object-custom nectar-regular-menu-item menu-item-95"><a href="https://discuss.pytorch.org/"><span class="menu-title-text">Forums</span></a></li>
+	<li id="menu-item-2304" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-2304"><a href="https://pytorch.org/resources/"><span class="menu-title-text">Developer Resources</span></a></li>
+	<li id="menu-item-2209" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-2209"><a href="https://pytorch.org/events/"><span class="menu-title-text">Events</span></a></li>
+	<li id="menu-item-107198" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-107198"><a href="https://pytorch.org/working-groups/"><span class="menu-title-text">Working Groups</span></a></li>
+	<li id="menu-item-6971" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-6971"><a href="https://pytorch.org/meeting-calendar/"><span class="menu-title-text">Meeting Calendar</span></a></li>
+	<li id="menu-item-5746" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-5746"><a href="https://pytorch.org/contributor-awards/"><span class="menu-title-text">Contributor Awards</span></a></li>
+	<li id="menu-item-3991" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-3991"><a href="https://pytorch.org/programs/ambassadors/"><span class="menu-title-text">Ambassadors</span></a></li>
+</ul>
+</li>
+<li id="menu-item-105" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children nectar-regular-menu-item sf-with-ul menu-item-105"><a href="https://pytorch.org/projects/" aria-haspopup="true" aria-expanded="false"><span class="menu-title-text">Projects</span><span class="sf-sub-indicator"><i class="fa fa-angle-down icon-in-menu" aria-hidden="true"></i></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-3560" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-has-children nectar-regular-menu-item menu-item-3560"><a href="https://pytorch.org/projects/pytorch/" aria-haspopup="true" aria-expanded="false"><span class="menu-title-text">PyTorch</span><span class="sf-sub-indicator"><i class="fa fa-angle-right icon-in-menu" aria-hidden="true"></i></span></a>
+	<ul class="sub-menu">
+		<li id="menu-item-81810" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-81810"><a href="https://pytorch.org/projects/executorch/"><span class="menu-title-text">Executorch</span></a></li>
+	</ul>
+</li>
+	<li id="menu-item-3981" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-3981"><a href="https://pytorch.org/projects/vllm/"><span class="menu-title-text">vLLM</span></a></li>
+	<li id="menu-item-3980" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-3980"><a href="https://pytorch.org/projects/deepspeed/"><span class="menu-title-text">DeepSpeed</span></a></li>
+	<li id="menu-item-5731" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-5731"><a href="https://pytorch.org/projects/ray/"><span class="menu-title-text">Ray</span></a></li>
+	<li id="menu-item-62467" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-62467"><a href="https://pytorch.org/projects/helion/"><span class="menu-title-text">Helion</span></a></li>
+	<li id="menu-item-62729" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-62729"><a href="https://pytorch.org/projects/safetensors/"><span class="menu-title-text">Safetensors</span></a></li>
+	<li id="menu-item-3573" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-3573"><a href="https://pytorch.org/projects/host-your-project/"><span class="menu-title-text">Host Your Project</span></a></li>
+</ul>
+</li>
+<li id="menu-item-96" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children nectar-regular-menu-item sf-with-ul menu-item-96"><a href="#" aria-haspopup="true" aria-expanded="false"><span class="menu-title-text">Docs</span><span class="sf-sub-indicator"><i class="fa fa-angle-down icon-in-menu" aria-hidden="true"></i></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-97" class="menu-item menu-item-type-custom menu-item-object-custom nectar-regular-menu-item menu-item-97"><a href="https://pytorch.org/docs/stable/index.html"><span class="menu-title-text">PyTorch</span></a></li>
+	<li id="menu-item-2319" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-2319"><a href="https://pytorch.org/domains/"><span class="menu-title-text">Domains</span></a></li>
+</ul>
+</li>
+<li id="menu-item-348" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children nectar-regular-menu-item sf-with-ul menu-item-348"><a href="#" aria-haspopup="true" aria-expanded="false"><span class="menu-title-text">Blog &#038; News</span><span class="sf-sub-indicator"><i class="fa fa-angle-down icon-in-menu" aria-hidden="true"></i></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-349" class="menu-item menu-item-type-post_type menu-item-object-page current_page_parent nectar-regular-menu-item menu-item-349"><a href="https://pytorch.org/blog/"><span class="menu-title-text">Blog</span></a></li>
+	<li id="menu-item-3420" class="menu-item menu-item-type-custom menu-item-object-custom nectar-regular-menu-item menu-item-3420"><a href="/announcements"><span class="menu-title-text">Announcements</span></a></li>
+	<li id="menu-item-2113" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-2113"><a href="https://pytorch.org/case-studies/"><span class="menu-title-text">Case Studies</span></a></li>
+	<li id="menu-item-2904" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-2904"><a href="https://pytorch.org/newsletter/"><span class="menu-title-text">Newsletter</span></a></li>
+</ul>
+</li>
+<li id="menu-item-87" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children nectar-regular-menu-item sf-with-ul menu-item-87"><a href="#" aria-haspopup="true" aria-expanded="false"><span class="menu-title-text">About</span><span class="sf-sub-indicator"><i class="fa fa-angle-down icon-in-menu" aria-hidden="true"></i></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-290" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-290"><a href="https://pytorch.org/foundation/"><span class="menu-title-text">PyTorch Foundation</span></a></li>
+	<li id="menu-item-3418" class="menu-item menu-item-type-custom menu-item-object-custom nectar-regular-menu-item menu-item-3418"><a href="/members"><span class="menu-title-text">Members</span></a></li>
+	<li id="menu-item-245" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-245"><a href="https://pytorch.org/governing-board/"><span class="menu-title-text">Governing Board</span></a></li>
+	<li id="menu-item-259" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-259"><a href="https://pytorch.org/tac/"><span class="menu-title-text">Technical Advisory Council</span></a></li>
+	<li id="menu-item-215" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-215"><a href="https://pytorch.org/credits/"><span class="menu-title-text">Cloud Credit Program</span></a></li>
+	<li id="menu-item-277" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-277"><a href="https://pytorch.org/staff/"><span class="menu-title-text">Staff</span></a></li>
+	<li id="menu-item-88" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-88"><a href="https://pytorch.org/contact/"><span class="menu-title-text">Contact</span></a></li>
+	<li id="menu-item-117084" class="menu-item menu-item-type-post_type menu-item-object-page nectar-regular-menu-item menu-item-117084"><a href="https://pytorch.org/brand-guidelines/"><span class="menu-title-text">Brand Guidelines</span></a></li>
+</ul>
+</li>
+<li id="menu-item-135" class="menu-item menu-item-type-post_type menu-item-object-page button_solid_color menu-item-135"><a href="https://pytorch.org/join/"><span class="menu-title-text">JOIN</span></a></li>
+							</ul>
+													<ul class="buttons sf-menu" data-user-set-ocm="off"><li id="search-btn"><div><a href="#search-box"><span class="icon-salient-search" aria-hidden="true"></span><span class="screen-reader-text">search</span></a></div> </li></ul>
+						
+					</nav>
+
+					
+				</div><!--/span_9-->
+
+				
+			</div><!--/row-->
+					</div><!--/container-->
+	</header>
+
+    </div>
+    
+        <div id="ajax-content-wrap">
+
+<div class="container-wrap no-sidebar"
+     data-midnight="dark"
+     data-remove-post-date="0"
+     data-remove-post-author="0"
+     data-remove-post-comment-number="1">
+
+	<div class="container main-content" role="main">
+
+		
+	  <div class="row heading-title hentry" data-header-style="default_minimal">
+		<div class="col span_12 section-title blog-title">
+										  <span class="meta-category">
+
+					<a class="blog" href="https://pytorch.org/blog/category/blog/">Blog</a>			  </span>
+
+		  		  <h1 class="entry-title">Hardware-Agnostic Models in vLLM</h1>
+
+						<div id="single-below-header" data-hide-on-mobile="false">
+				<span class="meta-author vcard author"><span class="fn"><span class="author-leading">By</span> <a href="#" rel="author">Thomas Parnell (IBM), Thomas Ortner (IBM), Richard Zou (Meta), Harry Mellor (Hugging Face)</a></span></span><span class="meta-date date updated">September 22, 2026</span><span class="meta-comment-count"><a href="https://pytorch.org/blog/hardware-agnostic-models-in-vllm/#respond">No Comments</a></span>			</div><!--/single-below-header-->
+				</div><!--/section-title-->
+	  </div><!--/row-->
+
+	
+		<div class="row">
+
+			
+			<div class="post-area col span_12 col_last" role="main">
+
+				
+<article id="post-169750" class="post-169750 post type-post status-publish format-standard has-post-thumbnail category-blog pt_project-vllm">
+  
+  <div class="inner-wrap">
+
+		<div class="post-content" data-hide-featured-media="1">
+      
+        <div class="content-inner"><br />
+<section class="pt-post-projects" aria-label="Featured projects">
+<h3 class="pt-post-projects__heading">Featured projects</h3>
+<ul class="pt-post-projects__list">
+<li class="pt-post-projects__item">
+					<a class="pt-post-projects__link" href="https://pytorch.org/projects/vllm/"
+						target="_self"
+						title="vLLM"><br />
+						<img decoding="async" width="300" height="100" src="https://pytorch.org/wp-content/uploads/2026/05/vllm-logo-text-light-scaled2-300x100.png" class="pt-post-projects__logo" alt="vLLM logo" srcset="https://pytorch.org/wp-content/uploads/2026/05/vllm-logo-text-light-scaled2-300x100.png 300w, https://pytorch.org/wp-content/uploads/2026/05/vllm-logo-text-light-scaled2-1024x342.png 1024w, https://pytorch.org/wp-content/uploads/2026/05/vllm-logo-text-light-scaled2.png 1701w" sizes="(max-width: 300px) 100vw, 300px" />					</a>
+				</li>
+</ul>
+</section>
+<p>	<strong>TL;DR</strong></p>
+<p>To achieve state-of-the-art performance at the frontier, vLLM is changing its internal implementation in ways that make it incompatible with fullgraph torch.compile. This may have consequences for users who care about out-of-tree accelerators, older GPUs, or more exotic models. To address this, we are introducing a new set of &#8220;HW agnostic&#8221; layers in vLLM. These layers will ensure vLLM can continue to move at the speed of light, while at the same time meeting the needs of users who care about portability. On NVIDIA H100 GPUs, the HW agnostic layers achieve total token throughput within 3.4% of the native implementation (geometric mean across three recent models).</p>
+<h2>vLLM at the frontier</h2>
+<p>vLLM has achieved unprecedented success by positioning itself as the abstraction layer supporting a wide variety of models on a wide variety of hardware. By using a set of well-designed abstractions and <a href="https://vllm.ai/blog/2025-08-20-torch-compile">torch.compile for optimization and fusion</a>, the project has been able to keep the code defining the actual model logic (commonly known as &#8220;model definitions&#8221;) relatively simple, whilst still achieving high performance across NVIDIA GPUs, AMD GPUs, Intel XPUs, Google TPUs, IBM Spyre, Huawei Ascend and more.</p>
+<p>However, the architectures of frontier open-weight models are rapidly diverging, which has led the community to revisit whether some of the existing abstractions are fit for purpose. Models increasingly ship with bespoke layers and optimized kernels. This even extends to the core attention mechanism: DeepSeek V4 and Kimi K3 achieve million-token context via completely different approaches. Fitting one of these into vLLM means composing it from the shared layers in <code>model_executor/layers</code> and keeping the whole model fullgraph compilable: written so that Dynamo can trace it, with each new kernel registered as a torch library op with a fake implementation and correct mutation annotations. That work is a tax on model development, and it is paid by whoever adds the model, including the advanced users who bring their own.</p>
+<p>At the same time, NVIDIA Blackwell GPUs and rack-scale systems like NVIDIA GB300 NVL72 require careful kernel engineering to exploit new features and effectively overlap computation with communication.</p>
+<p>While all this is happening, we have seen the rise of coding agents like Claude Code and OpenAI Codex, which make generating code much easier. In particular, these agents are very effective at designing optimizations for a specific model on specific hardware. However, they work best if they do not need to worry about whether a particular change will make things worse for a different model, on a different accelerator.</p>
+<p>These trends come together and mean that, to achieve state-of-the-art performance on the latest GPU hardware, the community would like to dismantle some of the existing abstractions in vLLM. In particular, vLLM is starting to maintain <a href="https://github.com/vllm-project/vllm/issues/42770">hardware-specific model definitions</a>, otherwise known as &#8220;flat&#8221; models. Rather than using torch.compile, flat models use custom fusions and other model-specific and hardware-specific optimizations. New frontier models added to vLLM in recent months all use this flat model definition. Critically, the existing layers and ops consumed by the model definitions are likely to be refactored in a way that makes them fundamentally incompatible with torch.compile.</p>
+<p>This effort is necessary to enable vLLM to stay competitive on the latest GPU benchmarks. However, it is also important that vLLM continues to serve its users who care about serving diverse models on diverse hardware like older GPUs or out-of-tree (OOT) accelerators.</p>
+<p>So, what can we do about it? Let&#8217;s start by reviewing how vLLM handles model definitions today.</p>
+<h2>How do model definitions work in vLLM?</h2>
+<p>Today, vLLM offers three flavours of model definitions.</p>
+<ol>
+<li>The new &#8220;flat&#8221; models which live under <code>vllm/models/</code></li>
+<li>The legacy models which live under <code>vllm/model_executor/models</code></li>
+<li>The transformers modeling backend, which imports models from transformers.</li>
+</ol>
+<p>A high-level sketch of the current state is shown below.</p>
+<p><!-- IMAGE PLACEHOLDER: 'untitled image' - download from the Google Doc and upload to the WP media library, then replace this comment with the real <img> or WP image block --></p>
+<p><em><strong><img fetchpriority="high" decoding="async" class="alignleft wp-image-169762 size-full" src="https://pytorch.org/wp-content/uploads/2026/09/fig1-model-definitions-scaled.png" alt="" width="2560" height="1430" srcset="https://pytorch.org/wp-content/uploads/2026/09/fig1-model-definitions-scaled.png 2560w, https://pytorch.org/wp-content/uploads/2026/09/fig1-model-definitions-300x168.png 300w, https://pytorch.org/wp-content/uploads/2026/09/fig1-model-definitions-1024x572.png 1024w" sizes="(max-width: 2560px) 100vw, 2560px" /></strong></em></p>
+<p><em><strong>Figure 1</strong>: The current state of model definitions in vLLM. All three flavours resolve to a single implementation of each common layer, shown here for RowParallelLinear. SpyreRowParallelLinear is an out-of-tree plugin overriding that layer on one accelerator.</em></p>
+<p>While the modeling logic may live in different places, most models are composed of common layers like attention, mixture-of-experts, linear projections, norms and activations. It is important to understand that, in all 3 cases above, these common layers are still implemented in a single place. In case (1) and (2) these layers are explicitly imported from <code>vllm/model_executor/layers</code>. In case (3), the transformers model gets automatically fused and re-wired to use the vLLM layers. Thus, wherever the model definition is coming from, we are still using a common implementation of the majority of the layers that underpin it.</p>
+<p>vLLM&#8217;s layer implementations have evolved over several years and offer two important features that we will now discuss in more detail: (a) torch compile support, and (b) OOT extensibility.</p>
+<p>While fullgraph torch compile is not used by the flat models, it remains a critical feature for OOT plugins like <a href="https://github.com/torch-spyre/spyre-inference">IBM Spyre</a>. Spyre relies on TorchDynamo to trace the model graph, and TorchInductor to lower the graph down to representations that run optimally on the target hardware. Crucially, torch compile is also a necessary component for enabling vLLM&#8217;s transformers backend to achieve <a href="https://huggingface.co/blog/native-speed-vllm-transformers-backend">native speed</a> for models like Qwen3 on NVIDIA GPUs.</p>
+<p>However, for OOT plugins torch compile is not the whole story. Accelerators like Spyre also occasionally need to inject behaviour into the layers (e.g., custom memory layouts) to achieve optimal performance. vLLM&#8217;s layer offers two different mechanisms for injecting custom behaviour: <strong>CustomOp</strong> (which enables the plugin to override the forward function) and <strong>PluggableLayer</strong> (which enables the plugin to override the entire layer). Without this extensibility, OOT plugins would need to re-implement many of the layers themselves.</p>
+<h2>So, what is the problem here?</h2>
+<p>Aside from the fact that having model definitions in three places is pretty confusing, there is a more pressing issue with the above design.</p>
+<p>The flat model workstream needs to change the model definitions, and their underlying layer implementations, to <strong>break compatibility with torch compile</strong> and <strong>remove support for extensibility via CustomOp</strong>. This will unlock them to move faster on developing hardware-specific and model-specific performance optimizations, but it also raises some concerns.</p>
+<p>Firstly, it leaves OOT plugins facing the prospect of maintaining their own set of model definitions and layers, creating a large maintenance burden. Supporting a new model will involve making pull requests to transformers, vLLM, and then potentially every OOT plugin that wants to support it. Yes, coding agents make this easier but this will still require burning through token budgets across multiple different organizations for ultimately no real benefit.</p>
+<p>Second, vLLM is increasingly relying on the transformers backend to provide support for older or more exotic models. Legacy model definitions are actively being removed from <code>model_executor/models</code> and their registry entries updated to point directly at the transformers modeling backend. Without torch compilable layers, performance for these models on GPU will regress significantly.</p>
+<p>Finally, while the flat model and layers will be optimized for frontier GPUs, we do not expect them to provide support for older GPUs or consumer/prosumer GPUs. vLLM&#8217;s own <a href="https://app.hex.tech/019c4540-72b8-7005-9d68-08e0191ac583/app/vLLM-Weekly-Usage-Stats-032Vh7ZNLdI3OI2hNYJaPv/latest">usage statistics</a> show that a significant portion of the user base continues to use such hardware. We believe the project should also evolve in a way that meets their needs.</p>
+<h2>What is our solution?</h2>
+<p>We are building a set of hardware-agnostic layers in-tree in vLLM. The aim of these layers is to ensure that vLLM can continue to support its user base that cares about running diverse models on diverse hardware.</p>
+<p>The Hardware-agnostic layers adhere to the following four design principles:</p>
+<ol>
+<li><strong>Compilable</strong>. The model definitions will be full-graph torch compilable; Accelerators that require compile for performance can continue using it as they do today.</li>
+<li><strong>Extensible</strong>. We will keep mechanisms like vLLM&#8217;s CustomOp and PluggableLayer to ensure that OOT plugins can override the implementation when necessary.</li>
+<li><strong>Isolated</strong>. The model definitions will be built with their own set of layers and ops that are separate and isolated from the layers and ops used by the hardware-specific paths. This will ensure that development in both directions can move fast without impeding the other.</li>
+<li><strong>Portable</strong>. We will strive to implement all layers and ops using either native PyTorch code or portable DSLs like Triton and Helion. This will make the models portable across all accelerators that support these frameworks. Those that do not can still rely on (2) when necessary.</li>
+</ol>
+<p>The design we are working towards is illustrated below:</p>
+<p><!-- IMAGE PLACEHOLDER: 'untitled image' - download from the Google Doc and upload to the WP media library, then replace this comment with the real <img> or WP image block --></p>
+<p><em><strong><img decoding="async" class="alignleft wp-image-169763 size-full" src="https://pytorch.org/wp-content/uploads/2026/09/fig2-hw-agnostic-layers-scaled.png" alt="" width="2560" height="1567" srcset="https://pytorch.org/wp-content/uploads/2026/09/fig2-hw-agnostic-layers-scaled.png 2560w, https://pytorch.org/wp-content/uploads/2026/09/fig2-hw-agnostic-layers-300x184.png 300w, https://pytorch.org/wp-content/uploads/2026/09/fig2-hw-agnostic-layers-1024x627.png 1024w" sizes="(max-width: 2560px) 100vw, 2560px" /></strong></em></p>
+<p><em><strong>Figure 2: </strong>Hardware-agnostic Layers in vLLM.</em></p>
+<p>As the legacy model definitions are gradually removed, models will either be re-implemented in the flat way (e.g., a different implementation for NVIDIA, AMD, XPU etc), or they will fallback to the transformers backend. We intended to offer hardware-agnostic support in both of these cases.</p>
+<p>For the transformers backend, we have modified the &#8220;rewiring&#8221; process to target the new HW-agnostic layers which reside at <code>model_executor/hw_agnostic</code>, instead of the existing layers at <code>model_executor/layers</code>. This support has <a href="https://github.com/vllm-project/vllm/pull/49458">already landed</a> in the main branch of vLLM (for a limited number of layers), and can be enabled by setting <code>USE_HW_AGNOSTIC=1</code> when running vLLM with the transformers backend:</p>
+<pre><code class="language-bash">USE_HW_AGNOSTIC=1 vllm serve google/gemma-4-31B --model-impl=transformers</code></pre>
+<p>We have validated this new pathway using the Spyre OOT plugin for models like Gemma 4, Qwen3, and Granite 4.2. Very soon, we will start to include HW agnostic models in our CI, and gradually switch over to using this as our default pathway for serving models on Spyre.</p>
+<p>While not yet landed, we plan to provide a new <code>model.py</code> for each flat model, that implements the model using the HW-agnostic layers. Layers that are re-used across multiple flat models will reside in a shared place (<code>model_executor/hw_agnostic</code>), whereas model-specific layers (e.g., <code>DeepSeekV4FlashMLAAttention</code>) will reside in the local directory with the <code>model.py</code> but still adhere to the 4 design principles above. As one example of this, please check out the hardware agnostic <a href="https://github.com/vllm-project/vllm/pull/45470">DeepSeek V4 PR</a> that is currently under review.</p>
+<h2>But, how will it perform on GPUs?</h2>
+<p>We stress that state-of-the-art performance on Blackwell, CDNA 4, and beyond is not the goal of these model definitions. Our aim is to achieve platform and performance portability across diverse hardware, including OOT accelerators, older GPUs, as well as prosumer-grade GPUs.</p>
+<p>To evaluate how the new pathway behaves on widely-available GPUs, we ran some experiments on NVIDIA H100 GPUs, for a handful of recent models. We compare the performance of vLLM&#8217;s transformers backend using <code>USE_HW_AGNOSTIC=0</code> vs. <code>USE_HW_AGNOSTIC=1</code> in Figure 3.</p>
+<p>As we can see, despite being built solely from <strong>portable implementations</strong> of the underlying layers and ops, HW agnostic models achieve relatively close, and in some cases even slightly better, performance, than the native models that use CUDA-optimized libraries like FlashAttention and CUTLASS.</p>
+<p><!-- IMAGE PLACEHOLDER: 'untitled image' - download from the Google Doc and upload to the WP media library, then replace this comment with the real <img> or WP image block --></p>
+<p><em><strong><img decoding="async" class="alignleft wp-image-169764 size-full" src="https://pytorch.org/wp-content/uploads/2026/09/fig3-h100-performance.png" alt="" width="2256" height="800" srcset="https://pytorch.org/wp-content/uploads/2026/09/fig3-h100-performance.png 2256w, https://pytorch.org/wp-content/uploads/2026/09/fig3-h100-performance-300x106.png 300w, https://pytorch.org/wp-content/uploads/2026/09/fig3-h100-performance-1024x363.png 1024w" sizes="(max-width: 2256px) 100vw, 2256px" /></strong></em></p>
+<p><em><strong>Figure 3:</strong> Impact of HW Agnostic layers on performance for H100 GPUs.</em></p>
+<h2>Conclusion</h2>
+<p>We are introducing HW agnostic layers into vLLM to ensure that the project can continue to support diverse models on diverse hardware, without slowing down performance engineering at the frontier. We believe this effort is important for vLLM to continue to serve the needs of the broader open-source ecosystem. While we have started landing PRs to realize this effort, this is still very much a work-in-progress and we welcome any feedback.</p>
+<p>For more information, please check out the <a href="https://github.com/vllm-project/vllm/issues/44219">RFC</a> or follow the slack channel <a href="https://vllm-dev.slack.com/archives/C0B8VV3CRC7">#hw-agnostic-models</a> on vLLM slack. You can also learn more about vLLM at <a href="http://vllm.ai">vLLM.ai</a> or the <a href="https://github.com/vllm-project/vllm">vLLM github</a> project page.</p>
+</div>        
+      </div><!--/post-content-->
+      
+    </div><!--/inner-wrap-->
+    
+</article>
+			</div><!--/post-area-->
+
+			
+		</div><!--/row-->
+
+		<div class="row">
+
+			
+			<div class="comments-section"
+			     data-author-bio="false">
+				
+<div class="comment-wrap " data-midnight="dark" data-comments-open="false">
+
+
+			<!-- If comments are closed. -->
+		<!--<p class="nocomments">Comments are closed.</p>-->
+
+	
+
+
+</div>			</div>
+
+		</div><!--/row-->
+
+	</div><!--/container main-content-->
+
+	<div class="nectar-global-section before-footer" role="contentinfo"><div class="container normal-container row">
+		<div id="fws_6ab48eaecd1a2"  data-column-margin="default" data-midnight="light" data-top-percent="3%" data-bottom-percent="3%"  class="wpb_row vc_row-fluid vc_row full-width-section has-row-bg-color  top_padding_phone_7pct bottom_padding_phone_7pct"  style="padding-top: calc(100vw * 0.03); padding-bottom: calc(100vw * 0.03); --row-bg-color: #333333;"><div class="row-bg-wrap" data-bg-animation="none" data-bg-animation-delay="" data-bg-overlay="false"><div class="inner-wrap row-bg-layer" ><div class="row-bg viewport-desktop using-bg-color"  style="background-color: #333333; "></div></div></div><div class="row_col_wrap_12 col span_12 light left">
+	<div  class="vc_col-sm-4 wpb_column column_container vc_column_container col no-extra-padding inherit_tablet inherit_phone "  data-padding-pos="all" data-has-bg-color="false" data-bg-color="" data-bg-opacity="1" data-animation="" data-delay="0" >
+		<div class="vc_column-inner" >
+			<div class="wpb_wrapper">
+				
+<div class="wpb_text_column wpb_content_element " >
+	<h3>Docs</h3>
+<p>Access comprehensive developer documentation for PyTorch</p>
+<p><span style="color: #ee4c2c;"><a style="color: #ee4c2c;" href="/docs">View Docs ›</a></span></p>
+</div>
+
+
+
+
+			</div> 
+		</div>
+	</div> 
+
+	<div  class="vc_col-sm-4 wpb_column column_container vc_column_container col no-extra-padding inherit_tablet inherit_phone "  data-padding-pos="all" data-has-bg-color="false" data-bg-color="" data-bg-opacity="1" data-animation="" data-delay="0" >
+		<div class="vc_column-inner" >
+			<div class="wpb_wrapper">
+				
+<div class="wpb_text_column wpb_content_element " >
+	<h3>Tutorials</h3>
+<p>Get in-depth tutorials for beginners and advanced developers</p>
+<p><span style="color: #ee4c2c;"><a style="color: #ee4c2c;" href="/tutorials">View Tutorials ›</a></span></p>
+</div>
+
+
+
+
+			</div> 
+		</div>
+	</div> 
+
+	<div  class="vc_col-sm-4 wpb_column column_container vc_column_container col no-extra-padding inherit_tablet inherit_phone "  data-padding-pos="all" data-has-bg-color="false" data-bg-color="" data-bg-opacity="1" data-animation="" data-delay="0" >
+		<div class="vc_column-inner" >
+			<div class="wpb_wrapper">
+				
+<div class="wpb_text_column wpb_content_element " >
+	<h3>Resources</h3>
+<p>Find development resources and get your questions answered</p>
+<p><span style="color: #ee4c2c;"><a style="color: #ee4c2c;" href="/resources">View Resources ›</a></span></p>
+</div>
+
+
+
+
+			</div> 
+		</div>
+	</div> 
+</div></div>
+		<div id="fws_6ab48eaecdb9c"  data-column-margin="default" data-midnight="light"  class="wpb_row vc_row-fluid vc_row full-width-section has-row-bg-color"  style="padding-top: 60px; padding-bottom: 60px; --row-bg-color: #000000;"><div class="row-bg-wrap" data-bg-animation="none" data-bg-animation-delay="" data-bg-overlay="false"><div class="inner-wrap row-bg-layer" ><div class="row-bg viewport-desktop using-bg-color"  style="background-color: #000000; "></div></div></div><div class="row_col_wrap_12 col span_12 light left">
+	<div  class="vc_col-sm-12 wpb_column column_container vc_column_container col no-extra-padding inherit_tablet inherit_phone "  data-padding-pos="all" data-has-bg-color="false" data-bg-color="" data-bg-opacity="1" data-animation="" data-delay="0" >
+		<div class="vc_column-inner" >
+			<div class="wpb_wrapper">
+				
+<div class="wpb_text_column wpb_content_element " >
+	<h2><strong>Stay in touch</strong> for updates, event info, and the latest news</h2>
+</div>
+
+
+
+
+	<div class="wpb_raw_code wpb_raw_html wpb_content_element" >
+		<div class="wpb_wrapper">
+			        
+        
+		</div>
+	</div>
+
+<div class="wpb_text_column wpb_content_element " >
+	<p><span style="color: #777777; font-size: .8em;">By submitting this form, I consent to receive marketing emails from the LF and its projects regarding their events, training, research, developments, and related announcements. I understand that I can unsubscribe at any time using the links in the footers of the emails I receive. <a style="color: #777777;" href="https://www.linuxfoundation.org/privacy/">Privacy Policy</a>.</span></p>
+</div>
+
+
+
+
+			</div> 
+		</div>
+	</div> 
+</div></div>
+</div></div>
+</div><!--/container-wrap-->
+
+
+<div id="footer-outer" data-midnight="light" data-cols="1" data-custom-color="true" data-disable-copyright="false" data-matching-section-color="true" data-copyright-line="false" data-using-bg-img="false" data-bg-img-overlay="0.8" data-full-width="false" data-using-widget-area="true" data-link-hover="default"role="contentinfo">
+	
+		
+	<div id="footer-widgets" data-has-widgets="false" data-cols="1">
+		
+		<div class="container">
+			
+						
+			<div class="row">
+				
+								
+				<div class="col span_12">
+												<div class="widget">			
+							</div>
+											</div>
+					
+											
+						
+													
+															
+							</div>
+													</div><!--/container-->
+					</div><!--/footer-widgets-->
+					
+					
+  <div class="row" id="copyright" data-layout="default">
+
+	<div class="container">
+
+		
+	  <div class="col span_7 col_last">
+      <ul class="social">
+        <li><a target="_blank" rel="noopener" href="https://twitter.com/pytorch"><span class="screen-reader-text">x-twitter</span><i class="icon-salient-x-twitter" aria-hidden="true"></i></a></li><li><a target="_blank" rel="noopener" href="https://www.facebook.com/pytorch"><span class="screen-reader-text">facebook</span><i class="fa fa-facebook" aria-hidden="true"></i></a></li><li><a target="_blank" rel="noopener" href="https://www.linkedin.com/company/pytorch"><span class="screen-reader-text">linkedin</span><i class="fa fa-linkedin" aria-hidden="true"></i></a></li><li><a target="_blank" rel="noopener" href="https://www.youtube.com/pytorch"><span class="screen-reader-text">youtube</span><i class="fa fa-youtube-play" aria-hidden="true"></i></a></li><li><a target="_blank" rel="noopener" href="https://github.com/pytorch/pytorch"><span class="screen-reader-text">github</span><i class="fa fa-github-alt" aria-hidden="true"></i></a></li><li><a target="_blank" rel="noopener" href="https://join.slack.com/t/pytorch/shared_invite/zt-2j2la612p-miUinTTaxXczKOJw48poHA"><span class="screen-reader-text">slack</span><i class="fa fa-slack" aria-hidden="true"></i></a></li><li><a target="_blank" rel="noopener" href="https://discord.com/invite/eNSRmh92XT"><span class="screen-reader-text">discord</span><i class="icon-salient-discord" aria-hidden="true"></i></a></li>      </ul>
+	  </div><!--/span_7-->
+
+	  		<div class="col span_5">
+						<div class="widget"></div>
+		<p>&copy; 2026 PyTorch. Copyright © The Linux Foundation®. All rights reserved. The Linux Foundation has registered trademarks and uses trademarks. For more information, including terms of use, privacy policy, and trademark usage, please see our <a href="https://www.linuxfoundation.org/legal/policies">Policies</a> page. <a href="https://www.linuxfoundation.org/trademark-usage">Trademark Usage</a>. <a href="http://www.linuxfoundation.org/privacy">Privacy Policy</a></p>		</div><!--/span_5-->
+		
+	</div><!--/container-->
+  </div><!--/row-->
+		
+</div><!--/footer-outer-->
+
+
+	<div id="slide-out-widget-area-bg" class="slide-out-from-right-hover dark">
+				</div>
+
+		<div id="slide-out-widget-area" role="dialog" aria-modal="true" aria-label="Off Canvas Menu" class="slide-out-from-right-hover" data-dropdown-func="separate-dropdown-parent-link" data-back-txt="Back">
+
+			<div class="inner-wrap">
+			<div class="inner" data-prepend-menu-mobile="false">
+
+				<a class="slide_out_area_close" href="#"><span class="screen-reader-text">Close Menu</span>
+					<span class="icon-salient-x icon-default-style"></span>				</a>
+
+
+									<div class="off-canvas-menu-container mobile-only" role="navigation">
+
+						
+						<ul class="menu">
+							<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-89"><a href="#" aria-haspopup="true" aria-expanded="false">Learn</a>
+<ul class="sub-menu">
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2296"><a href="https://pytorch.org/get-started/locally/">Get Started</a></li>
+	<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-90"><a href="https://pytorch.org/tutorials/">Tutorials</a></li>
+	<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-91"><a href="https://pytorch.org/tutorials/beginner/basics/intro.html">Learn the Basics</a></li>
+	<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-92"><a href="https://docs.pytorch.org/tutorials/recipes_index.html">PyTorch Recipes</a></li>
+	<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-93"><a href="https://pytorch.org/tutorials/beginner/introyt.html">Intro to PyTorch &#8211; YouTube Series</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2200"><a href="https://pytorch.org/webinars/">Videos</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-113097"><a href="https://pytorch.org/pytorch-certification/">PyTorch Certification</a></li>
+</ul>
+</li>
+<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-94"><a href="#" aria-haspopup="true" aria-expanded="false">Community</a>
+<ul class="sub-menu">
+	<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-2299"><a href="https://landscape.pytorch.org/">Landscape</a></li>
+	<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-3291"><a href="/join-ecosystem">Join the Ecosystem</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-3724"><a href="https://pytorch.org/community-hub/">Community Hub</a></li>
+	<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-95"><a href="https://discuss.pytorch.org/">Forums</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2304"><a href="https://pytorch.org/resources/">Developer Resources</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2209"><a href="https://pytorch.org/events/">Events</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-107198"><a href="https://pytorch.org/working-groups/">Working Groups</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-6971"><a href="https://pytorch.org/meeting-calendar/">Meeting Calendar</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-5746"><a href="https://pytorch.org/contributor-awards/">Contributor Awards</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-3991"><a href="https://pytorch.org/programs/ambassadors/">Ambassadors</a></li>
+</ul>
+</li>
+<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-105"><a href="https://pytorch.org/projects/" aria-haspopup="true" aria-expanded="false">Projects</a>
+<ul class="sub-menu">
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-has-children menu-item-3560"><a href="https://pytorch.org/projects/pytorch/" aria-haspopup="true" aria-expanded="false">PyTorch</a>
+	<ul class="sub-menu">
+		<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-81810"><a href="https://pytorch.org/projects/executorch/">Executorch</a></li>
+	</ul>
+</li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-3981"><a href="https://pytorch.org/projects/vllm/">vLLM</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-3980"><a href="https://pytorch.org/projects/deepspeed/">DeepSpeed</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-5731"><a href="https://pytorch.org/projects/ray/">Ray</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-62467"><a href="https://pytorch.org/projects/helion/">Helion</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-62729"><a href="https://pytorch.org/projects/safetensors/">Safetensors</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-3573"><a href="https://pytorch.org/projects/host-your-project/">Host Your Project</a></li>
+</ul>
+</li>
+<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-96"><a href="#" aria-haspopup="true" aria-expanded="false">Docs</a>
+<ul class="sub-menu">
+	<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-97"><a href="https://pytorch.org/docs/stable/index.html">PyTorch</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2319"><a href="https://pytorch.org/domains/">Domains</a></li>
+</ul>
+</li>
+<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-348"><a href="#" aria-haspopup="true" aria-expanded="false">Blog &#038; News</a>
+<ul class="sub-menu">
+	<li class="menu-item menu-item-type-post_type menu-item-object-page current_page_parent menu-item-349"><a href="https://pytorch.org/blog/">Blog</a></li>
+	<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-3420"><a href="/announcements">Announcements</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2113"><a href="https://pytorch.org/case-studies/">Case Studies</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2904"><a href="https://pytorch.org/newsletter/">Newsletter</a></li>
+</ul>
+</li>
+<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-87"><a href="#" aria-haspopup="true" aria-expanded="false">About</a>
+<ul class="sub-menu">
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-290"><a href="https://pytorch.org/foundation/">PyTorch Foundation</a></li>
+	<li class="menu-item menu-item-type-custom menu-item-object-custom menu-item-3418"><a href="/members">Members</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-245"><a href="https://pytorch.org/governing-board/">Governing Board</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-259"><a href="https://pytorch.org/tac/">Technical Advisory Council</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-215"><a href="https://pytorch.org/credits/">Cloud Credit Program</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-277"><a href="https://pytorch.org/staff/">Staff</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-88"><a href="https://pytorch.org/contact/">Contact</a></li>
+	<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-117084"><a href="https://pytorch.org/brand-guidelines/">Brand Guidelines</a></li>
+</ul>
+</li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-135"><a href="https://pytorch.org/join/">JOIN</a></li>
+
+						</ul>
+
+						<ul class="menu secondary-header-items">
+													</ul>
+					</div>
+					
+				</div>
+
+				<div class="bottom-meta-wrap"></div><!--/bottom-meta-wrap--></div> <!--/inner-wrap-->
+				</div>
+		
+</div> <!--/ajax-content-wrap-->
+
+	<a id="to-top" aria-label="Back to top" role="button" href="#" class="mobile-disabled"><i role="presentation" class="fa fa-angle-up"></i></a>
+	
+<a href="#" class="cookie-settings-link" aria-label="Cookie Settings"><?xml version="1.0" encoding="UTF-8"?>
+<svg></svg></a>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>
+<!-- plugin=object-cache-pro client=phpredis metric#hits=22808 metric#misses=35 metric#hit-ratio=99.9 metric#bytes=2349872 metric#prefetches=364 metric#store-reads=40 metric#store-writes=18 metric#store-hits=379 metric#store-misses=15 metric#sql-queries=25 metric#ms-total=784.25 metric#ms-cache=28.44 metric#ms-cache-avg=0.4989 metric#ms-cache-ratio=3.6 -->

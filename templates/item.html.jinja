@@ -27,7 +27,15 @@
   </div>
   {% endif %}
 
-  <section class="dt-sec">{% if takeaway %}<p class="viz-takeaway">{{ takeaway }}</p>{% endif %}
+  {% if takeaway %}<p class="viz-takeaway dt-takeaway">{{ takeaway }}</p>{% endif %}
+
+  {% if has_images %}
+  <section class="dt-sec dt-figures">
+    {% for fig in images %}<figure class="src-fig"><img src="{{ fig.src }}" alt="{{ fig.alt }}" loading="lazy"><figcaption>{% if fig.caption %}<span>{{ fig.caption }}</span>{% endif %}<span class="src-credit">图源：<a href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ source_text }} 原文</a></span></figcaption></figure>{% endfor %}
+  </section>
+  {% endif %}
+
+  <section class="dt-sec">
       {% if meme %}<blockquote class="viz-meme">{{ meme }}</blockquote>{% endif %}
       {% if logic %}<div class="viz-logic"><div class="lg-chain">{% for n in logic.chain %}<div class="lg-node {{ n.cls }}">{{ n.text }}</div>{% endfor %}</div>{% if logic.evidence %}<div class="lg-row"><span class="lg-k">证据</span>{% for ev in logic.evidence %}<span class="lg-ev">{{ ev }}</span>{% endfor %}</div>{% endif %}{% if logic.caveat %}<div class="lg-row lg-caveat"><span class="lg-k">但是</span><span>{{ logic.caveat }}</span></div>{% endif %}</div>{% endif %}</section>
   {% if stats %}<section class="dt-sec"><div class="viz-stats">{% for st in stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div></section>{% endif %}
@@ -114,14 +122,6 @@
         <div class="dt-kv-v">{% if limits %}{{ limits }}{% endif %}{% if not limits %}—{% endif %}</div>
       </div>
     </div>
-  </section>
-  {% endif %}
-
-  {% if has_images %}
-  <hr class="dt-rule">
-  <section class="dt-sec">
-    <div class="dt-sec-label">配图</div>
-    {% for img in images %}<div class="dt-figure"><img src="{{ img }}" alt="配图" loading="lazy"></div>{% endfor %}
   </section>
   {% endif %}
 

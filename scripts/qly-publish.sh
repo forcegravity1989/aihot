@@ -5,12 +5,12 @@
 # 卡住。这里把它要做的每一步收成一条固定命令，项目 .claude/settings.json 只需放行本脚本。
 # 从任意工作目录调用都行（脚本自己 cd 到仓库）。
 #
-#   status  [DAY]        当天出刊状态：草案/选稿/编辑身份/定稿（key=value 行）
+#   status  [DAY]        当天出刊状态：草案/选稿/编辑身份/定稿/各方向条数/快讯数（key=value 行）
 #   prompt  [DAY]        打印选稿简报（候选 + 选稿标准 + picks JSON 格式）
 #   apply   FILE [DAY]   把 picks JSON 写进草案（替换规则回退的选稿）并定稿渲染
 #   brief-prompt [DAY]   打印写要点的简报（入选条目 + 原文）
 #   apply-briefs FILE [DAY]  把要点 JSON 写进定稿并重新渲染
-#   stage   OUT_DIR      把数据根的 daily.html 与它链接的详情页整理进 OUT_DIR，供发布 artifact
+#   stage   OUT_DIR      把数据根的 daily.html 与它链接的详情页、原文配图整理进 OUT_DIR，供发布 artifact
 #
 # DAY 缺省为今天（UTC，与 qly-daily.sh 一致）。
 
@@ -51,6 +51,15 @@ print("final={0}".format("yes" if final else "no"))
 finals = (final or {}).get("items") or []
 print("briefs={0}/{1}".format(sum(1 for e in finals if e.get("takeaway") or e.get("brief")), len(finals)))
 print("distilled={0}/{1}".format(sum(1 for e in finals if e.get("takeaway") and e.get("logic")), len(finals)))
+from qianliyan.pipeline import tracks
+cfg = tracks.load()
+counts = tracks.count(finals or picked, cfg)
+print("tracks={0}".format(",".join("{0}:{1}".format(k, v) for k, v in counts.items())))
+print("empty_tracks={0}".format(",".join(k for k, v in counts.items() if not v)))
+quick = (final or {}).get("quick")
+if quick is None:
+    quick = [e for e in items if e.get("quick") and not e.get("selected")]
+print("quick={0}".format(len(quick)))
 if picked:
     head = picked[0]
     print("headline={0}".format(head.get("title_zh") or head.get("title") or ""))
@@ -107,18 +116,32 @@ def clean(html):
     html = EXTERNAL_IMG.sub("", html)
     return ARCHIVE_LINK.sub(r"<span>\1</span>", html)
 
+# 原文配图（issue #52）定稿时已下载到数据根 media/，页面里是相对路径（首页 media/x，详情页 ../media/x）；
+# 一起复制进发布目录、随页上传，才不会被当成外站图拦掉
+MEDIA_REF = re.compile(r"src=\"(?:\.\./)*media/([0-9a-f]{16}\.(?:png|jpg|gif|webp))\"")
+media = set()
+
 page = src.read_text(encoding="utf-8")
 stories = sorted(set(re.findall(r"href=\"(story/[A-Za-z0-9_.-]+\.html)\"", page)))
 for rel in stories:
     story = data / rel
     if story.is_file():
-        (out / rel).write_text(clean(story.read_text(encoding="utf-8")), encoding="utf-8")
+        html = clean(story.read_text(encoding="utf-8"))
+        media.update(MEDIA_REF.findall(html))
+        (out / rel).write_text(html, encoding="utf-8")
 page = clean(page)
+media.update(MEDIA_REF.findall(page))
 (out / "index.html").write_text(page, encoding="utf-8")
 # 详情页的「返回日报」是 ../daily.html
 (out / "daily.html").write_text(page, encoding="utf-8")
+copied = []
+for name in sorted(media):
+    if (data / "media" / name).is_file():
+        (out / "media").mkdir(exist_ok=True)
+        shutil.copyfile(data / "media" / name, out / "media" / name)
+        copied.append("media/" + name)
 print("staged={0}".format(out))
-print("files=daily.html " + " ".join(stories))
+print("files=daily.html " + " ".join(stories + copied))
 PYEOF
         ;;
     *)
