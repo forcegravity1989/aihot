@@ -77,7 +77,7 @@ def _aihot_target(sources_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
     在用的地址**，否则它每天喊狼来了，真挂的那天没人信。
     """
     cfg = sources_cfg.get("aihot") or {}
-    base_url = str(cfg.get("base_url") or "https://aihot.virxact.com").rstrip("/")
+    base_url = str(cfg.get("base_url") or "https://aihot.news").rstrip("/")
 
     targets: List[Tuple[str, str, str]] = []
     for feed in (cfg.get("feeds") or []):
