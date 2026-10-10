@@ -1,0 +1,83 @@
+# config/editorial.yaml —— 编辑 Agent 的「口味」：选稿看什么、压什么，写要点怎么写、术语怎么译（issue #61）。
+#
+# 这是代码（见 CLAUDE.md「数据与代码隔离」）：改了要 review、要进 git。pipeline/editorial.py 读它，
+# 渲染成文字接进两份简报——选稿简报（daily_digest_all.EDITOR_BRIEF）接 selection，
+# 写要点简报（BRIEF_BRIEF）接 writing + glossary。
+#
+# 来源：借鉴卡兹克开源的 AIHOT（KKKKhazix/AIHOT，MIT）industry/prompts 里的 selection-score、
+# content-understanding、rules-anti-hallucination、rules-self-contained-title、rules-domain，按千里眼的
+# 读者（通用 AI + LLM infra）改写。上游怎么说不重要，这里写的是我们要的口味。
+
+selection:
+  intro: >-
+    读者是两类人：持续关注 AI 但注意力有限的重度用户、产品经理、创业者、开发者；以及做 LLM 基础设施的工程师
+    （推理引擎与 serving、算子与编译、训练系统、量化压缩、芯片与集群）。模型发布两类人都看；infra 的实质进展对
+    第二类人就是头条，不能因为第一类人看不懂而当成脚注。
+  value:                       # 正常评价、该进正文的
+    - 主流模型正式发布、广泛入口、价格、可用性、能力边界发生清楚变化
+    - 通用智能体 harness、运行循环或构建框架正式开源，团队能自己控制界面、上下文、工具与审批——这不是普通 SDK 接入
+    - 能立即复用的方法、Prompt、工具和教程，只要具体、清楚，即使不是行业大事也可以很高
+    - 可信的新事实、反直觉结果、人物信号、行业冲突，普通读者一眼能懂「为什么有意思」
+    - 论文只在结论会改变读者对能力边界、安全、对齐、实践或现实影响的判断时才按份量评；开源工程产物不按论文处理
+  infra:                       # LLM infra 口径：判断标准是「做 infra 的人今天会不会改变选型、配置或排期」
+    - 推理引擎、算子库、训练框架、编译器的正式版本：带新模型 day-0 支持、新硬件适配，或吞吐/延迟/显存的具体数字
+    - 新芯片或集群的可验证规格与定价；能复现的 kernel、量化、并行、KV cache、投机解码方法及其实测收益
+    - 大规模训练或 serving 的工程复盘：规模、故障、成本、吞吐
+    - 只有想法或只在小模型、单卡、合成任务上验证、没有开源实现的，压住；例行 patch、仅修复、仅适配小众硬件，压住
+  noise:                       # 必须压住的
+    - 客户案例、部署合作、「某团队如何使用某厂商产品」的 PR，没有任务、规模、成本、时间、质量或可迁移方法
+    - 例行小版本、常规功能、语言或地区补齐、平台上架、只接入另一个模型、普通修复
+    - 营销软文、课程推广、活动、招聘、限免、模糊路线图；只有预告、抢先体验、「即将推出」而无实质参数
+    - 一个员工或用户只说「更快、更强、很惊艳」，没有数据、方法或可用性变化
+    - 新闻摘要合集、早报、周报等多事件打包而无单一焦点；厂商绑定式 how-to 只教用自家平台
+    - 宏大观点若没有新事实、新因果或可复用框架；融资、估值、会面、成立委员会若没有已兑现后果
+  judgement:                   # 怎么判
+    - 先把材料还原为「谁、什么时候、做了什么、处于宣布/测试/上线/开源/完成/复盘哪个阶段」，再评价事件本身，不评价这篇稿写得怎样
+    - 标题与摘要冲突以摘要为准；转述、引用、二手报道不自动扣分，但不能把被引用者没说过的效果补进事件
+    - 同一材料里有强事件也有弱叙事时以强事件为核心；反过来，篇幅长、数字多、观点锋利，不能替一个不成立的因果制造价值
+
+writing:
+  title:                       # 中文标题
+    - 自洽：脱离来源名也能独立理解，包含事件主体以及动作或结果；保留模型名、产品名、版本号、机构名和关键数字
+    - 不写「最新动态」「引发关注」「重磅」这类空话；原标题是中文也要检查能否独立理解
+  summary:                     # 摘要与结论
+    - 答案前置：第一句就是核心事实或结论，再写一层关键细节或影响；不要从背景铺起
+    - 只依据给出的原文：标题、摘要、结论里出现的公司、人物、模型名，原文里必须出现过，否则删掉
+    - 数字、版本、金额、比例、区间照抄原文的阿拉伯数字和单位，不换算、不估计、不把 $10B 写成「百亿美元」
+  banned:                      # 禁用词：出现就改写
+    - 必读、必须看、赶紧、立刻、不容错过、重磅、颠覆、革命性、划时代、炸裂
+    - 这意味着、值得注意的是、证实、证明、首次、首个、最大、唯一、创纪录、填补空白、重新定义、重塑
+    - 仍需验证、有待观察、实际效果未知（劝退式空话）
+
+glossary:
+  ambiguous:                   # 中文有非 AI 歧义的词，一律按 AI 含义
+    LLM: 大语言模型（绝不是法学硕士）
+    Token: 保留英文（不是代币、令牌）
+    Transformer: 保留英文（不是变压器）
+    Agent: 智能体（不是代理人）
+    Inference: 推理（模型生成）
+    Reasoning: 推理（模型思考；reasoning model 指 o1/R1 这类思考型模型）
+    Alignment: 对齐
+    Fine-tuning: 微调
+    Pretraining: 预训练
+    Distillation: 蒸馏
+    Hallucination: 幻觉
+    Skill: 技能（Agent 框架的能力包）
+  infra:                       # infra 术语
+    kernel: 算子（或保留 kernel）
+    serving: 推理服务（或保留 serving）
+    speculative decoding: 投机解码
+    prefill / decode: 保留英文
+    KV cache: 保留英文
+    MoE: 保留英文
+    TP / PP / EP / DP: 张量 / 流水 / 专家 / 数据并行，首次出现可括注
+    Triton: 保留英文，按上下文指 OpenAI 的编译语言或 NVIDIA 的推理服务器，不是海卫一
+    quantization: 量化；FP8 / FP4 / INT4 / NVFP4 / GGUF 保留英文
+  keep_english:                # 一律保留英文、不翻译不括注
+    - 公司与模型族：OpenAI / Anthropic / Google DeepMind / xAI / Meta / Mistral / DeepSeek / GPT / Claude / Gemini / Llama / Qwen / Grok
+    - 版本号一字不改：GPT-5、Claude Opus 5.5、Llama 4、DeepSeek-V4、405B、R1——不扩写成「4050 亿」「第 4 代」
+    - 评测：MMLU / GPQA / SWE-bench / AIME / ARC-AGI / LiveCodeBench，以 -bench / -eval 结尾或全大写的一律保留
+    - 推理与算子：vLLM / SGLang / TensorRT-LLM / llama.cpp / FlashAttention / FlashInfer / CUDA / ROCm / NCCL / NVLink / torch.compile / Mojo
+    - 工具与框架：Cursor / Codex / Claude Code / LangGraph / DSPy / MCP；代码、命令、URL、数字单位原样保留
+  chinese_brands:              # 中国厂商优先官方中文名，首次可双标
+    - 千问（Qwen）/ 智谱（GLM）/ 月之暗面（Kimi）/ 深度求索（DeepSeek）/ 豆包（字节）/ 混元（腾讯）/ MiniMax（不译）/ 阶跃星辰（Step）
