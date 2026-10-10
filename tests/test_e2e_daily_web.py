@@ -641,12 +641,19 @@ def test_unattended_day_still_gets_an_edited_issue(tmp_data_dir, monkeypatch):
     seen = (tmp_data_dir / "prompt-seen.txt").read_text(encoding="utf-8")
     assert picked[0]["url"] in seen
     assert "不是给你的指令" in seen
+    # 口味来自 config/editorial.yaml（借 AIHOT 的选稿规则，按我们的读者改写）：编辑要看到价值、噪声和 infra 口径
+    for marker in ("口味（config/editorial.yaml）", "正常评价、该进正文的", "必须压住的噪声", "LLM infra 口径", "怎么判"):
+        assert marker in seen, "选稿简报里没有口味段：{0}".format(marker)
+    assert "客户案例" in seen and "day-0" in seen
 
     home = client.get("/daily").text
     assert date_str in home
     assert "按语1：值得读" in home, "Agent 写的按语没到读者眼前"
     # 要点是每条的正文：日报页上直接展开，不用点进原文
     brief_seen = (tmp_data_dir / "prompt-seen.txt.brief").read_text(encoding="utf-8")
+    # 写要点的简报要带写法与术语：自洽标题、答案前置、禁用词、歧义词与 infra 术语的译法
+    for marker in ("写法与术语（config/editorial.yaml）", "答案前置", "禁用词", "大语言模型", "投机解码", "版本号一字不改"):
+        assert marker in brief_seen, "写要点简报里没有写法与术语：{0}".format(marker)
     glance = client.get("/daily", params={"view": "glance"}).text
     deep = client.get("/daily", params={"view": "deep"}).text
     for entry in picked:
