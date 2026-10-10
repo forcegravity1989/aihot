@@ -59,8 +59,11 @@ AIHOT 在 20 天里做了两次整体重写（9 月 8 日、9 月 28 日），�
 3. **借它的口味资产，不借它的引擎。** `industry/prompts/` 的评分、理解、结构化提示词和门槛是公开的；我们日报的提炼提示词可以参考它的写法。这部分改动在 `~/projects/qianliyan-hot` 本地分支里，留着参考，不推、不部署。
 4. **一个月后再看。** 观察三件事：开源仓 open issue 数与「同步引擎修复」提交的体量是否收敛；接口版本是否一个月没动；分类与域名是否稳定。11 月中旬再评估要不要 fork。
 
-## 近期动作（开 issue 跟踪）
+## 近期动作（已开 issue，2026-10-10 当天落地）
 
-- [ ] `config/sources.yaml`：`aihot.base_url` 切到 `https://aihot.news`，`category_map` 补「教程」「观点」
-- [ ] infra 信源回灌：把 fork 里实测可达的 36 个信源按 `config/sources.yaml` 的格式补进来（去掉与现有 40 个重复的）
-- [ ] `company` 后端每日 FAIL 的原因
+- [x] #56 / PR #58：`aihot.base_url` 切到 `https://aihot.news`，`category_map` 补「教程」「观点」，真实 10 月样本进测试
+- [x] #59 / PR #60：infra 信源回灌——vLLM / SGLang / TensorRT-LLM / FlashInfer / FlashAttention 的 GitHub Releases，Mistral / MSR / BAIR 官方 feed；`config/sources.yaml` 当代码校验
+- [x] #61 / PR #62：编辑 Agent 的口味外置到 `config/editorial.yaml`，借上游 `industry/prompts` 的选稿与写作规则，补 infra 口径
+- [ ] #57：`company` 后端每日 FAIL 的原因
+
+这三步就是「基于开源版本做融合集成」在不 fork 引擎前提下的落法：消费它承诺稳定的接口，搬它的信源与口味资产，引擎还是我们自己的。
