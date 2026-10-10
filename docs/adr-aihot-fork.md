@@ -1,6 +1,6 @@
 # ADR：基于卡兹克开源的 AIHOT 重构千里眼
 
-状态：提议（等用户拍板第 5 节的四件事）· 对应 issue [#54](https://github.com/forcegravity1989/aihot/issues/54) · 2026-10-10
+状态：**暂缓**（2026-10-10 用户决定先不接模型、先不跑、先不 fork，要求先弄清 AIHOT 为什么问题这么多，见 [insight-aihot-churn.md](insight-aihot-churn.md)）· 对应 issue [#54](https://github.com/forcegravity1989/aihot/issues/54) · 2026-10-10
 
 ## 1. 背景
 
