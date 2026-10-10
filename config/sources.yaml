@@ -78,6 +78,24 @@ sources:
   - {name: PyTorch Blog,          type: rss, url: "https://pytorch.org/blog/feed.xml",       weight: 0.85, format: blog, category: infra, tags: [vendor, pytorch, infra, framework]}
   - {name: SemiAnalysis,          type: rss, url: "https://www.semianalysis.com/feed",       weight: 0.8,  format: blog, category: infra, tags: [kol, infra, hardware, analysis]}
 
+  # —— 日报分方向（issue #49）补源：算子与推理 / 训练 / Agent 实践 / 研究 各方向此前只有一两个源，
+  #    按方向分栏后这几栏常年是空的。全部 2026-09-24 实测 RSS 可达且近两周有更新 ——
+  # 算子与推理：推理引擎、kernel、编译器
+  - {name: vLLM Blog,          type: rss, url: "https://vllm.ai/blog/rss.xml",           weight: 0.85, format: blog, category: infra, tags: [vendor, vllm, infra, serving]}
+  - {name: Together AI Blog,   type: rss, url: "https://www.together.ai/blog/rss.xml",   weight: 0.78, format: blog, category: infra, tags: [vendor, infra, kernel, serving]}
+  - {name: Modular Blog,       type: rss, url: "https://www.modular.com/blog/rss.xml",   weight: 0.75, format: blog, category: infra, tags: [vendor, infra, kernel, framework]}
+  - {name: Tri Dao,            type: rss, url: "https://tridao.me/feed.xml",             weight: 0.85, format: blog, category: infra, tags: [kol, infra, kernel]}
+  # 训练：预训练 / 后训练 / RL
+  - {name: Interconnects,      type: rss, url: "https://www.interconnects.ai/feed",      weight: 0.82, format: blog, category: training, tags: [kol, training, rl]}
+  - {name: Sebastian Raschka,  type: rss, url: "https://magazine.sebastianraschka.com/feed", weight: 0.8, format: blog, category: training, tags: [kol, training]}
+  - {name: Thinking Machines,  type: rss, url: "https://thinkingmachines.ai/blog/index.xml", weight: 0.88, format: blog, category: training, tags: [official, training, research]}
+  # Agent 实践：评测、context engineering、coding agent 工程
+  - {name: Hamel Husain,       type: rss, url: "https://hamel.dev/index.xml",            weight: 0.8,  format: blog, category: practices, tags: [kol, practices, agent, eval]}
+  - {name: Phil Schmid,        type: rss, url: "https://www.philschmid.de/rss",          weight: 0.75, format: blog, category: practices, tags: [kol, practices, agent]}
+  - {name: GitHub Blog · AI,   type: rss, url: "https://github.blog/ai-and-ml/feed/",   weight: 0.78, format: blog, category: practices, tags: [vendor, github, practices, agent]}
+  # 研究
+  - {name: Google Research Blog, type: rss, url: "https://research.google/blog/rss/",   weight: 0.82, format: blog, category: research, tags: [official, google, research]}
+
   # —— 论文（arXiv API）——
   - {name: arXiv cs.CL, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}
   - {name: arXiv cs.AI, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}

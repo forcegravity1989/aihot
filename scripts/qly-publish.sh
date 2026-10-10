@@ -5,7 +5,7 @@
 # 卡住。这里把它要做的每一步收成一条固定命令，项目 .claude/settings.json 只需放行本脚本。
 # 从任意工作目录调用都行（脚本自己 cd 到仓库）。
 #
-#   status  [DAY]        当天出刊状态：草案/选稿/编辑身份/定稿（key=value 行）
+#   status  [DAY]        当天出刊状态：草案/选稿/编辑身份/定稿/各方向条数/快讯数（key=value 行）
 #   prompt  [DAY]        打印选稿简报（候选 + 选稿标准 + picks JSON 格式）
 #   apply   FILE [DAY]   把 picks JSON 写进草案（替换规则回退的选稿）并定稿渲染
 #   brief-prompt [DAY]   打印写要点的简报（入选条目 + 原文）
@@ -51,6 +51,15 @@ print("final={0}".format("yes" if final else "no"))
 finals = (final or {}).get("items") or []
 print("briefs={0}/{1}".format(sum(1 for e in finals if e.get("takeaway") or e.get("brief")), len(finals)))
 print("distilled={0}/{1}".format(sum(1 for e in finals if e.get("takeaway") and e.get("logic")), len(finals)))
+from qianliyan.pipeline import tracks
+cfg = tracks.load()
+counts = tracks.count(finals or picked, cfg)
+print("tracks={0}".format(",".join("{0}:{1}".format(k, v) for k, v in counts.items())))
+print("empty_tracks={0}".format(",".join(k for k, v in counts.items() if not v)))
+quick = (final or {}).get("quick")
+if quick is None:
+    quick = [e for e in items if e.get("quick") and not e.get("selected")]
+print("quick={0}".format(len(quick)))
 if picked:
     head = picked[0]
     print("headline={0}".format(head.get("title_zh") or head.get("title") or ""))

@@ -529,7 +529,7 @@ def test_one_launch_takes_one_seat_and_its_other_reports_stay_reachable(tmp_data
 
 
 def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
-    """编辑定的头条必须排在页面最前——不管它属于哪个格式分区、发布得早还是晚。
+    """编辑定的头条必须排在页面最前——不管它属于哪个方向、发布得早还是晚；同一栏里按编辑排序。
 
     真实发生过：OpenAI 官方的 GPT-6 Sol 公告属于「博客」格式，版面固定先排「资讯」区、区内按
     时间排，头条于是成了全页第 7 条，压在一条安全漏洞后面。
@@ -557,13 +557,23 @@ def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
     storage.write_json(draft_path, draft)
     assert daily.cmd_finalize(date_str, do_html=True) == 0
 
+    # 版面按方向分栏（issue #49）：头条单独在最前；同一栏里按编辑的排序
+    from qianliyan.pipeline import tracks
+
+    cfg = tracks.load()
+    track_of = {"编辑排序第{0}条".format(rank): tracks.track_of(entry, cfg)
+                for rank, entry in enumerate(reversed(picked), start=1)}
     client = TestClient(api_server.create_app())
     for view in ("glance", None):
         page = client.get("/daily", params={"view": view} if view else {}).text
-        body = page.split("</header>", 1)[-1]
-        positions = [body.find("编辑排序第{0}条".format(n)) for n in range(1, 6)]
-        assert all(p >= 0 for p in positions), "有选中的条目没上版面"
-        assert positions == sorted(positions), "版面没按编辑的排序走（{0}）：{1}".format(view, positions)
+        body = page.split('id="wrap-timeline"', 1)[0].split("</header>", 1)[-1]
+        positions = {t: body.find(t) for t in track_of}
+        assert all(p >= 0 for p in positions.values()), "有选中的条目没上版面"
+        assert positions["编辑排序第1条"] == min(positions.values()), "编辑定的头条没排在最前（{0}）".format(view)
+        for tid in set(track_of.values()):
+            ranked = [positions[t] for t in sorted(track_of, key=lambda t: int(re.search(r"\d+", t).group()))
+                      if track_of[t] == tid and t != "编辑排序第1条"]
+            assert ranked == sorted(ranked), "{0} 栏内没按编辑排序（{1}）".format(tid, view)
 
 
 # =========================================================================
@@ -796,3 +806,151 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     stories = re.findall(r'href="(story/[A-Za-z0-9_.-]+\.html)"', index)
     assert stories and all((out / s).is_file() for s in stories), "首页链接的详情页没一起整理进来"
     assert (out / "daily.html").is_file(), "详情页的「返回日报」会落空"
+
+
+# =========================================================================
+# 按方向分栏（issue #49）：模型发布所有人必看，其余方向由读者选关注
+# =========================================================================
+TRACK_EDITOR = r'''
+import json, re, sys
+prompt = sys.stdin.read()
+sigs = re.findall(r"^=== sig: (\S+)", prompt, re.M)
+if sigs:
+    print(json.dumps({"briefs": [{"sig": s, "takeaway": "结论·" + s} for s in sigs]}))
+    sys.exit(0)
+open(sys.argv[1], "w", encoding="utf-8").write(prompt)
+rows = re.findall(r"^\[(\d+)\].*\n.*规则方向：(\w+)", prompt, re.M)
+ids = [int(i) for i, _ in rows]
+# 编辑的方向判断优先于规则：前 9 条轮流标到各个方向（和规则怎么判无关），再挑 3 条快讯
+order = ["agent", "models", "training", "infra", "research", "agent", "models", "training", "infra"]
+picks = [{"i": i, "track": order[n], "editor_note": "按语{0}".format(n + 1), "title_zh": "正文{0}".format(n + 1)}
+         for n, i in enumerate(ids[:9])]
+quick = [{"i": i, "track": "infra", "title_zh": "快讯标题{0}".format(n), "summary_zh": "快讯一句话{0}".format(n)}
+         for n, i in enumerate(ids[9:12], start=1)]
+quick.append({"i": ids[0], "track": "infra", "title_zh": "和正文重复的快讯", "summary_zh": "不该出现"})
+print(json.dumps({"picks": picks, "quick": quick}, ensure_ascii=False))
+'''
+
+
+def _sections(page: str) -> dict:
+    """把日报页切成 {方向 id: (section 开标签, section 内容)}，按页面顺序。"""
+    out = {}
+    for m in re.finditer(r'(<section class="report-section trk-sec[^"]*" id="trk-(\w+)"[^>]*>)(.*?)</section>',
+                         page, re.S):
+        out[m.group(2)] = (m.group(1), m.group(3))
+    return out
+
+
+def test_page_is_organised_by_track_with_model_releases_for_everyone(tmp_data_dir, monkeypatch):
+    """读者关心的方向不一样：模型发布所有人都要看，其余方向默认只展开 Agent 实践，
+    别的方向收成「标题 + 一句结论」、由读者自己选关注；每栏尾挂这个方向的快讯。
+
+    编辑标的方向说了算（规则只是兜底），和正文同一条的快讯不许重复出现。
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = tmp_data_dir / "track_editor.py"
+    script.write_text(TRACK_EDITOR, encoding="utf-8")
+    date_str, draft, client = _unattended_run(
+        tmp_data_dir, monkeypatch, "{py} " + str(script) + " {dir}/prompt-seen.txt")
+    assert draft.get("edited_by") == "agent"
+
+    seen = (tmp_data_dir / "prompt-seen.txt").read_text(encoding="utf-8")
+    assert "models：模型发布" in seen and "所有人必看" in seen, "选稿简报里没告诉编辑有哪些方向"
+    assert "规则方向：" in seen
+
+    glance = client.get("/daily", params={"view": "glance"}).text
+    secs = _sections(glance)
+    ids = list(secs)
+    assert ids[0] == "lead" and "正文1" in secs["lead"][1], "编辑定的头条没单独放在最前"
+    assert ids[1] == "models" and "is-everyone" in secs["models"][0], "模型发布没排在头条之后、没标必看"
+    assert "正文2" in secs["models"][1] and "正文7" in secs["models"][1]
+    # 默认关注 Agent 实践：展开；没关注的方向折叠（只看标题和结论）
+    assert "is-compact" not in secs["agent"][0] and "正文6" in secs["agent"][1]
+    for tid in ("training", "infra", "research"):
+        assert "is-compact" in secs[tid][0], "{0} 默认该折叠".format(tid)
+    # 编辑标到训练的两条（不管规则怎么判）落在训练栏
+    assert "正文3" in secs["training"][1] and "正文8" in secs["training"][1]
+    # 关注开关：模型发布不在开关里（必看），Agent 默认按下
+    assert re.search(r'data-track="agent" aria-pressed="true"', glance)
+    assert not re.search(r'class="trk-chip" data-track="models"', glance), "必看的方向不该能被取消关注"
+    # 快讯：挂在编辑标的方向栏尾，一行标题 + 一句话；和正文重复的那条被丢掉
+    for n in (1, 2, 3):
+        assert "快讯标题{0}".format(n) in secs["infra"][1] and "快讯一句话{0}".format(n) in secs["infra"][1]
+    assert "和正文重复的快讯" not in glance
+
+    repo = Path(__file__).resolve().parent.parent
+    status = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "status", date_str],
+                            capture_output=True, text=True, cwd="/").stdout
+    assert "tracks=models:2,agent:2,training:2,infra:2,research:1,industry:0" in status, status
+    assert "empty_tracks=industry" in status and "quick=3" in status, status
+
+    # 重跑抓取 + prepare（launchd 补跑），编辑挑的快讯和方向不许丢
+    sync.run_sync(mock=True)
+    assert daily.main(["--prepare", "--date", date_str]) == 0
+    assert daily.main(["--finalize", "--html", "--date", date_str]) == 0
+    glance = client.get("/daily", params={"view": "glance"}).text
+    secs = _sections(glance)
+    assert "快讯一句话2" in secs["infra"][1], "重跑 prepare 抹掉了编辑挑的快讯"
+    assert "正文3" in secs["training"][1], "重跑 prepare 抹掉了编辑标的方向"
+    del sys
+
+
+def test_rule_fallback_gives_every_track_with_fresh_news_a_seat(tmp_data_dir, monkeypatch):
+    """编辑 Agent 挂了、按规则选稿时，也不许让分数最高的方向占满 12 席：
+    每个有新鲜候选的方向至少分到一席，其余新鲜候选进快讯（不和正文重复）。"""
+    from datetime import timedelta
+
+    from qianliyan.pipeline import tracks
+
+    import sys
+    monkeypatch.setenv("QLY_EDITOR_CMD", "{0} -c 'import sys; sys.exit(3)'".format(sys.executable))
+    sync.run_sync(mock=True)
+    date_str = utils.now_utc().strftime("%Y-%m-%d")
+    assert daily.main(["--prepare", "--date", date_str]) == 0
+    draft_path = paths.data_path("archive", date_str, daily.DRAFT_NAME)
+    draft = storage.read_json(draft_path, default={})
+    cfg = tracks.load()
+    # 让排在草案**末尾**（分数最低）的训练、产品行业条目各一条变新鲜：只按分数取的话它们进不了前 12
+    fresh_at = utils.iso(utils.now_utc() - timedelta(hours=2))
+    want = ("training", "industry")
+    low = [next(e for e in reversed(draft["items"]) if tracks.rule_track(e, cfg) == tid) for tid in want]
+    positions = [draft["items"].index(e) for e in low]
+    assert min(positions) >= daily.AUTO_PICK_TARGET, "这两条本来就排进前 12，断言会空转"
+    # 别的候选都新鲜、这两个方向只剩这两条新鲜：名额只能按方向分，
+    # 不能靠「别的都太旧」或同方向的高分条目碰巧挤进来
+    stale_at = utils.iso(utils.now_utc() - timedelta(days=10))
+    for entry in draft["items"]:
+        stale = tracks.rule_track(entry, cfg) in want and entry not in low
+        entry["date"] = stale_at if stale else fresh_at
+    storage.write_json(draft_path, draft)
+
+    assert daily.main(["--auto-edit", "--date", date_str]) == 0
+    draft = storage.read_json(draft_path, default={})
+    # 人工编过的旧草案没有快讯：定稿时按规则补挑，且不许和正文讲同一个发布
+    # （09-23 头条是 GPT-6 Sol，规则快讯里又挂了官方公告、Altman 的话、ChatGPT 推送三条转述）
+    for entry in draft["items"]:
+        entry.pop("quick", None)
+    selected = [e for e in draft["items"] if e.get("selected")]
+    echo = next(e for e in draft["items"] if not e.get("selected"))
+    selected[-1]["title"] = "Introducing GPT-9 Nova"
+    echo["title"] = "GPT-9 Nova 在 ChatGPT 推送"
+    storage.write_json(draft_path, draft)
+    assert daily.main(["--finalize", "--html", "--date", date_str]) == 0
+    draft = storage.read_json(draft_path, default={})
+    assert draft.get("edited_by") == "rules"
+    picked = [e for e in draft["items"] if e.get("selected")]
+    assert len(picked) == daily.AUTO_PICK_TARGET
+    got = {tracks.track_of(e, cfg) for e in picked}
+    assert set(want) <= got, "有新鲜稿的方向没分到一席：{0}".format(got)
+    assert {e["sig"] for e in low} <= {e["sig"] for e in picked}
+
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    quick = final.get("quick") or []
+    assert quick, "规则兜底没挑快讯"
+    assert not {q["sig"] for q in quick} & {e["sig"] for e in picked}, "快讯和正文重复"
+    assert echo["sig"] not in {q["sig"] for q in quick}, "快讯里挂了正文那次发布的转述"
+    glance = TestClient(api_server.create_app()).get("/daily", params={"view": "glance"}).text
+    assert daily._display_title(quick[0]) in glance

@@ -1,0 +1,89 @@
+# tracks.yaml —— 日报的「方向」（issue #49）
+#
+# 日报面向的读者关心的方向不一样：有人看算子/推理，有人看训练，有人看 Agent 实践；
+# 模型发布所有人都要看。版式参照 TLDR AI——固定栏目、每栏「标题 + 一句话」、栏尾挂快讯；
+# 它按读者群拆成多份 newsletter，我们在一页里按方向分栏，由读者选关注哪几栏。
+#
+# 字段：
+#   id        英文标识（编辑选稿 JSON 里的 track 取这里的值）
+#   title     栏目名
+#   blurb     一句话说明这一栏收什么（也写进选稿简报给编辑看）
+#   everyone  true = 所有人必看，不参与「关注」开关，永远展开在最前
+#   default   true = 读者还没选过时默认关注（展开）；其余方向默认收成标题列表
+#   match     规则判定（编辑没标方向时用），语法同 channels.yaml 的 match 块
+#   exclude   命中就不归这个方向（同样语法）——match 没有「非」，论文不该因为提到新模型名就进「模型发布」
+#
+# 展示顺序 = tracks 列表顺序；规则判定顺序 = classify_order（先判更具体的方向：
+# arXiv 上的 kernel 论文该进「算子与推理」而不是「研究」，Agent 评测论文该进「Agent 实践」）。
+# 都不命中的进 fallback。
+
+classify_order: [models, infra, training, agent, research, industry]
+fallback: industry
+
+tracks:
+  - id: models
+    title: 模型发布
+    blurb: 新模型、新版本、定价与跑分——所有人都要看
+    everyone: true
+    exclude:
+      formats: [paper]
+    match:
+      any_of:
+        - categories: [models, "AI 模型"]
+          keywords_any: ["release", "launch", "introducing", "announc", "available", "model card",
+                         "system card", "发布", "上线", "开源", "推出"]
+        - keywords_any: ["gpt-6", "opus 5", "sonnet 5", "haiku 4", "fable 5", "gemini 3", "gemini 4",
+                         "qwen3", "qwen 3", "deepseek-v", "deepseek v", "glm-5", "glm 5", "kimi k",
+                         "grok 4", "grok 5", "llama 5", "mistral large", "mimo-v", "system card", "model card",
+                         "open weights", "open-weight", "开源权重"]
+
+  - id: agent
+    title: Agent 实践
+    blurb: coding agent、harness、工具调用、评测与工程方法
+    default: true
+    match:
+      any_of:
+        - tags_any: [claude-code, claude_code, practices, agent, agents, mcp, skills, plugins]
+        - categories: [claude-code, practices]
+        - keywords_any: ["agent", "harness", "claude code", "codex", "cursor", "subagent", "mcp",
+                         "tool use", "tool-use", "context engineering", "eval", "prompt", "workflow",
+                         "智能体", "工作流"]
+
+  - id: training
+    title: 训练
+    blurb: 预训练、后训练、RL、数据与 scaling
+    match:
+      any_of:
+        - tags_any: [training, rl, post-training, data]
+        - categories: [training]
+        - keywords_any: ["pretrain", "pre-train", "post-train", "rlhf", "rlvr", "grpo", "reinforcement learning",
+                         "fine-tun", "finetun", "distillation", "scaling law", "synthetic data", "reward model",
+                         "预训练", "后训练", "强化学习", "微调", "蒸馏"]
+
+  - id: infra
+    title: 算子与推理
+    blurb: kernel、编译器、推理引擎、芯片与集群
+    match:
+      any_of:
+        - tags_any: [infra, hardware, framework, serving, kernel, kernels]
+        - categories: [infra]
+        - keywords_any: ["kernel", "cuda", "triton", "vllm", "sglang", "tensorrt", "flashattention",
+                         "flash attention", "llama.cpp", "gguf", "quants", "kv cache", "kv-cache", "quantiz", "inference engine", "speculative decoding",
+                         "gpu", "tpu", "trainium", "blackwell", "rubin", "算子", "推理引擎", "显存", "量化"]
+
+  - id: research
+    title: 研究
+    blurb: 论文与研究结论（不属于上面几个方向的）
+    match:
+      any_of:
+        - formats: [paper]
+        - categories: [papers, research, "论文"]
+        - tags_any: [research, arxiv, paper]
+
+  - id: industry
+    title: 产品与行业
+    blurb: 产品、融资、政策、安全事件与格局
+    match:
+      any_of:
+        - categories: [industry, products, "AI 产品", "行业动态"]
+        - tags_any: [industry, products, policy]
