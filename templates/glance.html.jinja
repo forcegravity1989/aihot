@@ -19,7 +19,7 @@
   {% if chips %}<div class="trk-bar" role="group" aria-label="我关注的方向">
     <span class="trk-bar-k">我关注</span>
     <span class="trk-chip is-fixed" title="所有人必看">模型发布</span>
-    {% for chip in chips %}<button type="button" class="trk-chip" data-track="{{ chip.id }}" aria-pressed="{{ chip.pressed }}">{{ chip.title }}<span class="n">{{ chip.count }}</span></button>{% endfor %}
+    {% for chip in chips %}<button type="button" class="trk-chip" data-follow="{{ chip.id }}" aria-pressed="{{ chip.pressed }}">{{ chip.title }}<span class="n">{{ chip.count }}</span></button>{% endfor %}
     <span class="trk-bar-hint">关注的方向展开在前，其余只看标题和结论</span>
   </div>{% endif %}
   <hr class="qly-divider">
@@ -35,7 +35,7 @@
       {% if not group.everyone %}<button type="button" class="trk-expand" data-track="{{ group.id }}">展开</button>{% endif %}
     </div>
     {% for item in group.items %}
-    <article class="report-entry glance-row{% if item.is_lead %} is-lead{% endif %}" data-sig="{{ item.sig }}">
+    <article class="report-entry glance-row{% if item.is_lead %} is-lead{% endif %}{% if item.figure %} has-fig{% endif %}" id="e-{{ item.sig }}" data-sig="{{ item.sig }}" data-track="{{ group.id }}">
       <div class="report-entry-meta">
         <span class="timeline-source">{{ item.source }}</span>
         {% if item.is_lead %}<span class="badge badge-track">{{ item.track_title }}</span>{% endif %}
@@ -45,11 +45,12 @@
       </div>
       <h3 class="report-entry-title"><a class="gtitle" href="{{ item.detail_href }}">{{ item.title }}</a>{% if item.read_text %} <span class="read-time">（{{ item.read_text }}）</span>{% endif %}</h3>
       {% if item.takeaway %}<p class="viz-takeaway">{{ item.takeaway }}</p>{% endif %}
+      {% if item.figure %}<figure class="src-fig card-fig"><a href="{{ item.detail_href }}"><img src="{{ item.figure.src }}" alt="{{ item.figure.alt }}" loading="lazy"></a><figcaption>{% if item.figure.caption %}<span>{{ item.figure.caption }}</span>{% endif %}<span class="src-credit">图源：原文{% if item.figure_more %} · 详情页另有 {{ item.figure_more }} 张{% endif %}</span></figcaption></figure>{% endif %}
       <div class="entry-body">
-      {% if item.meme %}<blockquote class="viz-meme">{{ item.meme }}</blockquote>{% endif %}
-      {% if item.logic %}<div class="viz-logic"><div class="lg-chain">{% for n in item.logic.chain %}<div class="lg-node {{ n.cls }}">{{ n.text }}</div>{% endfor %}</div>{% if item.logic.evidence %}<div class="lg-row"><span class="lg-k">证据</span>{% for ev in item.logic.evidence %}<span class="lg-ev">{{ ev }}</span>{% endfor %}</div>{% endif %}{% if item.logic.caveat %}<div class="lg-row lg-caveat"><span class="lg-k">但是</span><span>{{ item.logic.caveat }}</span></div>{% endif %}</div>{% endif %}
       {% if item.stats %}<div class="viz-stats">{% for st in item.stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div>{% endif %}
-      {% if item.chart %}<figure class="viz-chart"><figcaption>{{ item.chart.title }}</figcaption>{{ item.chart.svg|safe }}</figure>{% endif %}
+      {% if item.logic %}<div class="viz-logic"><div class="lg-chain">{% for n in item.logic.chain %}<div class="lg-node {{ n.cls }}">{{ n.text }}</div>{% endfor %}</div>{% if item.logic.evidence %}<div class="lg-row"><span class="lg-k">证据</span>{% for ev in item.logic.evidence %}<span class="lg-ev">{{ ev }}</span>{% endfor %}</div>{% endif %}{% if item.logic.caveat %}<div class="lg-row lg-caveat"><span class="lg-k">但是</span><span>{{ item.logic.caveat }}</span></div>{% endif %}</div>{% endif %}
+      {% if item.meme %}<blockquote class="viz-meme">{{ item.meme }}</blockquote>{% endif %}
+      {% if item.chart %}{% if not item.figure %}<figure class="viz-chart"><figcaption>{{ item.chart.title }}</figcaption>{{ item.chart.svg|safe }}</figure>{% endif %}{% endif %}
       {% if not item.has_distill %}{% if item.brief_head %}<ul class="report-entry-brief">{% for point in item.brief_head %}<li>{{ point }}</li>{% endfor %}</ul>{% endif %}
       {% if item.brief_more %}<details class="brief-more"><summary>展开其余 {{ item.brief_more_n }} 条要点</summary><ul class="report-entry-brief">{% for point in item.brief_more %}<li>{{ point }}</li>{% endfor %}</ul></details>{% endif %}{% endif %}
       {% if item.summary %}<p class="report-entry-summary">{{ item.summary }}</p>{% endif %}
@@ -99,6 +100,12 @@
 .trk-sec.is-compact .entry-body { display: none; }
 .trk-sec.is-compact .glance-row { padding-top: 10px; padding-bottom: 10px; }
 .trk-sec.is-compact .viz-takeaway { margin-bottom: 0; }
+/* 没关注的方向：一行标题 + 一句结论，有原文配图就在右侧放缩略图 */
+.trk-sec.is-compact .glance-row.has-fig { display: grid; grid-template-columns: minmax(0, 1fr) 132px; column-gap: 16px; }
+.trk-sec.is-compact .glance-row.has-fig > * { grid-column: 1; }
+.trk-sec.is-compact .glance-row.has-fig > .card-fig { grid-column: 2; grid-row: 1 / span 3; margin: 0; align-self: center; }
+.trk-sec.is-compact .card-fig img { max-height: 88px; }
+.trk-sec.is-compact .card-fig figcaption { display: none; }
 .read-time { font-size: 12px; font-weight: 400; color: var(--text-2); white-space: nowrap; }
 .badge-track { background: var(--theme-accent-soft); color: var(--theme-accent-fg); }
 .quick-links { margin-top: 12px; padding: 12px 16px; border-radius: var(--radius); background: var(--bg-1);
@@ -125,6 +132,8 @@
       if (sig && state[sig]) { rows[i].classList.add("is-read"); }
       else { rows[i].classList.remove("is-read"); }
     }
+    // 侧栏「本期导读」据此刷新已读勾与进度
+    try { document.dispatchEvent(new CustomEvent("qly-read-change")); } catch (e) {}
   }
   function postHistory(sig) {
     try {
@@ -162,7 +171,9 @@
   // 关注的方向：记在本浏览器里（取不到 localStorage 就用默认），关注的展开并排到「模型发布」后面
   var KEY = "qly-follow-tracks";
   var list = document.querySelector(".qly-glance .trk-list");
-  var chips = document.querySelectorAll(".qly-glance .trk-chip[data-track]");
+  // 关注开关可能有两处：页面顶部的方向条（窄屏/单页）和侧栏导读——同一份状态
+  var chips = document.querySelectorAll("[data-follow]");
+  var toc = document.querySelector(".sb-toc");
   if (!list || !chips.length) { return; }
   var follow;
   try { follow = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { follow = null; }
@@ -178,14 +189,21 @@
       (on ? mine : rest).push(sec);
     });
     mine.sort(function (a, b) { return follow.indexOf(a.getAttribute("data-track")) - follow.indexOf(b.getAttribute("data-track")); });
-    fixed.concat(mine, rest).forEach(function (sec) { list.appendChild(sec); });
+    var order = fixed.concat(mine, rest);
+    order.forEach(function (sec) { list.appendChild(sec); });
+    if (toc) {
+      order.forEach(function (sec) {
+        var entry = toc.querySelector('.sb-sec[data-track="' + sec.getAttribute("data-track") + '"]');
+        if (entry) { toc.appendChild(entry); }
+      });
+    }
     for (var i = 0; i < chips.length; i++) {
-      chips[i].setAttribute("aria-pressed", follow.indexOf(chips[i].getAttribute("data-track")) >= 0 ? "true" : "false");
+      chips[i].setAttribute("aria-pressed", follow.indexOf(chips[i].getAttribute("data-follow")) >= 0 ? "true" : "false");
     }
   }
   for (var i = 0; i < chips.length; i++) {
     chips[i].addEventListener("click", function (ev) {
-      var id = ev.currentTarget.getAttribute("data-track"), at = follow.indexOf(id);
+      var id = ev.currentTarget.getAttribute("data-follow"), at = follow.indexOf(id);
       if (at >= 0) { follow.splice(at, 1); } else { follow.push(id); }
       try { localStorage.setItem(KEY, JSON.stringify(follow)); } catch (e) {}
       apply();
