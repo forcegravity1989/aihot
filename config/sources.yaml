@@ -100,6 +100,21 @@ sources:
   # 研究
   - {name: Google Research Blog, type: rss, url: "https://research.google/blog/rss/",   weight: 0.82, format: blog, category: research, tags: [official, google, research]}
 
+  # —— infra 项目的 GitHub Releases（issue #59，2026-10-10 实测 releases.atom 全部 200）：
+  #    推理引擎 / 算子库 / 训练框架的版本发布是 infra 读者最硬的一手口径；type: git 走 engine.gitfeed.releases，
+  #    每条带 metrics.version 与 release 标签。不加 llama.cpp（每天多个 b 编号构建、标题无内容）和 pytorch/pytorch
+  #    （releases.atom 里全是 trunk/<sha> 夜间构建，正式版本看 PyTorch Blog 即可）。——
+  - {name: vLLM Releases,           type: git, url: "https://github.com/vllm-project/vllm",        weight: 0.9,  format: repo, category: infra, tags: [official, vllm, infra, serving, release]}
+  - {name: SGLang Releases,         type: git, url: "https://github.com/sgl-project/sglang",       weight: 0.88, format: repo, category: infra, tags: [official, sglang, infra, serving, release]}
+  - {name: TensorRT-LLM Releases,   type: git, url: "https://github.com/NVIDIA/TensorRT-LLM",      weight: 0.85, format: repo, category: infra, tags: [official, nvidia, infra, serving, release]}
+  - {name: FlashInfer Releases,     type: git, url: "https://github.com/flashinfer-ai/flashinfer", weight: 0.82, format: repo, category: infra, tags: [official, infra, kernel, release]}
+  - {name: FlashAttention Releases, type: git, url: "https://github.com/Dao-AILab/flash-attention", weight: 0.85, format: repo, category: infra, tags: [official, infra, kernel, release]}
+
+  # —— 官方一手补缺（issue #59）：Mistral 是此前唯一没有口径的主流模型厂商；MSR 与 BAIR 是训练/系统研究的一手 ——
+  - {name: Mistral News,          type: rss, url: "https://mistral.ai/news/rss",                     weight: 0.9,  format: blog, category: models,   tags: [official, mistral, models]}
+  - {name: Microsoft Research,    type: rss, url: "https://www.microsoft.com/en-us/research/feed/",  weight: 0.8,  format: blog, category: research, tags: [official, microsoft, research, training]}
+  - {name: BAIR Blog,             type: rss, url: "https://bair.berkeley.edu/blog/feed.xml",         weight: 0.78, format: blog, category: research, tags: [research, berkeley]}
+
   # —— 论文（arXiv API）——
   - {name: arXiv cs.CL, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}
   - {name: arXiv cs.AI, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}
