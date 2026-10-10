@@ -1,10 +1,10 @@
 """eyes/aihot.py —— 左眼 aihot：RSS 抓取「AIHOT · 卡兹克」精选/全量/分类 feed。
 
-站点 ``aihot.virxact.com`` 是 Next.js SSR + 反爬 JS 挑战，但暴露干净的 RSS 出口，
-走 RSS 即可绕过反爬。cfg 即 ``config/sources.yaml`` 的 ``aihot:`` 段（spec-v0.3 §1 新结构）::
+站点 ``aihot.news``（2026-09-30 起的新域名；旧域名 ``aihot.virxact.com`` 10 月 31 日后失效）
+是 Next.js SSR + 反爬 JS 挑战，但暴露干净的 RSS 出口，走 RSS 即可绕过反爬。cfg 即 ``config/sources.yaml`` 的 ``aihot:`` 段（spec-v0.3 §1 新结构）::
 
     aihot:
-      base_url: https://aihot.virxact.com
+      base_url: https://aihot.news
       source_name: "AIHOT · 卡兹克"
       feeds:          # 通用 feed：{path, kind, weight}
         - {path: /feed.xml,     kind: curated, weight: 0.85}
@@ -37,7 +37,7 @@ from ..engine import http
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = "https://aihot.virxact.com"
+DEFAULT_BASE_URL = "https://aihot.news"
 SOURCE_NAME = "AIHOT · 卡兹克"
 DEFAULT_WEIGHT = 0.75
 
@@ -57,6 +57,9 @@ DEFAULT_CATEGORY_MAP: Dict[str, Dict[str, Any]] = {
     "论文": {"slug": "paper", "tags": ["paper", "research"]},
     "行业动态": {"slug": "industry", "tags": ["industry"]},
     "技巧观点": {"slug": "opinion", "tags": ["opinion"]},
+    # 上游 2026-10-09 把「技巧观点」拆成两类（issue #56）
+    "教程": {"slug": "practices", "tags": ["practices", "tutorial"]},
+    "观点": {"slug": "opinion", "tags": ["opinion"]},
 }
 
 _READ_ORIGINAL_RE = re.compile(

@@ -2,7 +2,9 @@
 # 任何模块禁止写死信源 URL；新增/调整信源只改这里。
 
 aihot:                                   # 左眼「AIHOT · 卡兹克」——走站点 RSS 出口绕过反爬
-  base_url: https://aihot.virxact.com
+  # 2026-09-30 上游公告：新域名 aihot.news，旧域名 aihot.virxact.com 10 月 31 日后失效；
+  # 2026-10-08 旧域名已出现一次 DNS 解析失败（当天 aihot 采到 0 条，issue #56）。
+  base_url: https://aihot.news
   source_name: "AIHOT · 卡兹克"
   feeds:                                  # 通用 feed：{path, kind, weight}
     - {path: /feed.xml,     kind: curated, weight: 0.85}   # AI 精选 top ~50
@@ -15,7 +17,9 @@ aihot:                                   # 左眼「AIHOT · 卡兹克」——�
     "AI 产品": {slug: products, tags: [products]}
     "论文":    {slug: paper,    tags: [paper, research]}
     "行业动态": {slug: industry, tags: [industry]}
-    "技巧观点": {slug: opinion,  tags: [opinion]}
+    "技巧观点": {slug: opinion,  tags: [opinion]}            # 2026-10-09 之前的合并类，留着兼容旧 feed
+    "教程":    {slug: practices, tags: [practices, tutorial]} # 上游 2026-10-09 把「技巧观点」拆成「教程」「观点」（issue #56）
+    "观点":    {slug: opinion,   tags: [opinion]}
 
 insights:
   repo: zhoux77899/claude-code-insights
