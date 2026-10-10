@@ -175,3 +175,54 @@ def test_builders_parse_feed_x_weight_override():
 def test_builders_empty_podcasts_and_blogs_tolerated():
     assert builders.parse_feed_generic(_load("builders_feed_podcasts.json"), "podcasts") == []
     assert builders.parse_feed_generic(_load("builders_feed_blogs.json"), "blogs") == []
+
+
+# =========================================================================
+# 2026-10 上游改动：域名换成 aihot.news、「技巧观点」拆成「教程」「观点」（issue #56）
+# =========================================================================
+def _real_aihot_cfg():
+    import yaml
+
+    cfg_path = Path(__file__).resolve().parents[1] / "config" / "sources.yaml"
+    return yaml.safe_load(cfg_path.read_text(encoding="utf-8"))["aihot"]
+
+
+def test_aihot_october_feed_every_item_lands_in_a_category_with_the_shipped_config():
+    """2026-10-10 抓的真实 feed/all.xml：上游已把「技巧观点」拆成「教程」「观点」。
+    用仓里真正生效的 config/sources.yaml 映射解析，不允许任何一条落成空类别。"""
+    cfg = _real_aihot_cfg()
+    items = aihot.parse_feed(_read("aihot_feed_all_2026-10.xml"), kind="all", weight=0.70, cfg=cfg)
+    assert len(items) == 51
+
+    categories = {i["extra"]["category"] for i in items}
+    assert {"教程", "观点"} <= categories, "样本必须包含拆分后的两类，否则这条测试没在测新东西"
+    # feed 里本来就没有 <category> 的条目（如 AIHOT 自己的换域名通知）允许为空；带分类的一条都不能落空
+    empty = [i["title"] for i in items if i["extra"]["category"] and not i["extra"]["category_slug"]]
+    assert empty == [], "带分类却落成空类别的条目：{0}".format(empty)
+    assert sum(1 for i in items if i["extra"]["category"]) >= 45
+
+    tutorials = [i for i in items if i["extra"]["category"] == "教程"]
+    assert tutorials and all(i["extra"]["category_slug"] == "practices" for i in tutorials)
+    assert all("tutorial" in i["tags"] and "practices" in i["tags"] for i in tutorials)
+    opinions = [i for i in items if i["extra"]["category"] == "观点"]
+    assert opinions and all(i["extra"]["category_slug"] == "opinion" for i in opinions)
+    # 旧类名仍兼容，旧 feed 样本不受影响
+    old = aihot.parse_feed(_read("aihot_feed_curated.xml"), kind="curated", cfg=cfg)
+    assert all(i["extra"]["category_slug"] for i in old if i["extra"]["category"])
+
+
+def test_aihot_reads_from_the_new_domain_everywhere():
+    """旧域名 aihot.virxact.com 10 月 31 日后失效，10-08 已出现一次解析失败：配置、缺省值、
+    健康检查三处都要指向 aihot.news，不能有一处还在旧域名上。"""
+    from qianliyan.cli import health_check
+
+    cfg = _real_aihot_cfg()
+    assert cfg["base_url"].rstrip("/") == "https://aihot.news"
+    assert aihot.DEFAULT_BASE_URL == "https://aihot.news"
+    targets = aihot._feed_targets(cfg)
+    assert targets and all(t["path"].startswith("/") for t in targets)
+    src = Path(health_check.__file__).read_text(encoding="utf-8")
+    assert "aihot.virxact.com" not in src
+    # 新 feed 里 AIHOT 自己的详情页也已经是新域名
+    items = aihot.parse_feed(_read("aihot_feed_all_2026-10.xml"), kind="all", cfg=cfg)
+    assert all(i["extra"]["aihot_url"].startswith("https://aihot.news/") for i in items)

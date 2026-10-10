@@ -14,7 +14,7 @@
 
 | 类别 | 看什么 |
 |------|--------|
-| **aihot · 卡兹克** | aihot.virxact.com 的 RSS（精选/全量/分类），原文 URL 内嵌 |
+| **aihot · 卡兹克** | aihot.news 的 RSS（精选/全量/分类），原文 URL 内嵌 |
 | **builders · zarazhang** | zarazhangrui/follow-builders 的 X 动态（带互动数据） |
 | **目录源（sources.yaml）** | 官方 blog（OpenAI/DeepMind/HuggingFace/Anthropic）· YouTube 频道（Claude/Anthropic/OpenAI/DeepMind）· AI 播客 · GitHub trending · arXiv |
 | **变更源** | Piebald 系统提示词 changelog · anthropics 官方插件市场 · zhoux77899 insights 日榜 |
