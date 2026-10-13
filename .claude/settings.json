@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash /Users/gravity/projects/aihot/scripts/qly-daily.sh)",
+      "Bash(bash /Users/gravity/projects/aihot/scripts/qly-publish.sh:*)",
+      "Bash(bash scripts/qly-daily.sh)",
+      "Bash(bash scripts/qly-publish.sh:*)",
+      "Read(//Users/gravity/qianliyan-data/**)",
+      "Write(//private/tmp/claude-501/**)",
+      "WebFetch",
+      "Artifact",
+      "PushNotification"
+    ]
+  }
+}
