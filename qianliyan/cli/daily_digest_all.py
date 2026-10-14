@@ -1913,8 +1913,9 @@ def _figure_views(entry: Dict[str, Any], media_base: str, include_cover: bool = 
     return out
 
 
-#: 各档在日报页上放几张原文图
-FIGURES_ON_PAGE = {"lead": 2, "deep": 1, "glance": 0}
+#: 各档在日报页上放几张原文图：头条、深读各一张主图（AIHOT 也只给头条一张），其余在详情页——
+#: 第二张常是竖排六联的跑分长图，压进 440px 高只剩一条，不如不放
+FIGURES_ON_PAGE = {"lead": 1, "deep": 1, "glance": 0}
 
 
 def _annotate_figures(figures: List[Dict[str, str]], entry: Dict[str, Any], total: int) -> List[Dict[str, str]]:
