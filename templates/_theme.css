@@ -424,6 +424,10 @@ img { max-width: 100%; }
 .src-fig figcaption { margin-top: 6px; font-size: 12px; line-height: 1.55; color: var(--text-2); }
 .src-fig figcaption span + span::before { content: " · "; }
 .src-credit a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+/* 原文图下的解释图注（LLM 写、只许描述图里有的元素）；提炼块的「示意」角标（ADR D3） */
+.fig-note { color: var(--text-0); font-weight: 600; }
+.synth-k { font-size: 10.5px; letter-spacing: .06em; color: var(--text-2); margin-top: 10px; text-transform: uppercase; }
+.synth-k::before { content: "◔ "; }
 .dt-figures .src-fig { margin: 0 0 18px; }
 .dt-figures .src-fig img { max-height: none; }
 

@@ -52,6 +52,8 @@ def site(tmp_data_dir):
     # 编辑（人或 Agent）在环：选前几条、写中文标题与选稿理由
     for idx, entry in enumerate(items):
         entry["selected"] = idx < 4
+        if idx < 4:
+            entry["editor_rank"] = idx + 1
         if idx == 0:
             entry["title_zh"] = "编辑选中的头条"
             entry["editor_note"] = EDITOR_NOTE
@@ -267,13 +269,17 @@ def test_offline_mode_lets_the_whole_pipeline_finish_without_network(site):
     client, date_str = site
     deep = client.get("/daily", params={"view": "deep"})
     assert deep.status_code == 200
+    glance = client.get("/daily", params={"view": "glance"}).text
     # 回退时每条都得有能读的内容（摘要顶上），而不是一格格「—」的空壳：
-    # 规则回退的「四段提炼」只是原文前三句 + 三个破折号，曾把英文原句和网页报错文字当成要点
+    # 规则回退的「四段提炼」只是原文前三句 + 三个破折号，曾把英文原句和网页报错文字当成要点。
+    # 深读 tab 只列头条与深读（ADR D1），其余条目的内容在日报页上看
     final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
     for entry in final["items"]:
         summary = daily._summary_text(entry)
         if summary:
-            assert summary[:20] in deep.text, "离线回退下条目没有内容：{0}".format(entry.get("title"))
+            assert summary[:20] in glance, "离线回退下条目没有内容：{0}".format(entry.get("title"))
+            if entry.get("depth") != "glance":
+                assert summary[:20] in deep.text, "深读页上头条/深读没有内容：{0}".format(entry.get("title"))
     assert '<span class="dsec-k">脉络</span><p>—</p>' not in deep.text, "深读页留着没有内容的提炼空壳"
 
 
@@ -654,14 +660,14 @@ def test_unattended_day_still_gets_an_edited_issue(tmp_data_dir, monkeypatch):
     # 写要点的简报要带写法与术语：自洽标题、答案前置、禁用词、歧义词与 infra 术语的译法
     for marker in ("写法与术语（config/editorial.yaml）", "答案前置", "禁用词", "大语言模型", "投机解码", "版本号一字不改"):
         assert marker in brief_seen, "写要点简报里没有写法与术语：{0}".format(marker)
+    # 要点只放详情页（ADR D1）：日报页是结论与图，细节点进去看
     glance = client.get("/daily", params={"view": "glance"}).text
-    deep = client.get("/daily", params={"view": "deep"}).text
     for entry in picked:
-        assert "要点甲·" + entry["sig"] in glance, "要点没直接展开在日报（浅读）页上"
-        assert "要点甲·" + entry["sig"] in deep, "深读页没有要点"
+        assert daily._display_title(entry) in glance
         assert entry["url"] in brief_seen, "写要点的简报里没带原文出处"
-    story = client.get("/story/{0}.html".format(picked[0]["sig"])).text
-    assert "要点乙·" + picked[0]["sig"] in story, "详情页没有要点"
+        story = client.get("/story/{0}.html".format(entry["sig"])).text
+        assert "要点乙·" + entry["sig"] in story, "详情页没有要点"
+    assert "密度档：" in brief_seen, "写要点的简报要告诉编辑每条是头条 / 深读 / 浅读"
     body = home.split("</header>", 1)[-1]
     first = body.find(daily._display_title(picked[0]))
     others = [body.find(daily._display_title(e)) for e in picked[1:]]
@@ -729,7 +735,18 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     ids = [int(x) for x in re.findall(r"^\[(\d+)\]", prompt_run.stdout, re.M)]
     assert len(ids) == len(draft["items"])
 
-    picks = [{"i": i, "editor_note": "任务按语{0}".format(n), "title_zh": "", "summary_zh": ""}
+    # 提炼里的数字必须逐字出现在原文（ADR D3）：把下面要用的数字和那句原话放进候选的摘要里，
+    # 模拟「编辑照抄原文」；没在原文里的数字会被程序丢掉
+    draft_path = paths.data_path("archive", date_str, daily.DRAFT_NAME)
+    current = storage.read_json(draft_path, default={})
+    for i in ids[-9:]:
+        current["items"][i]["summary"] = (str(current["items"][i].get("summary") or "") +
+            " 原文里的数字：$2/$10、-50%、33.2%、16.6、11.1×、18→33、65→73、$0.27、$3.0、26.9、10。"
+            "「一句能传开的话」，某人说。")
+    storage.write_json(draft_path, current)
+    # 前四条由任务定为深读（编辑给的 depth 优先于规则）——提炼全套只给头条与深读
+    picks = [{"i": i, "editor_note": "任务按语{0}".format(n), "title_zh": "", "summary_zh": "",
+              "depth": "lead" if n == 1 else ("deep" if n <= 4 else "glance")}
              for n, i in enumerate(ids[-9:], start=1)]
     picks_file = tmp_data_dir / "picks.json"
     picks_file.write_text(json.dumps({"picks": picks}, ensure_ascii=False), encoding="utf-8")
@@ -797,7 +814,9 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     assert staged.returncode == 0, staged.stderr
     index = (out / "index.html").read_text(encoding="utf-8")
     assert "任务按语1" in index
-    assert all("任务要点一·" + sig in index for sig in sigs), "要点没进发布页"
+    # 要点只放详情页（ADR D1）：发布目录里每条的详情页都要有
+    for sig in sigs:
+        assert "任务要点一·" + sig in (out / "story" / "{0}.html".format(sig)).read_text(encoding="utf-8"), "要点没进发布页"
     assert "不该出现的要点" not in index
     # 关键数字与对比图：数值原样上版、条宽按数值归一（33.2 最大 → 100%，16.6 → 50%）
     assert "$2/$10" in index and "降价幅度" in index, "关键数字没上版"
@@ -1047,9 +1066,13 @@ def test_article_figures_become_the_card_visual_and_ship_with_the_page(tmp_data_
     a, b, c, d, e = draft["items"][:5]
     for rank, entry in enumerate((a, b, c, d, e), start=1):
         entry["selected"], entry["editor_rank"] = True, rank
+        # 深读有每方向 / 每信源组上限（ADR D2）：各条分开放，这里考的是配图
+        entry["source"], entry["source_list"] = "信源{0}".format(rank), ["信源{0}".format(rank)]
+        entry["track"] = ["models", "infra", "agent", "research", "industry"][rank - 1]
     a["url"], a["title_zh"] = pytorch_url, "vLLM 走向硬件无关"
+    # 对比图的数字要能在原文里找到（ADR D3 逐字核对）：3.4% 与 3% 都在 pytorch 那篇里
     a["chart"] = {"type": "bar", "title": "我们自绘的对比图", "unit": "%",
-                  "rows": [{"label": "甲", "value": 30}, {"label": "乙", "value": 20}]}
+                  "rows": [{"label": "甲", "value": 3.4}, {"label": "乙", "value": 3}]}
     b["url"], b["title_zh"] = claude_url, "一个任务花多少钱"
     c["url"], c["title_zh"] = "https://x.com/someone/status/1", "一条推文"
     c.setdefault("extra", {})["images"] = ["https://pbs.twimg.com/media/X.jpg?format=jpg&amp;name=large"]
@@ -1076,7 +1099,10 @@ def test_article_figures_become_the_card_visual_and_ship_with_the_page(tmp_data_
     assert "我们自绘的对比图" not in card(a["sig"]), "原文有图时日报页不该再画自绘对比图"
     assert "Fig A. Price per million tokens." in card(b["sig"]), "图注没用原文的 figcaption"
     assert "图源" in card(b["sig"])
-    assert re.search(r'<img src="(?:\.\./)*media/[0-9a-f]{16}\.png"', card(c["sig"])), "推文配图没上卡片"
+    # 推文没有正文可深读 → 浅读行，浅读行不放图（ADR D1）；推文配图在详情页
+    assert 'data-depth="glance"' in card(c["sig"]) and "<img" not in card(c["sig"]), "浅读行不该有图"
+    assert re.search(r'<img src="\.\./media/[0-9a-f]{16}\.png"', client.get("/story/{0}.html".format(c["sig"])).text), \
+        "推文配图没到详情页"
     # Epoch 的主图是交互图表，静态版在 <noscript> 里；页面不声明 charset，图注里的「–」不能解成乱码
     assert "figure-1.png" in " ".join(fake.requested), "noscript 里的主图没收"
     assert "(2021–26)" in card(d["sig"]), "页面没按 UTF-8 解码，图注成了乱码"
@@ -1121,3 +1147,119 @@ def test_article_figures_become_the_card_visual_and_ship_with_the_page(tmp_data_
     assert srcs[0] in files and (out / srcs[0]).is_file(), "配图没随页进发布目录"
     assert '<img src="{0}"'.format(srcs[0]) in (out / "index.html").read_text(encoding="utf-8")
     assert '<img src="../media/' in (out / "story" / "{0}.html".format(b["sig"])).read_text(encoding="utf-8")
+
+
+# =========================================================================
+# 三档密度（docs/adr-daily-format.md）：头条 / 深读 / 浅读按条目分，原文图是证据层、提炼是导读层
+# =========================================================================
+def _issue_with_three_depths(tmp_data_dir, monkeypatch):
+    """跑完整链路，草案里造出三种原料：厚正文 + 原文图、厚正文 + 硬数字、薄正文；
+    提炼里混一个原文没有的数字。返回 (client, date, 各条 sig)。"""
+    import sys
+
+    monkeypatch.setenv("QLY_EDITOR_CMD", "{0} -c 'import sys; sys.exit(3)'".format(sys.executable))
+    sync.run_sync(mock=True)
+    date_str = utils.now_utc().strftime("%Y-%m-%d")
+    assert daily.cmd_prepare(date_str) == 0
+    draft_path = paths.data_path("archive", date_str, daily.DRAFT_NAME)
+    draft = storage.read_json(draft_path, default={})
+    items = draft["items"]
+    assert len(items) >= 6
+    media = paths.data_path("media")
+    media.mkdir(parents=True, exist_ok=True)
+    (media / "aaaaaaaaaaaaaaaa.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 64)
+    (media / "bbbbbbbbbbbbbbbb.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 64)
+    # 定稿时配图由 finalize 从原文图地址下载；离线下把两个地址映射到本地文件
+    monkeypatch.setattr(daily, "_download_image",
+                        lambda url: "media/aaaaaaaaaaaaaaaa.png" if "f.png" in url else "media/bbbbbbbbbbbbbbbb.png")
+    thick = "The throughput improved by 3.3x on the new kernel while latency fell to 120 ms. " * 60
+    roles = {}
+    # 深读有每方向 / 每信源组的上限：各条分开放，考的是原料门槛而不是配额
+    for idx, entry in enumerate(items[:6]):
+        entry["selected"] = True
+        entry["editor_rank"] = idx + 1
+        entry["source"], entry["source_list"] = "信源{0}".format(idx), ["信源{0}".format(idx)]
+        entry["track"] = ["models", "infra", "agent", "training", "research", "industry"][idx]
+        entry["editor_note"] = "为什么重要·{0}".format(entry["sig"])
+        entry["takeaway"] = "一句结论·{0}".format(entry["sig"])
+        entry["brief"] = ["细节要点·{0}".format(entry["sig"])]
+        entry["meme"] = "这句梗原文里没有·{0}".format(entry["sig"])
+        entry["logic"] = {"chain": ["起因", "机制", "结果"], "focus": 1, "evidence": ["延迟降到 120 ms"], "caveat": ""}
+        extra = entry.setdefault("extra", {})
+        extra["og_image"] = "https://example.org/og.png"
+        if idx in (0, 1):  # 头条 + 深读：厚正文 + 原文图
+            extra["fulltext"], extra["fulltext_chars"] = thick, len(thick)
+            extra["article_images"] = [{"src": "https://example.org/f.png",
+                                        "caption": "原文图注·{0}".format(entry["sig"]), "alt": ""}]
+            entry["figure_note"] = "看柱子最高那根·{0}".format(entry["sig"])
+            entry["stats"] = [{"value": "3.3x", "label": "吞吐提升"}, {"value": "99%", "label": "原文没有这个数"}]
+            roles.setdefault("figured", []).append(entry["sig"])
+        elif idx == 2:  # 深读：厚正文 + 硬数字，只有 og 封面 → 封面不上页，数字卡顶上
+            extra["fulltext"], extra["fulltext_chars"] = thick, len(thick)
+            extra["article_images"] = []
+            entry["stats"] = [{"value": "120 ms", "label": "延迟"}]
+            roles["numbers"] = entry["sig"]
+        else:  # 薄正文：无论排名多靠前都只能浅读
+            extra["fulltext"], extra["fulltext_chars"] = "short note 3.3x", 15
+            extra["article_images"] = [{"src": "https://example.org/f.png",
+                                        "caption": "薄条目的图·{0}".format(entry["sig"]), "alt": ""}]
+            entry["stats"] = [{"value": "3.3x", "label": "吞吐提升"}]
+            roles.setdefault("thin", []).append(entry["sig"])
+    storage.write_json(draft_path, draft)
+    assert daily.cmd_finalize(date_str, do_html=True) == 0
+    return TestClient(api_server.create_app()), date_str, roles
+
+
+def test_issue_is_tiered_by_item_not_by_track(tmp_data_dir, monkeypatch):
+    """一期 = 1 头条 + 若干深读 + 其余浅读：深读只给「原料厚」的条目；浅读只有标题和一句结论；
+    og 封面永远不上日报页；原文图下有解释图注；提炼块标「示意」；深读 tab 只列头条与深读。"""
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    depth = {e["sig"]: e.get("depth") for e in final["items"]}
+    lead, deep_fig = roles["figured"]
+    assert depth[lead] == "lead"
+    assert depth[deep_fig] == "deep"
+    assert depth[roles["numbers"]] == "deep", "厚正文 + 硬数字、没原文图的条目也够深读"
+    assert all(depth[s] == "glance" for s in roles["thin"]), "薄正文的条目只能浅读，排名再靠前也不行"
+
+    glance = client.get("/daily", params={"view": "glance"}).text
+    # 浅读行：标题 + 一句结论 + 原文链接，没有图、逻辑链、数字卡、短评、梗
+    for sig in roles["thin"]:
+        row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(sig), glance, re.S).group(0)
+        assert 'data-depth="glance"' in row
+        assert "一句结论·" + sig in row
+        assert "薄条目的图·" + sig not in row and "src-fig" not in row, "浅读行不该有图"
+        assert "viz-logic" not in row and "viz-stats" not in row and "为什么重要" not in row
+    # 头条：原文图 + 解释图注 + 逻辑链 + 数字卡；封面图不出现
+    row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(lead), glance, re.S).group(0)
+    assert "看这里：看柱子最高那根·" + lead in row and "原文图注·" + lead in row
+    assert "bbbbbbbbbbbbbbbb.png" not in glance, "og 封面不许上日报页"
+    assert "viz-logic" in row and "示意 · 编辑整理" in row and "为什么重要·" + lead in row
+    # 深读（有图）：一张原文图 + 图注；逻辑链只给头条；数字卡让位给原文图
+    row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(deep_fig), glance, re.S).group(0)
+    assert 'data-depth="deep"' in row and "原文图注·" + deep_fig in row and "viz-logic" not in row
+    # 深读（无图）：数字卡顶上
+    row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(roles["numbers"]), glance, re.S).group(0)
+    assert "viz-stats" in row and "120 ms" in row
+    # 要点只放详情页
+    assert "细节要点·" + lead not in glance
+    assert "细节要点·" + lead in client.get("/story/{0}.html".format(lead)).text
+    # 页首有本期字数 / 分钟
+    assert re.search(r"本期约 \d+ 字 · \d+ 分钟", glance)
+    # 深读 tab 只列头条 + 深读
+    deep = client.get("/daily", params={"view": "deep"}).text
+    assert "一句结论·" + lead in deep and "一句结论·" + deep_fig in deep
+    for sig in roles["thin"]:
+        assert "一句结论·" + sig not in deep, "浅读条目不该出现在深读 tab"
+
+
+def test_fabricated_numbers_and_paraphrased_memes_never_reach_the_page(tmp_data_dir, monkeypatch):
+    """提炼里的数字必须逐字出现在原文：原文没有的数字卡被丢掉，原话之外的梗被丢掉。"""
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    lead = roles["figured"][0]
+    page = client.get("/daily", params={"view": "glance"}).text
+    row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(lead), page, re.S).group(0)
+    assert "3.3x" in row, "原文里有的数字应该保留"
+    assert "原文没有这个数" not in row and "99%" not in row, "原文没有的数字必须丢掉"
+    assert "这句梗原文里没有" not in page, "不是原文原话的梗必须丢掉"
+    assert "120 ms" in row, "逻辑链里核对得上的证据保留"

@@ -48,16 +48,18 @@
 .cross-list { margin: 8px 0; padding-left: 20px; }
 .deep-foot { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 .deep-empty { color: var(--text-2); padding: 24px 4px; }
+.badge-track { background: var(--theme-accent-soft); color: var(--theme-accent-fg); }
 </style>
 <div class="qly-deep qly-view-inner" id="view-deep-inner">
   <div class="qly-page-head">
     <h1 class="qly-page-title">📖 深读精读</h1>
-    <div class="qly-page-sub">{{ date }} · 共 {{ total }} 条 · 全文重点研读，突出图片与论点</div>
+    <div class="qly-page-sub">{{ date }} · 头条与深读共 {{ total }} 条 · 原文图是证据，提炼是导读</div>
   </div>
   <hr class="qly-divider">
   {% for card in cards %}
   <article class="deep-card" data-sig="{{ card.sig }}" data-format="{{ card.format }}">
     <div class="deep-card-head">
+      <span class="badge badge-track">{{ card.depth_label }}</span>
       <span class="dfmt">{{ card.icon }} {{ card.label }}</span>
       {% for badge in card.badges %}<span class="badge dbadge">{{ badge }}</span>{% endfor %}
     </div>
@@ -82,16 +84,17 @@
     {% if card.takeaway %}<p class="viz-takeaway">{{ card.takeaway }}</p>{% endif %}
     {% if card.has_images %}
     <div class="deep-images">
-      {% for fig in card.images %}<figure class="src-fig"><img src="{{ fig.src }}" alt="{{ fig.alt }}" loading="lazy">{% if fig.caption %}<figcaption><span>{{ fig.caption }}</span></figcaption>{% endif %}</figure>{% endfor %}
+      {% for fig in card.images %}<figure class="src-fig"><img src="{{ fig.src }}" alt="{{ fig.alt }}" loading="lazy"><figcaption>{% if fig.note %}<span class="fig-note">看这里：{{ fig.note }}</span>{% endif %}{% if fig.caption %}<span>{{ fig.caption }}</span>{% endif %}<span class="src-credit">图源：<a href="{{ card.url }}" target="_blank" rel="noopener noreferrer">原文</a></span></figcaption></figure>{% endfor %}
     </div>
     {% endif %}
       {% if card.meme %}<blockquote class="viz-meme">{{ card.meme }}</blockquote>{% endif %}
+      {% if card.logic %}<div class="synth-k">示意 · 编辑整理，数字照抄原文</div>{% endif %}
       {% if card.logic %}<div class="viz-logic"><div class="lg-chain">{% for n in card.logic.chain %}<div class="lg-node {{ n.cls }}">{{ n.text }}</div>{% endfor %}</div>{% if card.logic.evidence %}<div class="lg-row"><span class="lg-k">证据</span>{% for ev in card.logic.evidence %}<span class="lg-ev">{{ ev }}</span>{% endfor %}</div>{% endif %}{% if card.logic.caveat %}<div class="lg-row lg-caveat"><span class="lg-k">但是</span><span>{{ card.logic.caveat }}</span></div>{% endif %}</div>{% endif %}
     {% if card.stats %}<div class="viz-stats">{% for st in card.stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div>{% endif %}
       {% if card.chart %}<figure class="viz-chart"><figcaption>{{ card.chart.title }}</figcaption>{{ card.chart.svg|safe }}</figure>{% endif %}
     {% if card.brief %}<ul class="report-entry-brief">{% for point in card.brief %}<li>{{ point }}</li>{% endfor %}</ul>{% endif %}
     {% if card.lead %}<p class="deep-summary">{{ card.lead }}</p>{% endif %}
-    {% if card.editor_note %}<p class="editor-note"><b>编辑短评</b> · {{ card.editor_note }}</p>{% endif %}
+    {% if card.editor_note %}<p class="editor-note"><b>为什么重要</b> · {{ card.editor_note }}</p>{% endif %}
 
     {% if card.theses %}
     <div class="deep-theses">
