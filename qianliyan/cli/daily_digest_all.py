@@ -31,6 +31,7 @@ import os
 import re
 import shlex
 import subprocess
+import urllib.parse
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -1322,6 +1323,17 @@ def _deep_material(entry: Dict[str, Any]) -> bool:
     return len(set(m.group(0) for m in _HARD_NUMBER.finditer(_source_corpus(entry)))) >= DEEP_MIN_NUMBERS
 
 
+def _deep_source_key(entry: Dict[str, Any], groups: Any) -> str:
+    """深读配额按「机构」算：AIHOT 这类聚合源的条目要按原文站点归并，否则一天里 Meta、Anthropic、
+    AWS 的稿都算「AIHOT 的」，两条就把别家的额度占光（10-13 实测）。"""
+    if str(entry.get("source_kind") or "") == "aihot" or str(entry.get("source") or "").startswith("AIHOT"):
+        host = urllib.parse.urlsplit(str(entry.get("url") or "")).netloc.lower()
+        host = re.sub(r"^(www|blog|research|news)\.", "", host)
+        if host:
+            return host
+    return channels.source_key(entry, groups)
+
+
 def _assign_depth(items: Sequence[Dict[str, Any]], cfg: Dict[str, Any]) -> Dict[str, int]:
     """给每条定密度档：编辑给的保留；编辑排第一的是头条；其余按「重要 × 原料」挑深读，
     受每方向 / 每信源组 / 全刊上限约束；剩下的浅读。返回各档计数。"""
@@ -1341,7 +1353,7 @@ def _assign_depth(items: Sequence[Dict[str, Any]], cfg: Dict[str, Any]) -> Dict[
         if entry["depth"] in ("lead", "deep"):
             deep_total += 1
             per_track[tracks_mod.track_of(entry, cfg)] = per_track.get(tracks_mod.track_of(entry, cfg), 0) + 1
-            key = channels.source_key(entry, groups)
+            key = _deep_source_key(entry, groups)
             per_source[key] = per_source.get(key, 0) + 1
     # 编辑给多了也裁：深读是版面里最贵的位置
     for entry in reversed(ordered):
@@ -1366,7 +1378,7 @@ def _assign_depth(items: Sequence[Dict[str, Any]], cfg: Dict[str, Any]) -> Dict[
             if deep_total >= DEEP_MAX:
                 return
             tid = tracks_mod.track_of(entry, cfg)
-            key = channels.source_key(entry, groups)
+            key = _deep_source_key(entry, groups)
             if per_track.get(tid, 0) >= DEEP_PER_TRACK or per_source.get(key, 0) >= DEEP_PER_SOURCE:
                 continue
             entry["depth"] = "deep"
@@ -1392,10 +1404,28 @@ def entry_has_depth(entry: Dict[str, Any]) -> bool:
     return str(entry.get("depth") or "") in DEPTHS
 
 
-def cmd_apply_depth(date_str: str, path: str) -> int:
-    """读编辑写的密度档 JSON ``{"depth": [{"sig", "depth", "figure_note"?}]}``，写进草案与定稿。
+def _pick_figure(entry: Dict[str, Any], index: Optional[int]) -> None:
+    """编辑定主图：``index`` 是 figures 里的下标，挪到最前；``-1`` = 原文没有信息图（横幅、头像、
+    现场照片不算），全部标 decorative，日报页改用数字卡 / 对比图，详情页照放。"""
+    figures = [f for f in entry.get("figures") or [] if isinstance(f, dict)]
+    if index is None or not figures:
+        return
+    if index < 0:
+        for fig in figures:
+            if fig.get("kind") != "cover":
+                fig["kind"] = "decorative"
+    elif index < len(figures):
+        chosen = figures.pop(index)
+        chosen["kind"] = "article"
+        figures.insert(0, chosen)
+    entry["figures"] = figures
 
-    编辑 Agent 不可用、或人想亲自定哪几条深读时用；之后 ``--html`` 重新渲染即可。"""
+
+def cmd_apply_depth(date_str: str, path: str) -> int:
+    """读编辑写的密度档 JSON ``{"depth": [{"sig", "depth", "figure_note"?, "figure"?}]}``，写进草案与定稿。
+
+    ``figure`` 是主图下标（-1 = 没有信息图）。编辑 Agent 不可用、或人想亲自定哪几条深读时用；
+    之后 ``--html`` 重新渲染即可。"""
     final = _load_final(date_str)
     if final is None:
         print("digest-final.json 不存在或为空，请先 --finalize。")
@@ -1416,12 +1446,18 @@ def cmd_apply_depth(date_str: str, path: str) -> int:
             continue
         note = str(row.get("figure_note") or "").strip()
         given[str(row["sig"])] = {"depth": depth, "figure_note": note[:FIGURE_NOTE_MAX]}
+        try:
+            given[str(row["sig"])]["figure"] = int(row["figure"]) if row.get("figure") is not None else None
+        except (TypeError, ValueError):
+            given[str(row["sig"])]["figure"] = None
     if not given:
         print("depth 不合格：需要 {\"depth\": [{\"sig\": 今日入选条目的 sig, \"depth\": \"lead|deep|glance\"}]}")
         return 1
     for entry in final["items"]:
         if str(entry.get("sig")) in given:
-            entry.update(given[str(entry["sig"])])
+            row = given[str(entry["sig"])]
+            entry["depth"], entry["figure_note"] = row["depth"], row["figure_note"]
+            _pick_figure(entry, row.get("figure"))
     counts = _assign_depth(final["items"], tracks_mod.load())
     storage.write_json(_archive_path(date_str, FINAL_NAME), final)
     draft = _load_draft(date_str) or {}
@@ -1860,7 +1896,8 @@ def _figure_views(entry: Dict[str, Any], media_base: str, include_cover: bool = 
     for fig in entry.get("figures") or []:
         if not isinstance(fig, dict):
             continue
-        if not include_cover and str(fig.get("kind") or "article") == "cover":
+        # og 封面、编辑判为装饰的图（品牌横幅、作者头像、现场照片）都不是信息图，日报页不放
+        if not include_cover and str(fig.get("kind") or "article") in ("cover", "decorative"):
             continue
         local = str(fig.get("file") or "")
         if not local.startswith(prefix) or "/" in local[len(prefix):]:
