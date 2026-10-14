@@ -27,10 +27,13 @@ import hashlib
 import html as html_lib
 import json
 import logging
+import math
 import os
 import re
 import shlex
+import shutil
 import subprocess
+import tempfile
 import urllib.parse
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -65,6 +68,10 @@ DETAIL_DIR = "story"
 
 GLANCE_TEMPLATE = "glance.html.jinja"
 DEEP_TEMPLATE = "deep.html.jinja"
+#: 速读图（第一部分的独立版）：定宽 1080 的单页，用无头 Chrome 截成 speed.png 随日报发布
+SPEED_TEMPLATE = "speed.html.jinja"
+SPEED_NAME = "speed.html"
+SPEED_PNG_NAME = "speed.png"
 TIMELINE_TEMPLATE = "timeline.html.jinja"
 ITEM_TEMPLATE = "item.html.jinja"
 
@@ -1024,7 +1031,8 @@ BRIEF_BRIEF = """你是「千里眼」AI 日报的编辑。下面是今天已入
 （其余字段给空），浅读是「看过标题和一句结论就算接收」，不要为它编逻辑链。
 
 每条给出（数字与事实一律照抄原文，不换算、不估计、不补原文没有的内容；数字不在原文里出现的会被程序丢掉）：
-- takeaway：一句话结论，≤40 字——这件事意味着什么（不是标题复述，是「所以呢」）；
+- takeaway：一句话结论，≤40 字——这件事意味着什么（不是标题复述，是「所以呢」）。它会脱离标题单独列在页首
+  「N 秒读完今天」里，所以必须带事件主体（谁 / 哪个产品 / 哪篇论文），读者只看这一句也知道说的是谁；
 - figure_note：解释图注，≤40 字——条目下方标了「配图」时才写：告诉读者看图里的哪条线、哪根柱、哪个数（「看这里：…」），
   只能描述图里/图注里有的元素，不许推断图里没有的；没配图给空串；
 - meme：只允许原文里的**原话**（注明谁说的），≤30 字；不是原话就给空串——它会和原文比对，对不上就丢；
@@ -2242,6 +2250,9 @@ def _glance_context(date_str: str, items: Sequence[Dict[str, Any]], embed: bool,
         "issue_minutes": str(max(1, int(round(chars / READ_CJK_PER_MIN)))),
         "deep_total": counts["lead"] + counts["deep"],
         "glance_total": counts["glance"],
+        # 嵌在首页里时它是第三部分「正文」（前两部分是看图、N 秒读完）；单独打开仍叫今日日报
+        "body_title": "正文" if embed else "今日日报",
+        "part_no": "③" if embed else "",
     })
 
 
@@ -2338,12 +2349,11 @@ def _load_template(name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-#: 首页外壳（minitpl 渲染）。侧栏 + 主体，三个视图：日报 / 时间轴 / 深读，默认日报。
+#: 首页外壳（minitpl 渲染）。侧栏 + 主体；主体是同一天内容的**三种读法**，按读者肯花的时间从少到多排
+#: （docs/adr-daily-format.md D0）：① 看图知今天——头条与深读各一张原文图；② N 秒读完今天——每条一句、
+#: 带主体、标深浅、能打勾；③ 正文——头条 / 深读 / 浅读，只有一种版式。
 #:
-#: 视图切换是**纯 CSS**（隐藏 radio + :checked 兄弟选择器），不依赖 JavaScript：
-#: 这份 HTML 会被邮件客户端、聊天工具的内嵌预览、文件面板等沙箱环境打开，那些环境
-#: 常常不执行页面脚本——切换是本页最基本的导航，不能一被沙箱就点不动。
-#: 侧栏的视图入口是 <label for>，和顶部的段控指向同一组 radio，两处点哪个都一样。
+#: 没有视图 tab、没有右栏：三个部分本身就是三层入口，往下滚就是往深读。侧栏仍是本期目录。
 MERGED_SHELL = """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -2353,21 +2363,6 @@ MERGED_SHELL = """<!doctype html>
 <title>{{ page_title }}</title>
 <style>{{ theme_css|safe }}</style>
 <style>
-.qly-switch { position: absolute; opacity: 0; pointer-events: none; }
-.qly-view { display: none; }
-#qly-pick-glance:checked ~ .qly-shell #wrap-glance,
-#qly-pick-timeline:checked ~ .qly-shell #wrap-timeline,
-#qly-pick-deep:checked ~ .qly-shell #wrap-deep { display: block; }
-#qly-pick-glance:checked ~ .qly-shell label[for="qly-pick-glance"],
-#qly-pick-timeline:checked ~ .qly-shell label[for="qly-pick-timeline"],
-#qly-pick-deep:checked ~ .qly-shell label[for="qly-pick-deep"] {
-  background: var(--theme-accent); color: var(--theme-accent-contrast); font-weight: 600;
-}
-#qly-pick-glance:focus-visible ~ .qly-shell label[for="qly-pick-glance"],
-#qly-pick-timeline:focus-visible ~ .qly-shell label[for="qly-pick-timeline"],
-#qly-pick-deep:focus-visible ~ .qly-shell label[for="qly-pick-deep"] {
-  outline: 2px solid var(--theme-accent); outline-offset: 2px;
-}
 /* 顶栏 */
 .qly-topbar {
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px;
@@ -2382,13 +2377,13 @@ MERGED_SHELL = """<!doctype html>
 .qly-wordmark { display: flex; flex-direction: column; line-height: 1.25; }
 .qly-wordmark b { font-weight: 600; font-size: 14px; }
 .qly-wordmark span { font-size: 10px; color: var(--text-2); font-family: var(--font-mono); letter-spacing: .04em; }
-.qly-tabs { display: flex; gap: 2px; margin-left: 10px; }
-.qly-tabs label {
-  padding: 6px 14px; border-radius: 8px; font-size: 13px; color: var(--text-1); cursor: pointer;
-  user-select: none; -webkit-user-select: none;
+.qly-parts-nav { display: flex; gap: 2px; margin-left: 10px; }
+.qly-parts-nav a {
+  padding: 6px 12px; border-radius: 8px; font-size: 13px; color: var(--text-1);
   transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
-.qly-tabs label:hover { background: var(--surface-1); color: var(--text-0); }
+.qly-parts-nav a:hover { background: var(--surface-1); color: var(--text-0); }
+.qly-parts-nav a b { font-family: var(--font-mono); font-weight: 700; color: var(--theme-accent-fg); margin-right: 4px; }
 .qly-topbar-meta {
   margin-left: auto; display: flex; align-items: center; gap: 14px;
   font-family: var(--font-mono); font-size: 11.5px; color: var(--text-2); white-space: nowrap;
@@ -2397,24 +2392,7 @@ MERGED_SHELL = """<!doctype html>
 .qly-live::before {
   content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-emerald);
 }
-/* 三栏 */
 .qly-shell { display: flex; align-items: stretch; min-height: 0; }
-.qly-rail {
-  width: var(--rail-width); flex-shrink: 0; border-left: 1px solid var(--border);
-  padding: 24px 18px 60px; display: flex; flex-direction: column; gap: 22px;
-  position: sticky; top: 52px; align-self: flex-start; max-height: calc(100vh - 52px); overflow-y: auto;
-}
-.qly-rail-label {
-  font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--text-2); margin-bottom: 8px;
-}
-.qly-archive { display: flex; flex-direction: column; gap: 1px; }
-.qly-archive a {
-  display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px;
-  border-radius: var(--radius-sm); font-size: 13px; color: var(--text-1);
-}
-.qly-archive a:hover { background: var(--surface-1); color: var(--text-0); }
-.qly-archive a.is-current { background: var(--theme-accent-soft); color: var(--theme-accent-fg); font-weight: 600; }
-.qly-archive .n { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
 /* 左栏「本期导读」（issue #51）：这一期有什么、我关注的方向在哪、读到哪了 */
 .qly-app { grid-template-columns: 272px minmax(0, 1fr); }
 .sb-issue { padding: 2px 8px 14px; border-bottom: 1px solid var(--sidebar-border); }
@@ -2449,22 +2427,60 @@ MERGED_SHELL = """<!doctype html>
   border-top: 1px solid var(--sidebar-border); font-size: 11.5px; color: var(--text-2); }
 .sb-archive a.is-current, .sb-archive span.is-current { color: var(--theme-accent-fg); font-weight: 700; }
 .sb-foot { padding: 8px 8px 0; font-size: 10.5px; color: var(--text-2); }
-/* 右栏「30 秒读完今天」：每条一句话结论，读完这一栏就知道今天发生了什么 */
-.rail-brief ol { list-style: none; margin: 0; padding: 0; counter-reset: rb; display: flex; flex-direction: column; gap: 12px; }
-.rail-brief li { counter-increment: rb; position: relative; padding-left: 24px; }
-.rail-brief li::before { content: counter(rb); position: absolute; left: 0; top: 1px; width: 17px; height: 17px;
-  border-radius: 50%; background: var(--surface-2); color: var(--text-1); font-size: 10.5px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); }
-.rail-brief li.is-lead::before { background: var(--theme-accent); color: var(--theme-accent-contrast); }
-.rail-brief .rb-k { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; color: var(--text-2); }
-.rail-brief a { display: block; font-size: 13px; line-height: 1.55; color: var(--text-0); }
-.rail-brief a:hover { color: var(--accent-cyan-fg); }
-.brief-top { display: none; margin-bottom: 18px; padding: 12px 14px; border: 1px solid var(--border);
-  border-radius: var(--radius); background: var(--surface-card); }
-.brief-top summary { cursor: pointer; font-size: 13px; font-weight: 700; }
-.brief-top ol { margin-top: 12px; }
+/* 三个部分（ADR D0）：同一天的内容给三种读法，按读者的时间从少到多排 */
+.qly-part + .qly-part { margin-top: 30px; padding-top: 26px; border-top: 1px solid var(--border); }
+.part-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.part-no { display: inline-block; font-family: var(--font-mono); font-size: 12px; font-weight: 700; line-height: 1.4;
+  color: var(--theme-accent-fg); background: var(--theme-accent-soft); border-radius: 999px; padding: 1px 9px; vertical-align: middle; }
+.part-head .qly-page-title { font-size: 20px; }
+.part-head .qly-page-sub { flex-basis: 100%; }
+.part-tools { margin-left: auto; }
+/* ① 看图知今天：头条横着一整行，深读一格一张；没信息图的深读放它最大的那个数 */
+.sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 14px; }
+.sp-tile { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-card); overflow: hidden; color: var(--text-0); box-shadow: var(--shadow-card);
+  transition: border-color var(--dur-base) ease, opacity var(--dur-base) ease; }
+.sp-tile:hover { border-color: var(--border-card-subtle-solid); color: var(--text-0); }
+.sp-tile.is-lead { grid-column: 1 / -1; flex-direction: row; }
+.sp-img { aspect-ratio: 16 / 10; background: var(--bg-1); border-bottom: 1px solid var(--border-soft);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.sp-tile.is-lead .sp-img { flex: 0 0 58%; aspect-ratio: 16 / 9; border-bottom: 0; border-right: 1px solid var(--border-soft); }
+.sp-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.sp-num { font-family: var(--font-mono); font-size: 30px; font-weight: 800; color: var(--theme-accent-fg);
+  text-align: center; padding: 0 12px; line-height: 1.1; }
+.sp-num small { display: block; font-family: var(--font-sans, inherit); font-size: 11.5px; font-weight: 500; color: var(--text-2); margin-top: 6px; }
+.sp-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sp-k { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; color: var(--text-2); }
+.sp-tile.is-lead .sp-k { color: var(--theme-accent-fg); }
+.sp-t { font-size: 14px; font-weight: 700; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sp-tile.is-lead .sp-t { font-size: 18px; -webkit-line-clamp: 3; }
+.sp-x { font-size: 12.5px; line-height: 1.5; color: var(--text-1); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sp-tile.is-lead .sp-x { font-size: 14px; -webkit-line-clamp: 4; }
+.sp-note { font-size: 11.5px; line-height: 1.5; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sp-note b { color: var(--text-0); font-weight: 600; }
+.sp-tile.is-read { opacity: .45; }
+/* ② N 秒读完今天：每条一句；头条/深读加粗带标；右侧的勾 = 看过即接收，和正文行的「标记已读」同一份状态 */
+.rb-list { list-style: none; margin: 12px 0 0; padding: 0; counter-reset: rb; display: flex; flex-direction: column; gap: 6px; }
+.rb-row { counter-increment: rb; display: grid; grid-template-columns: 22px minmax(0, 1fr) 30px; column-gap: 10px;
+  align-items: start; padding: 5px 0; }
+.rb-row::before { content: counter(rb); width: 22px; height: 22px; border-radius: 50%; background: var(--surface-2);
+  color: var(--text-1); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); margin-top: 2px; }
+.rb-row.is-lead::before { background: var(--theme-accent); color: var(--theme-accent-contrast); }
+.rb-row.is-deep::before { background: var(--theme-accent-soft); color: var(--theme-accent-fg); }
+.rb-main { min-width: 0; }
+.rb-k { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; color: var(--text-2); }
+.rb-k .rb-d { color: var(--theme-accent-fg); }
+.rb-main a { display: block; font-size: 14px; line-height: 1.55; color: var(--text-0); }
+.rb-row.is-lead .rb-main a, .rb-row.is-deep .rb-main a { font-weight: 700; }
+.rb-main a:hover { color: var(--accent-cyan-fg); }
+.rb-check { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--border-strong); background: transparent;
+  color: transparent; font: inherit; font-size: 13px; line-height: 1; cursor: pointer; margin-top: 1px; justify-self: end; }
+.rb-check:hover { border-color: var(--accent-emerald); color: var(--accent-emerald-fg); }
+.rb-row.is-read .rb-check { background: var(--accent-emerald-soft); border-color: transparent; color: var(--accent-emerald-fg); }
+.rb-row.is-read .rb-main a { color: var(--text-2); text-decoration: line-through; font-weight: 400; }
+.rb-row.is-read .rb-k { color: var(--text-2); }
 @media (min-width: 961px) { .qly-app .trk-bar { display: none; } }
-@media (max-width: 1200px) { .brief-top { display: block; } }
 @media (max-width: 960px) {
   .qly-app { grid-template-columns: 1fr; }
   .qly-sidebar { padding: 8px 12px; gap: 0; }
@@ -2473,34 +2489,30 @@ MERGED_SHELL = """<!doctype html>
   .sb-sec-head { white-space: nowrap; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; }
   .sb-follow, .sb-fixed { display: none; }
 }
-@media (max-width: 1200px) { .qly-rail { display: none; } }
-/* 手机：顶栏只留 logo + 三个视图切换（不许换行成竖排单字），往期归档改成一行横滑，
-   不再占掉整个首屏 */
+/* 手机：顶栏只留 logo + 三部分跳转（不许换行成竖排单字），往期归档改成一行横滑 */
 @media (max-width: 600px) {
   .qly-topbar { gap: 8px; padding: 0 12px; }
   .qly-wordmark, .qly-topbar-meta { display: none; }
-  .qly-tabs { margin-left: 0; }
-  .qly-tabs label { padding: 6px 10px; white-space: nowrap; }
+  .qly-parts-nav { margin-left: 0; }
+  .qly-parts-nav a { padding: 6px 8px; white-space: nowrap; }
   .qly-archive { flex-direction: row; overflow-x: auto; gap: 4px; }
-  .qly-archive a, .qly-archive > span { flex: 0 0 auto; white-space: nowrap; }
+  .sp-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .sp-tile.is-lead { flex-direction: column; }
+  .sp-tile.is-lead .sp-img { flex-basis: auto; border-right: 0; border-bottom: 1px solid var(--border-soft); }
 }
 </style>
 </head>
 <body>
-<input class="qly-switch" type="radio" name="qly-view" id="qly-pick-glance" checked>
-<input class="qly-switch" type="radio" name="qly-view" id="qly-pick-timeline">
-<input class="qly-switch" type="radio" name="qly-view" id="qly-pick-deep">
-
 <div class="qly-shell">
   <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
 
     <nav class="qly-topbar" aria-label="主导航">
       <div class="qly-logo">千</div>
       <div class="qly-wordmark"><b>千里眼</b><span>QIANLIYAN · AIHOT 日报</span></div>
-      <div class="qly-tabs" role="group" aria-label="日报 / 时间轴 / 深读切换">
-        <label for="qly-pick-glance">📑 日报</label>
-        <label for="qly-pick-timeline">🕒 时间轴</label>
-        <label for="qly-pick-deep">📖 深读</label>
+      <div class="qly-parts-nav" role="group" aria-label="三个部分">
+        <a href="#part-speed"><b>①</b>看图</a>
+        <a href="#part-brief"><b>②</b>{{ brief_secs }} 秒</a>
+        <a href="#part-body"><b>③</b>正文</a>
       </div>
       <div class="qly-topbar-meta">
         <span class="qly-live">{{ date }}</span>
@@ -2535,39 +2547,50 @@ MERGED_SHELL = """<!doctype html>
 
       <main class="qly-main" id="qly-top">
         <div class="qly-main-inner">
-          {% if brief_rows %}<details class="brief-top rail-brief"><summary>⏱ 30 秒读完今天</summary><ol>{% for row in brief_rows %}<li class="{{ row.cls }}"><span class="rb-k">{{ row.track }}</span><a href="#e-{{ row.sig }}" data-sig="{{ row.sig }}">{{ row.text }}</a></li>{% endfor %}</ol></details>{% endif %}
-          <div class="qly-view" id="wrap-glance">{{ glance_body|safe }}</div>
-          <div class="qly-view" id="wrap-timeline">{{ timeline_body|safe }}</div>
-          <div class="qly-view" id="wrap-deep">{{ deep_body|safe }}</div>
+          <section class="qly-part qly-speed" id="part-speed" aria-label="看图知今天">
+            <div class="part-head">
+              <span class="part-no">①</span>
+              <h2 class="qly-page-title">🖼 看图知今天</h2>
+              {% if speed_png %}<a class="chip part-tools" href="{{ speed_png }}" target="_blank" rel="noopener">🖼 速读图 PNG ↗</a>{% endif %}
+              <div class="qly-page-sub">头条与深读各一张原文图，共 {{ speed_fig_count }} 张 · 图是证据，一句话是导读 · 浅读不进图区</div>
+            </div>
+            <div class="sp-grid">
+            {% for card in speed_cards %}<a class="{{ card.cls }}" href="#e-{{ card.sig }}" data-sig="{{ card.sig }}" data-depth="{{ card.depth }}">
+              <div class="sp-img">{% if card.has_fig %}<img src="{{ card.fig.src }}" alt="{{ card.fig.alt }}" loading="lazy">{% endif %}{% if not card.has_fig %}<div class="sp-num">{% if card.stat %}{{ card.stat.value }}<small>{{ card.stat.label }}</small>{% endif %}{% if not card.stat %}{{ card.track }}<small>原文没有信息图</small>{% endif %}</div>{% endif %}</div>
+              <div class="sp-body"><span class="sp-k">{{ card.depth_label }} · {{ card.track }}</span><span class="sp-t">{{ card.title }}</span>{% if card.text %}<span class="sp-x">{{ card.text }}</span>{% endif %}{% if card.note %}<span class="sp-note"><b>看这里：</b>{{ card.note }}</span>{% endif %}</div>
+            </a>{% endfor %}
+            </div>
+            {% if not speed_cards %}<p class="glance-empty">今天没有头条与深读。</p>{% endif %}
+          </section>
+
+          <section class="qly-part qly-brief" id="part-brief" aria-label="{{ brief_secs }} 秒读完今天">
+            <div class="part-head">
+              <span class="part-no">②</span>
+              <h2 class="qly-page-title">⏱ {{ brief_secs }} 秒读完今天</h2>
+              <div class="qly-page-sub">{{ brief_total }} 条，每条一句 · 加粗的是头条与深读，值得往下点 · 看过就打勾，正文里同步置灰</div>
+            </div>
+            <ol class="rb-list">{% for row in brief_rows %}<li class="{{ row.cls }}" data-sig="{{ row.sig }}" data-depth="{{ row.depth }}"><div class="rb-main"><span class="rb-k">{{ row.track }}{% if row.depth_label %} · <span class="rb-d">{{ row.depth_label }}</span>{% endif %}</span><a href="#e-{{ row.sig }}" data-sig="{{ row.sig }}" title="{{ row.title }}">{{ row.text }}</a></div><button type="button" class="gread rb-check" data-sig="{{ row.sig }}" aria-label="看过了，标记已接收" title="看过了，标记已接收">✓</button></li>{% endfor %}</ol>
+          </section>
+
+          <section class="qly-part qly-body" id="part-body" aria-label="正文">
+            <div id="wrap-glance">{{ glance_body|safe }}</div>
+          </section>
         </div>
       </main>
     </div>
 
   </div>
-
-  <aside class="qly-rail" aria-label="30 秒读完今天">
-    {% if brief_rows %}
-    <div class="rail-brief">
-      <div class="qly-rail-label">⏱ 30 秒读完今天</div>
-      <ol>{% for row in brief_rows %}<li class="{{ row.cls }}"><span class="rb-k">{{ row.track }}</span><a href="#e-{{ row.sig }}" data-sig="{{ row.sig }}">{{ row.text }}</a></li>{% endfor %}</ol>
-    </div>
-    {% endif %}
-  </aside>
 </div>
 <script>
 (function () {
   "use strict";
-  // 本期导读：点目录跳到那一条（在时间轴/深读视图里先切回日报）；滚动时高亮当前条目；已读打勾 + 进度
-  var pick = document.getElementById("qly-pick-glance");
-  var links = document.querySelectorAll('.sb-item[data-sig], .rail-brief a[data-sig]');
+  // 本期导读 / 速读行 / 图块：点了跳到正文那一条；滚动时高亮当前条目；已读打勾 + 进度
+  var links = document.querySelectorAll('.sb-item[data-sig], .rb-main a[data-sig], .sp-tile[data-sig]');
   for (var i = 0; i < links.length; i++) {
     links[i].addEventListener("click", function (ev) {
       var target = document.getElementById("e-" + ev.currentTarget.getAttribute("data-sig"));
       if (!target) { return; }
       ev.preventDefault();
-      if (pick && !pick.checked) { pick.checked = true; }
-      var sec = target.closest(".trk-sec");
-      if (sec) { sec.classList.remove("is-compact"); }
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
@@ -2608,19 +2631,191 @@ MERGED_SHELL = """<!doctype html>
 """
 
 
+# 速读行里判「这句带没带主体」用的专有名词：拉丁字母 / 数字开头的词（产品名、型号、机构、人名）
+_LATIN_TOKEN = re.compile(r"[A-Za-z0-9À-ɏ][A-Za-z0-9À-ɏ.+:/-]*")
+_CJK_RUN = re.compile(r"[一-鿿]{3,}")
+
+
+def _latin_tokens(text: str) -> "set[str]":
+    out = set()
+    for tok in _LATIN_TOKEN.findall(text or ""):
+        tok = tok.strip(".:+/-").lower()
+        # 「AI」「KV」这类两字母通用词不算主体；「5.5」「2B」这类带数字的型号算
+        if len(tok) >= 3 or (len(tok) >= 2 and any(ch.isdigit() for ch in tok)):
+            out.add(tok)
+    return out
+
+
+def _carries_subject(line: str, title: str) -> bool:
+    """一句话结论脱离标题单独列在「N 秒读完今天」里时，读者得知道说的是谁。
+
+    用标题当主体的代理：标题里的专有名词（拉丁词 / 型号）至少一个出现在这句里；标题是纯中文时，
+    看有没有共用的 3 字片段。判不出主体的行退回用标题——标题永远带主体。简报里同时要求编辑
+    把主体写进 takeaway，这里只是兜底。"""
+    title_tokens = _latin_tokens(title)
+    if title_tokens:
+        line_tokens = _latin_tokens(line)
+        return any(t in lt or lt in t for t in title_tokens for lt in line_tokens)
+    grams = {run[i:i + 3] for run in _CJK_RUN.findall(title or "") for i in range(len(run) - 2)}
+    return any(g in (line or "") for g in grams)
+
+
+def _brief_line(item: Dict[str, Any]) -> str:
+    takeaway = str(item.get("takeaway") or "").strip()
+    return takeaway if takeaway and _carries_subject(takeaway, item["title"]) else item["title"]
+
+
 def _brief_rows(groups: Sequence[Dict[str, Any]]) -> List[Dict[str, str]]:
-    """「30 秒读完今天」：按版面顺序（头条 → 模型发布 → 各方向）每条一句话结论，没结论用标题。"""
+    """② 「N 秒读完今天」：按版面顺序（头条 → 模型发布 → 各方向）每条一句带主体的结论，没结论或
+    结论里没主体就用标题；行上带深浅档，读者扫一遍就知道哪几条值得往下点。"""
     rows: List[Dict[str, str]] = []
     for group in groups:
         for item in group["items"]:
+            depth = item["depth"]
             rows.append({
                 "sig": item["sig"],
                 "track": item["track_title"] if group["id"] == "lead" else group["title"],
-                "text": item.get("takeaway") or item["title"],
-                "cls": "is-lead" if group["id"] == "lead" else "",
+                "text": _brief_line(item),
+                "title": item["title"],
+                "depth": depth,
+                "depth_label": DEPTH_LABELS.get(depth, "") if depth != "glance" else "",
+                "cls": "rb-row is-" + depth,
             })
     return rows
 
+
+def _brief_seconds(rows: Sequence[Dict[str, str]]) -> int:
+    """速读要几秒：按实际字数算（READ_CJK_PER_MIN），向上取到 5 秒——叫「30 秒」而实际要 50 秒是虚的。"""
+    chars = sum(len(r["text"]) + len(r["track"]) for r in rows)
+    secs = chars * 60.0 / READ_CJK_PER_MIN
+    return max(10, int(math.ceil(secs / 5.0)) * 5)
+
+
+def _speed_cards(groups: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """① 「看图知今天」：头条与深读各一张原文图（日报页上那张主图）+ 标题 + 一句话 + 解释图注；
+    没有信息图的深读放它数字卡里的第一个数（已逐字核对过）；浅读不进图区（ADR D1：浅读无图）。"""
+    cards: List[Dict[str, Any]] = []
+    for group in groups:
+        for item in group["items"]:
+            depth = item["depth"]
+            if depth == "glance":
+                continue
+            fig = item.get("figure")
+            stats = item.get("stats") or []
+            cards.append({
+                "sig": item["sig"],
+                "depth": depth,
+                "depth_label": DEPTH_LABELS.get(depth, ""),
+                "cls": "sp-tile is-{0} {1}".format(depth, "has-fig" if fig else "no-fig"),
+                "track": item["track_title"] if group["id"] == "lead" else group["title"],
+                "title": item["title"],
+                "text": str(item.get("takeaway") or ""),
+                "note": str(item.get("figure_note") or "") if fig else "",
+                "fig": fig,
+                "has_fig": bool(fig),
+                "stat": stats[0] if (not fig and stats) else None,
+                "url": item["url"],
+                "detail_href": item["detail_href"],
+            })
+    return cards
+
+
+# 速读图（speed.html → speed.png）的定宽版式：每块高度固定，整页高度在这里算出来交给无头 Chrome
+SPEED_WIDTH = 1080
+_SPEED_MAST, _SPEED_LEAD, _SPEED_TILE, _SPEED_GAP, _SPEED_GLANCE_HEAD, _SPEED_GLANCE_ROW, _SPEED_FOOT = (
+    150, 600, 368, 32, 84, 46, 104)
+
+
+def _speed_height(lead_n: int, deep_n: int, glance_n: int) -> int:
+    h = _SPEED_MAST
+    h += lead_n * (_SPEED_LEAD + 40)
+    if deep_n:
+        rows = (deep_n + 1) // 2
+        h += _SPEED_GAP + rows * _SPEED_TILE + (rows - 1) * _SPEED_GAP
+    if glance_n:
+        h += _SPEED_GLANCE_HEAD + glance_n * _SPEED_GLANCE_ROW
+    return h + _SPEED_FOOT
+
+
+def _speed_context(date_str: str, items: Sequence[Dict[str, Any]], now,
+                   quick: Sequence[Dict[str, Any]], media_base: str) -> Dict[str, Any]:
+    layout = _grouped_by_track(items, quick, now, media_base)
+    cards = _speed_cards(layout["groups"])
+    rows = _brief_rows(layout["groups"])
+    glance_rows = [dict(r, no="{0:02d}".format(i))
+                   for i, r in enumerate((r for r in rows if r["depth"] == "glance"), start=1)]
+    lead_cards = [c for c in cards if c["depth"] == "lead"]
+    deep_cards = [c for c in cards if c["depth"] == "deep"]
+    chars = _issue_chars(layout["groups"])
+    dt = utils.parse_date(date_str + "T00:00:00+00:00")
+    return {
+        "page_title": PAGE_TITLE,
+        "version": __version__,
+        "date": date_str,
+        "date_label": "{0} {1}".format(date_str, _weekday_cn(dt)) if dt is not None else date_str,
+        "total": len(items),
+        "issue_minutes": str(max(1, int(round(chars / READ_CJK_PER_MIN)))),
+        "lead_total": len(lead_cards),
+        "deep_total": len(deep_cards),
+        "glance_total": len(glance_rows),
+        "lead_cards": lead_cards,
+        "deep_cards": deep_cards,
+        "glance_rows": glance_rows,
+        "page_width": str(SPEED_WIDTH),
+        "page_height": str(_speed_height(len(lead_cards), len(deep_cards), len(glance_rows))),
+    }
+
+
+def render_speed(date_str: str, items: Sequence[Dict[str, Any]], now=None,
+                 quick: Sequence[Dict[str, Any]] = (), media_base: str = MEDIA_BASE_ARCHIVE) -> Tuple[str, int]:
+    """速读图的 HTML 源（定宽 1080、定高）；返回 (html, 页高)。"""
+    now = utils.as_utc(now or utils.now_utc())
+    ctx = _speed_context(date_str, items, now, quick, media_base)
+    return minitpl.render(_load_template(SPEED_TEMPLATE), ctx), int(ctx["page_height"])
+
+
+def _chrome_binary() -> Optional[str]:
+    """找一份能无头截图的 Chrome / Chromium：``QLY_CHROME`` 指定的优先，其次 macOS 应用包与 PATH。"""
+    candidates = [os.environ.get("QLY_CHROME") or ""]
+    candidates += ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                   "/Applications/Chromium.app/Contents/MacOS/Chromium",
+                   "google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]
+    for cand in candidates:
+        if not cand:
+            continue
+        if os.path.isabs(cand):
+            if os.path.isfile(cand):
+                return cand
+            continue
+        found = shutil.which(cand)
+        if found:
+            return found
+    return None
+
+
+def export_speed_png(html_path, png_path, height: int) -> bool:
+    """把 speed.html 截成 PNG（宽 1080 × 页高）。没有 Chrome、或 ``QLY_SPEED_PNG=0`` 时跳过——速读图是
+    第一部分的可分享副本，页面本身不依赖它。"""
+    if os.environ.get("QLY_SPEED_PNG", "1").strip().lower() in ("0", "false", "no", "off"):
+        return False
+    chrome = _chrome_binary()
+    if not chrome:
+        logger.info("没找到 Chrome，跳过速读图 PNG（设 QLY_CHROME 指定路径）")
+        return False
+    profile = tempfile.mkdtemp(prefix="qly-chrome-")
+    cmd = [chrome, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+           "--hide-scrollbars", "--disable-extensions", "--user-data-dir={0}".format(profile),
+           "--window-size={0},{1}".format(SPEED_WIDTH, int(height)),
+           "--virtual-time-budget=5000",
+           "--screenshot={0}".format(png_path), html_path.resolve().as_uri()]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("速读图 PNG 导出失败: %s", exc)
+        return False
+    finally:
+        shutil.rmtree(profile, ignore_errors=True)
+    return png_path.is_file()
 
 def _archive_days(current: str, current_count: int = 0, limit: int = 14) -> List[Dict[str, Any]]:
     """往期归档：扫 ``archive/<date>/`` 下已渲染的日报，新到旧。
@@ -2701,16 +2896,16 @@ def render_merged(
     archive_base: str = "archive",
     quick: Sequence[Dict[str, Any]] = (),
     media_base: str = MEDIA_BASE_ROOT,
+    speed_png: str = "",
 ) -> str:
-    """渲染三视图合并首页。
+    """渲染首页：侧栏目录 + 三个部分（看图 / N 秒读完 / 正文）。
 
     ``archive_base`` 是往期归档链接的前缀——同一份 HTML 会落在数据根和归档目录两处，
     从数据根看别的日子是 ``archive/<date>/``，从 ``archive/<某日>/`` 看是 ``../<date>/``。
+    ``speed_png`` 是速读图的相对地址（没导出就空串，第一部分不给下载链接）。
     """
     now = utils.as_utc(now or utils.now_utc())
     glance_frag = render_glance(date_str, items, embed=True, now=now, quick=quick, media_base=media_base)
-    timeline_frag = render_timeline(date_str, items, embed=True, now=now)
-    deep_frag = render_deep(date_str, items, embed=True, now=now, media_base=media_base)
     layout = _grouped_by_track(items, quick, now, media_base)
     dt = utils.parse_date(date_str + "T00:00:00+00:00")
     sources = {name for entry in list(items) + list(quick or [])
@@ -2725,6 +2920,8 @@ def render_merged(
             "cls": "is-current" if day["is_current"] else "",
         })
 
+    brief_rows = _brief_rows(layout["groups"])
+    speed_cards = _speed_cards(layout["groups"])
     return minitpl.render(MERGED_SHELL, {
         "theme_css": theme.load_theme_css(),
         "page_title": "{0} · {1}".format(PAGE_TITLE, date_str),
@@ -2735,12 +2932,15 @@ def render_merged(
         "quick_total": layout["quick_total"],
         "nav_groups": layout["groups"],
         "nav_count": len(layout["groups"]),
-        "brief_rows": _brief_rows(layout["groups"]),
+        "brief_rows": brief_rows,
+        "brief_total": len(brief_rows),
+        "brief_secs": str(_brief_seconds(brief_rows)),
+        "speed_cards": speed_cards,
+        "speed_fig_count": sum(1 for c in speed_cards if c["has_fig"]),
+        "speed_png": speed_png,
         "source_count": len(sources),
         "archive_days": days,
         "glance_body": glance_frag,
-        "timeline_body": timeline_frag,
-        "deep_body": deep_frag,
     })
 
 
@@ -2787,16 +2987,17 @@ def _write_detail_pages(
 
 def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
                        quick: Sequence[Dict[str, Any]] = ()) -> int:
-    """渲染日报 / 时间轴 / 深读三视图 + 合并首页 + 每条详情页。
+    """渲染首页（三部分）+ 速读图 + 每条详情页；日报 / 时间轴 / 深读三个单视图文件照旧落盘（调试与
+    ``/daily?view=`` 用，不再是入口）。
 
-    合并首页复制到数据根 ``daily.html``（对外入口），详情页落在 ``story/`` 下。
+    首页复制到数据根 ``daily.html``（对外入口），速读图 PNG 复制到数据根 ``speed.png``，详情页落在 ``story/`` 下。
     """
     now = utils.as_utc(utils.now_utc())
     try:
         glance_full = render_glance(date_str, items, embed=False, now=now, quick=quick)
         timeline_full = render_timeline(date_str, items, embed=False, now=now)
         deep_full = render_deep(date_str, items, embed=False, now=now)
-        merged = render_merged(date_str, items, now=now, quick=quick)
+        speed_html, speed_height = render_speed(date_str, items, now=now, quick=quick, media_base=MEDIA_BASE_ARCHIVE)
     except FileNotFoundError as exc:
         print("日报模板缺失，无法渲染 HTML: {0}".format(exc))
         return 1
@@ -2808,24 +3009,40 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
     _write_text(_archive_path(date_str, GLANCE_NAME), glance_full)
     _write_text(_archive_path(date_str, TIMELINE_NAME), timeline_full)
     _write_text(_archive_path(date_str, DEEP_NAME), deep_full)
-    # 归档目录里那份的往期链接要用 ../ 前缀（同级是别的日期目录），数据根那份用 archive/
-    merged_path = _archive_path(date_str, MERGED_NAME)
-    _write_text(merged_path, render_merged(date_str, items, now=now, archive_base="..", quick=quick,
-                                           media_base=MEDIA_BASE_ARCHIVE))
 
+    # 速读图：先出 HTML 源，再截 PNG；截成了首页才给下载链接
+    speed_path = _archive_path(date_str, SPEED_NAME)
+    speed_png = ""
+    if _write_text(speed_path, speed_html):
+        png_path = _archive_path(date_str, SPEED_PNG_NAME)
+        if export_speed_png(speed_path, png_path, speed_height):
+            speed_png = SPEED_PNG_NAME
+            try:
+                shutil.copyfile(png_path, paths.data_path(SPEED_PNG_NAME))
+            except OSError as exc:
+                logger.warning("复制速读图到数据根失败: %s", exc)
+
+    try:
+        merged = render_merged(date_str, items, now=now, quick=quick, speed_png=speed_png)
+        # 归档目录里那份的往期链接要用 ../ 前缀（同级是别的日期目录），数据根那份用 archive/
+        merged_archive = render_merged(date_str, items, now=now, archive_base="..", quick=quick,
+                                       media_base=MEDIA_BASE_ARCHIVE, speed_png=speed_png)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("首页渲染意外失败: %s", exc)
+        print("HTML 渲染失败: {0}".format(exc))
+        return 1
+    merged_path = _archive_path(date_str, MERGED_NAME)
+    _write_text(merged_path, merged_archive)
     root_path = paths.data_path(DAILY_ROOT_NAME)
     _write_text(root_path, merged)
 
     detail_count = _write_detail_pages(date_str, items, now)
 
     print(
-        "日报 HTML 已写出：日报 {0} · 时间轴 {1} · 深读 {2} · 首页 {3}"
-        "（并复制为 {4}）· 详情页 {5} 个文件".format(
-            _archive_path(date_str, GLANCE_NAME),
-            _archive_path(date_str, TIMELINE_NAME),
-            _archive_path(date_str, DEEP_NAME),
+        "日报 HTML 已写出：首页 {0}（并复制为 {1}）· 速读图 {2} · 详情页 {3} 个文件".format(
             merged_path,
             root_path,
+            _archive_path(date_str, SPEED_PNG_NAME) if speed_png else "未导出（无 Chrome 或已关闭）",
             detail_count,
         )
     )

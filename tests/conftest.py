@@ -92,6 +92,8 @@ def tmp_data_dir(tmp_path, monkeypatch) -> Path:
     monkeypatch.setenv("QLY_DATA_DIR", str(data_dir))
     monkeypatch.setenv("QLY_OFFLINE", "1")
     monkeypatch.setenv("QLY_GIT_SNAPSHOT", "0")
+    # 速读图要起无头 Chrome 截图，测试只验 HTML
+    monkeypatch.setenv("QLY_SPEED_PNG", "0")
     monkeypatch.delenv("QLY_AUTH_DIR", raising=False)
     monkeypatch.delenv("QLY_BROWSER_PROFILE", raising=False)
     monkeypatch.delenv("QLY_POOL_MAX_AGE_DAYS", raising=False)

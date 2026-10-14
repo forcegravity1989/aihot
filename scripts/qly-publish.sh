@@ -140,6 +140,11 @@ for name in sorted(media):
         (out / "media").mkdir(exist_ok=True)
         shutil.copyfile(data / "media" / name, out / "media" / name)
         copied.append("media/" + name)
+# 速读图（第一部分的独立 PNG，页首「⤓ 速读图」链到它）
+for extra in ("speed.png",):
+    if (data / extra).is_file() and 'href="{0}"'.format(extra) in page:
+        shutil.copyfile(data / extra, out / extra)
+        copied.append(extra)
 print("staged={0}".format(out))
 print("files=daily.html " + " ".join(stories + copied))
 PYEOF

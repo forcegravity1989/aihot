@@ -11,7 +11,7 @@
 <div class="qly-glance qly-view-inner" id="view-glance-inner">
   <div class="glance-head">
     <div class="qly-page-head">
-      <h1 class="qly-page-title">📑 今日日报</h1>
+      <h1 class="qly-page-title">{% if part_no %}<span class="part-no">{{ part_no }}</span> {% endif %}📑 {{ body_title }}</h1>
       <div class="qly-page-sub">{{ date }} · 深读 {{ deep_total }} 条 · 浅读 {{ glance_total }} 条 · 快讯 {{ quick_total }} 条 · 本期约 {{ issue_chars }} 字 · {{ issue_minutes }} 分钟</div>
     </div>
     <button type="button" class="btn mark-all" id="glance-mark-all">✅ 全部已接收</button>
@@ -124,11 +124,17 @@
   function save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
   var state = load();
   var rows = document.querySelectorAll(".qly-glance .glance-row");
+  // 首页的速读行（②）与图块（①）是同一条的镜像：打勾、置灰同步
+  var mirrors = document.querySelectorAll(".rb-row[data-sig], .sp-tile[data-sig]");
   function apply() {
-    for (var i = 0; i < rows.length; i++) {
-      var sig = rows[i].getAttribute("data-sig");
-      if (sig && state[sig]) { rows[i].classList.add("is-read"); }
-      else { rows[i].classList.remove("is-read"); }
+    var i, sig;
+    for (i = 0; i < rows.length; i++) {
+      sig = rows[i].getAttribute("data-sig");
+      rows[i].classList.toggle("is-read", !!(sig && state[sig]));
+    }
+    for (i = 0; i < mirrors.length; i++) {
+      sig = mirrors[i].getAttribute("data-sig");
+      mirrors[i].classList.toggle("is-read", !!(sig && state[sig]));
     }
     // 侧栏「本期导读」据此刷新已读勾与进度
     try { document.dispatchEvent(new CustomEvent("qly-read-change")); } catch (e) {}
@@ -145,7 +151,8 @@
     } catch (e) {}
   }
   function mark(sig) { if (!sig) { return; } state[sig] = 1; save(state); apply(); postHistory(sig); }
-  var btns = document.querySelectorAll(".qly-glance .gread");
+  // 「标记已读」按钮在正文行里，也在页首速读行的勾上（ADR D0：浅读看过一句就算接收）
+  var btns = document.querySelectorAll(".gread");
   for (var b = 0; b < btns.length; b++) {
     btns[b].addEventListener("click", function (ev) {
       ev.preventDefault();

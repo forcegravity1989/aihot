@@ -101,24 +101,39 @@ def test_reader_can_walk_from_homepage_into_a_story_and_back(site):
     assert client.get("/daily.html").status_code == 200
 
 
-def test_homepage_offers_three_views_without_javascript(site):
-    """三视图切换必须是纯 CSS——这份 HTML 会被邮件客户端、聊天内嵌预览、文件面板打开，
-    那些环境不执行脚本，切换是最基本的导航，不能一被沙箱就点不动。"""
-    client, _ = site
-    home = client.get("/daily").text
+def test_homepage_is_three_parts_from_shallow_to_deep(site):
+    """首页 = ① 看图知今天 → ② N 秒读完今天 → ③ 正文，按读者肯花的时间从少到多排（ADR D0）。
 
-    for view in ("glance", "timeline", "deep"):
-        assert 'id="qly-pick-{0}"'.format(view) in home
-        assert 'for="qly-pick-{0}"'.format(view) in home
-        assert "#qly-pick-{0}:checked ~ .qly-shell #wrap-{0}".format(view) in home
-    # 切换控件是 label 不是 button+JS
-    assert ".daily-toggle button" not in home
-    assert 'data-view="deep"' not in home
+    不再有视图 tab 和右栏：三个部分本身就是三层入口。② 默认展开（不是 <details>），每行标深浅档、
+    带「看过即接收」的勾；① 只放头条与深读的图位，浅读不进图区。
+    """
+    client, date_str = site
+    home = client.get("/daily").text
+    speed, brief, body = home.find('id="part-speed"'), home.find('id="part-brief"'), home.find('id="part-body"')
+    assert 0 < speed < brief < body, "三个部分的顺序错了"
+    assert body < home.find('id="wrap-glance"'), "正文在第三部分里"
+    for gone in ("qly-pick-", "wrap-timeline", "wrap-deep", 'class="qly-rail"', "qly-tabs"):
+        assert gone not in home, "旧的 tab / 右栏还在：{0}".format(gone)
+    brief_html = home[brief:body]
+    assert "<details" not in brief_html, "速读是导入层，默认展开"
+    assert re.search(r"⏱ \d+ 秒读完今天", brief_html), "秒数按字数算，不写死 30"
+
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    assert final["items"]
+    for entry in final["items"]:
+        sig, depth = entry["sig"], entry.get("depth")
+        assert depth in ("lead", "deep", "glance")
+        row = re.search(r'<li class="rb-row is-{0}" data-sig="{1}" data-depth="{0}">.*?</li>'.format(depth, sig),
+                        brief_html, re.S)
+        assert row, "速读里少了一条或没标深浅：{0}".format(sig)
+        assert 'class="gread rb-check" data-sig="{0}"'.format(sig) in row.group(0), "速读行没有接收勾"
+        assert ('data-sig="{0}"'.format(sig) in home[speed:brief]) == (depth != "glance"), "图区只放头条与深读"
+    assert 'href="#part-speed"' in home and 'href="#part-brief"' in home and 'href="#part-body"' in home
 
 
 def test_sidebar_is_a_table_of_contents_for_this_issue(site):
     """左栏是「本期导读」：每条正文的标题都在目录里、点了能落到那一条；关注开关在侧栏里
-    （模型发布必看、不给开关）；往期压成一行。右栏是「30 秒读完今天」：每条一句话、能跳。
+    （模型发布必看、不给开关）；往期压成一行。页首第二部分是「N 秒读完今天」：每条一句话、能跳。
 
     旧版左栏是一串往期日期 + 「时间轴天数 / 重磅 0」这类统计，右栏热度榜与版面顺序重复——
     都不帮读者找到自己要读的东西（issue #51）。
@@ -130,14 +145,14 @@ def test_sidebar_is_a_table_of_contents_for_this_issue(site):
     assert picked
 
     sidebar = home.split('<aside class="qly-sidebar"', 1)[1].split("</aside>", 1)[0]
-    rail = home.split('<aside class="qly-rail"', 1)[1].split("</aside>", 1)[0]
-    glance = home.split('id="wrap-glance"', 1)[1].split('id="wrap-timeline"', 1)[0]
+    brief = home.split('id="part-brief"', 1)[1].split('id="part-body"', 1)[0]
+    glance = home.split('id="wrap-glance"', 1)[1].split("</main>", 1)[0]
     for entry in picked:
         sig, title = entry["sig"], daily._display_title(entry)
         assert 'href="#e-{0}"'.format(sig) in sidebar and title in sidebar, "目录里少了一条：{0}".format(title)
         assert 'id="e-{0}"'.format(sig) in glance, "目录链接落不到日报页上的那一条"
-        assert 'href="#e-{0}"'.format(sig) in rail, "30 秒速览里少了一条"
-    assert "30 秒读完今天" in rail
+        assert 'href="#e-{0}"'.format(sig) in brief, "速读里少了一条"
+    assert re.search(r"\d+ 秒读完今天", brief)
     assert 'data-follow="agent"' in sidebar and 'data-follow="models"' not in sidebar
     assert "往期" in sidebar and date_str[5:].replace("-", "/") in sidebar, "当天要出现在往期条里"
     assert "热度榜" not in home and "信源分布" not in home and "时间轴天数" not in home
@@ -586,7 +601,7 @@ def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
     client = TestClient(api_server.create_app())
     for view in ("glance", None):
         page = client.get("/daily", params={"view": view} if view else {}).text
-        body = page.split('id="wrap-timeline"', 1)[0].split("</header>", 1)[-1]
+        body = page.split('id="wrap-glance"', 1)[-1]
         positions = {t: body.find(t) for t in track_of}
         assert all(p >= 0 for p in positions.values()), "有选中的条目没上版面"
         assert positions["编辑排序第1条"] == min(positions.values()), "编辑定的头条没排在最前（{0}）".format(view)
@@ -668,6 +683,7 @@ def test_unattended_day_still_gets_an_edited_issue(tmp_data_dir, monkeypatch):
         story = client.get("/story/{0}.html".format(entry["sig"])).text
         assert "要点乙·" + entry["sig"] in story, "详情页没有要点"
     assert "密度档：" in brief_seen, "写要点的简报要告诉编辑每条是头条 / 深读 / 浅读"
+    assert "事件主体" in brief_seen, "一句话结论会单独列在速读里，简报要让编辑把主体写进去"
     body = home.split("</header>", 1)[-1]
     first = body.find(daily._display_title(picked[0]))
     others = [body.find(daily._display_title(e)) for e in picked[1:]]
@@ -822,7 +838,7 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     assert "$2/$10" in index and "降价幅度" in index, "关键数字没上版"
     # 提炼是日报卡片的主体：结论、梗、逻辑链（关键一环高亮）、证据与代价；
     # 有结论的条目，细节要点只留在详情页，日报页不再铺一屏字
-    glance = index.split('id="wrap-timeline"', 1)[0]
+    glance = index.split('id="wrap-glance"', 1)[-1]
     assert "这是一句提炼出的结论" in glance and "「一句能传开的话」——某人" in glance
     assert '<div class="lg-node is-hl">关键机制</div>' in glance, "逻辑链的关键一环没高亮"
     assert "起因环节" in glance and "最终结果" in glance and "证据甲 33.2%" in glance and "代价是某件事" in glance
@@ -1087,7 +1103,7 @@ def test_article_figures_become_the_card_visual_and_ship_with_the_page(tmp_data_
 
     client = TestClient(api_server.create_app())
     home = client.get("/daily").text
-    glance = home.split('id="wrap-glance"', 1)[1].split('id="wrap-timeline"', 1)[0]
+    glance = home.split('id="wrap-glance"', 1)[1].split("</main>", 1)[0]
 
     def card(sig):
         return glance.split('id="e-{0}"'.format(sig), 1)[1].split("</article>", 1)[0]
@@ -1263,3 +1279,41 @@ def test_fabricated_numbers_and_paraphrased_memes_never_reach_the_page(tmp_data_
     assert "原文没有这个数" not in row and "99%" not in row, "原文没有的数字必须丢掉"
     assert "这句梗原文里没有" not in page, "不是原文原话的梗必须丢掉"
     assert "120 ms" in row, "逻辑链里核对得上的证据保留"
+
+
+def test_brief_lines_carry_their_subject_and_tick_marks_received(tmp_data_dir, monkeypatch):
+    """「N 秒读完今天」每行要能脱离标题单独读：一句话结论里没有事件主体（标题里的产品 / 机构名一个都
+    没出现）就退回用标题；秒数按实际字数算、取整到 5 秒；行上的勾和正文行的「标记已读」是同一类按钮，
+    图区的块也带同一个 sig（看过即接收，三处同步置灰）。"""
+    import html as html_lib
+
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    final_path = paths.data_path("archive", date_str, daily.FINAL_NAME)
+    final = storage.read_json(final_path, default={})
+    by_sig = {e["sig"]: e for e in final["items"]}
+    lead, deep_fig = roles["figured"]
+    lead_title = daily._display_title(by_sig[lead])
+    tokens = sorted(daily._latin_tokens(lead_title))
+    subject = tokens[0] if tokens else lead_title[:3]
+    by_sig[lead]["takeaway"] = "{0} 这次把默认配置改了".format(subject)
+    storage.write_json(final_path, final)
+    assert daily.cmd_html_only(date_str) == 0
+
+    home = TestClient(api_server.create_app()).get("/daily").text
+    brief = home.split('id="part-brief"', 1)[1].split('id="part-body"', 1)[0]
+    lead_row = re.search(r'<li class="rb-row is-lead" data-sig="{0}".*?</li>'.format(lead), brief, re.S).group(0)
+    assert "这次把默认配置改了" in lead_row, "带主体的结论原样上速读"
+    deep_row = re.search(r'<li class="rb-row is-deep" data-sig="{0}".*?</li>'.format(deep_fig), brief, re.S).group(0)
+    deep_title = html_lib.escape(daily._display_title(by_sig[deep_fig]), quote=True)
+    assert ">{0}</a>".format(deep_title) in deep_row, "没主体的结论要退回标题"
+    assert ">一句结论·{0}</a>".format(deep_fig) not in deep_row
+    assert "深读" in deep_row and "rb-d" in deep_row, "速读行要标出深浅"
+
+    secs = int(re.search(r"⏱ (\d+) 秒读完今天", home).group(1))
+    assert secs % 5 == 0 and 10 <= secs <= 300
+    # 勾、图块、正文行三处共用 sig；勾是 .gread（正文「标记已读」同一个事件链）
+    assert 'class="gread rb-check" data-sig="{0}"'.format(lead) in brief
+    assert re.search(r'<a class="sp-tile is-lead has-fig" href="#e-{0}" data-sig="{0}"'.format(lead), home)
+    assert 'class="gread" data-sig="{0}"'.format(lead) in home.split('id="wrap-glance"', 1)[1]
+    assert 'querySelectorAll(".gread")' in home
+    assert 'querySelectorAll(".rb-row[data-sig], .sp-tile[data-sig]")' in home
