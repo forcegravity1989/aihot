@@ -1309,8 +1309,9 @@ def _fmt_num(value: Any) -> str:
 
 
 def _has_article_figure(entry: Dict[str, Any]) -> bool:
-    """原文自带的图才算原料；我们生成的示意图（kind=synth）不算——它是补位，不是证据。"""
-    return any(isinstance(f, dict) and f.get("kind", "article") not in ("cover", "synth") and f.get("file")
+    """原文自带的**信息图**才算原料：封面、编辑判为装饰的横幅 / 头像（decorative）、我们生成的示意图
+    （synth）都不算——示意图是补位，不是证据。"""
+    return any(isinstance(f, dict) and f.get("kind", "article") == "article" and f.get("file")
                for f in entry.get("figures") or [])
 
 

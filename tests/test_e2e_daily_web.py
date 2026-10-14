@@ -1332,12 +1332,16 @@ def test_codex_illustration_fills_the_slot_only_when_the_source_has_no_figure(tm
     plan.write_text(json.dumps({"depth": [
         {"sig": numbers, "depth": "deep", "synth_image": str(synth), "figure_note": "看橙色箭头那一步"},
         {"sig": deep_fig, "depth": "deep", "figure": 0, "synth_image": str(synth)},
+        # 头条的原文图被编辑判成装饰图（figure=-1）：等于没有信息图，示意图要收
+        {"sig": lead, "depth": "lead", "figure": -1, "synth_image": str(synth)},
     ]}), encoding="utf-8")
     assert daily.cmd_apply_depth(date_str, str(plan)) == 0
     final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
     by_sig = {e["sig"]: e for e in final["items"]}
     assert by_sig[numbers]["depth"] == "deep" and by_sig[numbers]["figures"][0]["kind"] == "synth"
     assert all(f.get("kind") != "synth" for f in by_sig[deep_fig]["figures"]), "原文有信息图的条目不收示意图"
+    assert by_sig[lead]["figures"][0]["kind"] == "synth", "只有装饰图的条目要收示意图"
+    assert [f["kind"] for f in by_sig[lead]["figures"][1:]] == ["decorative"]
     assert daily.cmd_html_only(date_str) == 0
 
     home = TestClient(api_server.create_app()).get("/daily").text
@@ -1349,5 +1353,7 @@ def test_codex_illustration_fills_the_slot_only_when_the_source_has_no_figure(tm
     assert tile and "示意 · Codex 生成" in tile.group(0)
     deep_tile = re.search(r'<a class="sp-tile is-deep has-fig" href="#e-{0}"'.format(deep_fig), home)
     assert deep_tile, "原文图的块不带示意角标"
+    lead_row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(lead), home, re.S).group(0)
+    assert "示意 · Codex" in lead_row and "原文图注·" + lead not in lead_row, "头条的装饰图不上页，示意图顶上"
     story = client.get("/story/{0}.html".format(numbers)).text
     assert "示意 · Codex" in story and "图源：" not in story.split("示意 · Codex", 1)[0]
