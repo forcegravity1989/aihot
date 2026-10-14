@@ -1342,6 +1342,11 @@ def test_codex_illustration_fills_the_slot_only_when_the_source_has_no_figure(tm
     assert all(f.get("kind") != "synth" for f in by_sig[deep_fig]["figures"]), "原文有信息图的条目不收示意图"
     assert by_sig[lead]["figures"][0]["kind"] == "synth", "只有装饰图的条目要收示意图"
     assert [f["kind"] for f in by_sig[lead]["figures"][1:]] == ["decorative"]
+    # 重跑一遍（换图、改图注都会重跑）：旧示意图被换掉，不能变成「装饰图」残留在详情页
+    assert daily.cmd_apply_depth(date_str, str(plan)) == 0
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    by_sig = {e["sig"]: e for e in final["items"]}
+    assert [f["kind"] for f in by_sig[lead]["figures"]] == ["synth", "decorative"], "重跑后示意图残留"
     assert daily.cmd_html_only(date_str) == 0
 
     home = TestClient(api_server.create_app()).get("/daily").text

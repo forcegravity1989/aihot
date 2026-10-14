@@ -1423,7 +1423,9 @@ def _pick_figure(entry: Dict[str, Any], index: Optional[int]) -> None:
         return
     if index < 0:
         for fig in figures:
-            if fig.get("kind") != "cover":
+            # 我们挂上的示意图（synth）不是原文图，不参与「主图 / 装饰图」的判定；重跑 --apply-depth 时也不能
+            # 被改成装饰图留在详情页里
+            if fig.get("kind") not in ("cover", "synth"):
                 fig["kind"] = "decorative"
     elif index < len(figures):
         chosen = figures.pop(index)
