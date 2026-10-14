@@ -428,6 +428,7 @@ img { max-width: 100%; }
 .fig-note { color: var(--text-0); font-weight: 600; }
 .synth-k { font-size: 10.5px; letter-spacing: .06em; color: var(--text-2); margin-top: 10px; text-transform: uppercase; }
 .synth-k::before { content: "◔ "; }
+.synth-credit { color: var(--text-2); }
 .dt-figures .src-fig { margin: 0 0 18px; }
 .dt-figures .src-fig img { max-height: none; }
 

@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
@@ -1317,3 +1318,36 @@ def test_brief_lines_carry_their_subject_and_tick_marks_received(tmp_data_dir, m
     assert 'class="gread" data-sig="{0}"'.format(lead) in home.split('id="wrap-glance"', 1)[1]
     assert 'querySelectorAll(".gread")' in home
     assert 'querySelectorAll(".rb-row[data-sig], .sp-tile[data-sig]")' in home
+
+
+def test_codex_illustration_fills_the_slot_only_when_the_source_has_no_figure(tmp_data_dir, monkeypatch, tmp_path):
+    """示意图（Codex 按原文生成）只给没有信息图的条目补位：页面上标「示意 · Codex 生成」而不是
+    「图源：原文」，图区的块也带角标；原文有信息图的条目给了示意图也不收；示意图不算深读原料。"""
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    lead, deep_fig = roles["figured"]
+    numbers = roles["numbers"]
+    synth = tmp_path / "synth.png"
+    synth.write_bytes(b"\x89PNG\r\n\x1a\n" + b"synth" * 20)
+    plan = tmp_path / "depth.json"
+    plan.write_text(json.dumps({"depth": [
+        {"sig": numbers, "depth": "deep", "synth_image": str(synth), "figure_note": "看橙色箭头那一步"},
+        {"sig": deep_fig, "depth": "deep", "figure": 0, "synth_image": str(synth)},
+    ]}), encoding="utf-8")
+    assert daily.cmd_apply_depth(date_str, str(plan)) == 0
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    by_sig = {e["sig"]: e for e in final["items"]}
+    assert by_sig[numbers]["depth"] == "deep" and by_sig[numbers]["figures"][0]["kind"] == "synth"
+    assert all(f.get("kind") != "synth" for f in by_sig[deep_fig]["figures"]), "原文有信息图的条目不收示意图"
+    assert daily.cmd_html_only(date_str) == 0
+
+    home = TestClient(api_server.create_app()).get("/daily").text
+    row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(numbers), home, re.S).group(0)
+    assert "src-fig" in row and "示意 · Codex" in row and "看这里：看橙色箭头那一步" in row
+    assert "图源：" not in row, "示意图不许署成原文图"
+    assert "viz-stats" not in row, "有了视觉位，数字卡退场"
+    tile = re.search(r'<a class="sp-tile is-deep has-fig is-synth" href="#e-{0}".*?</a>'.format(numbers), home, re.S)
+    assert tile and "示意 · Codex 生成" in tile.group(0)
+    deep_tile = re.search(r'<a class="sp-tile is-deep has-fig" href="#e-{0}"'.format(deep_fig), home)
+    assert deep_tile, "原文图的块不带示意角标"
+    story = client.get("/story/{0}.html".format(numbers)).text
+    assert "示意 · Codex" in story and "图源：" not in story.split("示意 · Codex", 1)[0]

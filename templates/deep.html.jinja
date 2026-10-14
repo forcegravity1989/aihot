@@ -84,7 +84,7 @@
     {% if card.takeaway %}<p class="viz-takeaway">{{ card.takeaway }}</p>{% endif %}
     {% if card.has_images %}
     <div class="deep-images">
-      {% for fig in card.images %}<figure class="src-fig"><img src="{{ fig.src }}" alt="{{ fig.alt }}" loading="lazy"><figcaption>{% if fig.note %}<span class="fig-note">看这里：{{ fig.note }}</span>{% endif %}{% if fig.caption %}<span>{{ fig.caption }}</span>{% endif %}<span class="src-credit">图源：<a href="{{ card.url }}" target="_blank" rel="noopener noreferrer">原文</a></span></figcaption></figure>{% endfor %}
+      {% for fig in card.images %}<figure class="src-fig"><img src="{{ fig.src }}" alt="{{ fig.alt }}" loading="lazy"><figcaption>{% if fig.note %}<span class="fig-note">看这里：{{ fig.note }}</span>{% endif %}{% if fig.caption %}<span>{{ fig.caption }}</span>{% endif %}{% if fig.synth %}<span class="src-credit synth-credit">◔ 示意 · Codex 按<a href="{{ card.url }}" target="_blank" rel="noopener noreferrer">原文</a>生成，数字照抄原文；原文没有信息图</span>{% endif %}{% if not fig.synth %}<span class="src-credit">图源：<a href="{{ card.url }}" target="_blank" rel="noopener noreferrer">原文</a></span>{% endif %}</figcaption></figure>{% endfor %}
     </div>
     {% endif %}
       {% if card.meme %}<blockquote class="viz-meme">{{ card.meme }}</blockquote>{% endif %}

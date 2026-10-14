@@ -25,7 +25,10 @@ body { width: {{ page_width }}px; height: {{ page_height }}px; overflow: hidden;
 .k { font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--ink-3); }
 .k b { color: var(--accent); }
 .img { background: var(--shade); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.img { position: relative; }
 .img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.synth { position: absolute; right: 10px; bottom: 10px; font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  background: var(--card); color: var(--ink-3); border: 1px solid var(--line); }
 .t { font-weight: 800; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 .x { color: var(--ink-2); line-height: 1.5; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 .num { font-family: var(--mono); font-weight: 800; color: var(--accent); text-align: center; line-height: 1.1; padding: 0 20px; }
@@ -71,12 +74,12 @@ body { width: {{ page_width }}px; height: {{ page_height }}px; overflow: hidden;
   </header>
   {% for card in lead_cards %}
   <section class="lead">
-    <div class="img">{% if card.has_fig %}<img src="{{ card.fig.src }}" alt="{{ card.fig.alt }}">{% endif %}{% if not card.has_fig %}<div class="num">{% if card.stat %}{{ card.stat.value }}<small>{{ card.stat.label }}</small>{% endif %}{% if not card.stat %}{{ card.track }}<small>原文没有信息图</small>{% endif %}</div>{% endif %}</div>
+    <div class="img">{% if card.has_fig %}<img src="{{ card.fig.src }}" alt="{{ card.fig.alt }}">{% endif %}{% if card.synth %}<span class="synth">◔ 示意 · Codex 生成</span>{% endif %}{% if not card.has_fig %}<div class="num">{% if card.stat %}{{ card.stat.value }}<small>{{ card.stat.label }}</small>{% endif %}{% if not card.stat %}{{ card.track }}<small>原文没有信息图</small>{% endif %}</div>{% endif %}</div>
     <div class="txt"><span class="k"><b>头条</b> · {{ card.track }}</span><div class="t">{{ card.title }}</div>{% if card.text %}<div class="x">{{ card.text }}</div>{% endif %}</div>
   </section>
   {% endfor %}
   {% if deep_cards %}<div class="grid">{% for card in deep_cards %}<section class="tile">
-    <div class="img">{% if card.has_fig %}<img src="{{ card.fig.src }}" alt="{{ card.fig.alt }}">{% endif %}{% if not card.has_fig %}<div class="num">{% if card.stat %}{{ card.stat.value }}<small>{{ card.stat.label }}</small>{% endif %}{% if not card.stat %}{{ card.track }}<small>原文没有信息图</small>{% endif %}</div>{% endif %}</div>
+    <div class="img">{% if card.has_fig %}<img src="{{ card.fig.src }}" alt="{{ card.fig.alt }}">{% endif %}{% if card.synth %}<span class="synth">◔ 示意 · Codex 生成</span>{% endif %}{% if not card.has_fig %}<div class="num">{% if card.stat %}{{ card.stat.value }}<small>{{ card.stat.label }}</small>{% endif %}{% if not card.stat %}{{ card.track }}<small>原文没有信息图</small>{% endif %}</div>{% endif %}</div>
     <div class="txt"><span class="k"><b>深读</b> · {{ card.track }}</span><div class="t">{{ card.title }}</div>{% if card.text %}<div class="x">{{ card.text }}</div>{% endif %}</div>
   </section>{% endfor %}</div>{% endif %}
   {% if glance_rows %}<section class="glance"><div class="k">浅读 · 看过标题就算接收</div><ol>{% for row in glance_rows %}<li><span class="n">{{ row.no }}</span><span class="tr">{{ row.track }}</span><span class="ti">{{ row.title }}</span></li>{% endfor %}</ol></section>{% endif %}

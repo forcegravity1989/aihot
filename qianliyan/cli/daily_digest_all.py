@@ -36,6 +36,7 @@ import subprocess
 import tempfile
 import urllib.parse
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .. import __version__
@@ -1308,7 +1309,8 @@ def _fmt_num(value: Any) -> str:
 
 
 def _has_article_figure(entry: Dict[str, Any]) -> bool:
-    return any(isinstance(f, dict) and f.get("kind", "article") != "cover" and f.get("file")
+    """原文自带的图才算原料；我们生成的示意图（kind=synth）不算——它是补位，不是证据。"""
+    return any(isinstance(f, dict) and f.get("kind", "article") not in ("cover", "synth") and f.get("file")
                for f in entry.get("figures") or [])
 
 
@@ -1429,11 +1431,47 @@ def _pick_figure(entry: Dict[str, Any], index: Optional[int]) -> None:
     entry["figures"] = figures
 
 
-def cmd_apply_depth(date_str: str, path: str) -> int:
-    """读编辑写的密度档 JSON ``{"depth": [{"sig", "depth", "figure_note"?, "figure"?}]}``，写进草案与定稿。
+def _attach_synth_figure(entry: Dict[str, Any], src_path: str) -> bool:
+    """把一张我们生成的示意图（Codex 按原文画的逻辑图）挂到条目最前，``kind=synth``。
 
-    ``figure`` 是主图下标（-1 = 没有信息图）。编辑 Agent 不可用、或人想亲自定哪几条深读时用；
-    之后 ``--html`` 重新渲染即可。"""
+    只给原文没有信息图的条目补位（ADR D3）：页面上标「示意 · Codex 生成」、不算深读原料、
+    不替代原文图。文件按内容哈希存进 media/，与原文配图同一套发布路径。"""
+    try:
+        data = Path(src_path).read_bytes()
+    except OSError as exc:
+        logger.warning("示意图读不到 (%s): %s", src_path, exc)
+        return False
+    ext = _image_ext(data)
+    if not ext or len(data) > IMAGE_MAX_BYTES:
+        logger.warning("示意图不是图片或太大: %s", src_path)
+        return False
+    stem = hashlib.sha1(data).hexdigest()[:16]
+    media = paths.data_path(MEDIA_DIR)
+    try:
+        media.mkdir(parents=True, exist_ok=True)
+        (media / "{0}.{1}".format(stem, ext)).write_bytes(data)
+    except OSError as exc:
+        logger.warning("示意图写盘失败: %s", exc)
+        return False
+    figures = [f for f in entry.get("figures") or [] if isinstance(f, dict) and f.get("kind") != "synth"]
+    figures.insert(0, {
+        "file": "{0}/{1}.{2}".format(MEDIA_DIR, stem, ext),
+        "src": "",
+        "kind": "synth",
+        "caption": "",
+        "alt": str(entry.get("takeaway") or _display_title(entry)),
+    })
+    entry["figures"] = figures
+    return True
+
+
+def cmd_apply_depth(date_str: str, path: str) -> int:
+    """读编辑写的密度档 JSON ``{"depth": [{"sig", "depth", "figure_note"?, "figure"?, "synth_image"?}]}``，
+    写进草案与定稿。
+
+    ``figure`` 是主图下标（-1 = 没有信息图）；``synth_image`` 是本机一张示意图的路径（Codex 按原文
+    生成），只在原文没有信息图时给，会以 ``kind=synth`` 挂到最前。编辑 Agent 不可用、或人想亲自定
+    哪几条深读时用；之后 ``--html`` 重新渲染即可。"""
     final = _load_final(date_str)
     if final is None:
         print("digest-final.json 不存在或为空，请先 --finalize。")
@@ -1458,6 +1496,7 @@ def cmd_apply_depth(date_str: str, path: str) -> int:
             given[str(row["sig"])]["figure"] = int(row["figure"]) if row.get("figure") is not None else None
         except (TypeError, ValueError):
             given[str(row["sig"])]["figure"] = None
+        given[str(row["sig"])]["synth_image"] = str(row.get("synth_image") or "").strip()
     if not given:
         print("depth 不合格：需要 {\"depth\": [{\"sig\": 今日入选条目的 sig, \"depth\": \"lead|deep|glance\"}]}")
         return 1
@@ -1466,6 +1505,11 @@ def cmd_apply_depth(date_str: str, path: str) -> int:
             row = given[str(entry["sig"])]
             entry["depth"], entry["figure_note"] = row["depth"], row["figure_note"]
             _pick_figure(entry, row.get("figure"))
+            if row.get("synth_image"):
+                if _has_article_figure(entry):
+                    print("跳过示意图（原文有信息图）: {0}".format(_display_title(entry)[:40]))
+                else:
+                    _attach_synth_figure(entry, row["synth_image"])
     counts = _assign_depth(final["items"], tracks_mod.load())
     storage.write_json(_archive_path(date_str, FINAL_NAME), final)
     draft = _load_draft(date_str) or {}
@@ -1911,12 +1955,15 @@ def _figure_views(entry: Dict[str, Any], media_base: str, include_cover: bool = 
         if not local.startswith(prefix) or "/" in local[len(prefix):]:
             continue
         caption = str(fig.get("caption") or fig.get("alt") or "").strip()
+        kind = str(fig.get("kind") or "article")
         out.append({
             "src": media_base + local[len(prefix):],
             "caption": caption,
-            "alt": str(fig.get("alt") or caption or "原文配图"),
+            "alt": str(fig.get("alt") or caption or ("示意图" if kind == "synth" else "原文配图")),
             "origin": str(fig.get("src") or ""),
-            "kind": str(fig.get("kind") or "article"),
+            "kind": kind,
+            # 示意图（Codex 按原文生成，ADR D3）：模板据此换掉「图源：原文」的署名，标「示意 · Codex 生成」
+            "synth": kind == "synth",
         })
     return out
 
@@ -2446,6 +2493,9 @@ MERGED_SHELL = """<!doctype html>
   display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .sp-tile.is-lead .sp-img { flex: 0 0 58%; aspect-ratio: 16 / 9; border-bottom: 0; border-right: 1px solid var(--border-soft); }
 .sp-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.sp-img { position: relative; }
+.sp-synth { position: absolute; right: 6px; bottom: 6px; font-size: 10px; letter-spacing: .04em; padding: 2px 7px;
+  border-radius: 999px; background: var(--surface-card); color: var(--text-2); border: 1px solid var(--border); }
 .sp-num { font-family: var(--font-mono); font-size: 30px; font-weight: 800; color: var(--theme-accent-fg);
   text-align: center; padding: 0 12px; line-height: 1.1; }
 .sp-num small { display: block; font-family: var(--font-sans, inherit); font-size: 11.5px; font-weight: 500; color: var(--text-2); margin-top: 6px; }
@@ -2556,7 +2606,7 @@ MERGED_SHELL = """<!doctype html>
             </div>
             <div class="sp-grid">
             {% for card in speed_cards %}<a class="{{ card.cls }}" href="#e-{{ card.sig }}" data-sig="{{ card.sig }}" data-depth="{{ card.depth }}">
-              <div class="sp-img">{% if card.has_fig %}<img src="{{ card.fig.src }}" alt="{{ card.fig.alt }}" loading="lazy">{% endif %}{% if not card.has_fig %}<div class="sp-num">{% if card.stat %}{{ card.stat.value }}<small>{{ card.stat.label }}</small>{% endif %}{% if not card.stat %}{{ card.track }}<small>原文没有信息图</small>{% endif %}</div>{% endif %}</div>
+              <div class="sp-img">{% if card.has_fig %}<img src="{{ card.fig.src }}" alt="{{ card.fig.alt }}" loading="lazy">{% endif %}{% if card.synth %}<span class="sp-synth">◔ 示意 · Codex 生成</span>{% endif %}{% if not card.has_fig %}<div class="sp-num">{% if card.stat %}{{ card.stat.value }}<small>{{ card.stat.label }}</small>{% endif %}{% if not card.stat %}{{ card.track }}<small>原文没有信息图</small>{% endif %}</div>{% endif %}</div>
               <div class="sp-body"><span class="sp-k">{{ card.depth_label }} · {{ card.track }}</span><span class="sp-t">{{ card.title }}</span>{% if card.text %}<span class="sp-x">{{ card.text }}</span>{% endif %}{% if card.note %}<span class="sp-note"><b>看这里：</b>{{ card.note }}</span>{% endif %}</div>
             </a>{% endfor %}
             </div>
@@ -2702,11 +2752,13 @@ def _speed_cards(groups: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 continue
             fig = item.get("figure")
             stats = item.get("stats") or []
+            synth = bool(fig and fig.get("synth"))
             cards.append({
                 "sig": item["sig"],
                 "depth": depth,
                 "depth_label": DEPTH_LABELS.get(depth, ""),
-                "cls": "sp-tile is-{0} {1}".format(depth, "has-fig" if fig else "no-fig"),
+                "cls": "sp-tile is-{0} {1}{2}".format(depth, "has-fig" if fig else "no-fig", " is-synth" if synth else ""),
+                "synth": synth,
                 "track": item["track_title"] if group["id"] == "lead" else group["title"],
                 "title": item["title"],
                 "text": str(item.get("takeaway") or ""),
