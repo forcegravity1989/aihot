@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+</head>
+<body style="margin:0;padding:0;background:#faf9f5;">
+<!-- 公众号稿：和日报首页同一份三部分内容、同一套 token（ivory #faf9f5 / 卡片 #fefdfa / 赤陶 #d97757）。
+     公众号只保留行内样式，所以全部写成 style=""；不用 flex / grid / position / 伪元素，
+     不用斜体（中文没有斜体，见 huashu-design typography 4.3），外链改成文末编号引用（公众号正文外链不可点）。 -->
+<section style="background:#faf9f5;padding:18px 14px 26px;color:#1f1e1d;font-family:-apple-system,BlinkMacSystemFont,PingFang SC,Hiragino Sans GB,Microsoft YaHei,sans-serif;font-size:15px;line-height:1.75;letter-spacing:0.02em;">
+
+  <section style="padding:0 2px 14px;border-bottom:1px solid #d7d2ca;">
+    <p style="margin:0;font-size:12px;line-height:1.5;color:#75716a;letter-spacing:0.08em;"><span style="display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:6px;background:#d97757;color:#ffffff;font-weight:700;font-size:12px;letter-spacing:0;margin-right:6px;vertical-align:middle;">千</span>千里眼 · AI 日报 · {{ date_label }}</p>
+    <p style="margin:8px 0 0;font-size:12.5px;line-height:1.6;color:#6b6760;">正文 {{ total }} 条 · 快讯 {{ quick_total }} 条 · 头条 {{ lead_total }} · 深读 {{ deep_total }} · 浅读 {{ glance_total }} · 读完全文约 {{ issue_minutes }} 分钟</p>
+  </section>
+
+  <!-- ① 看图知今天 -->
+  <section style="margin-top:22px;">
+    <p style="margin:0;"><span style="display:inline-block;padding:1px 9px;border-radius:999px;background:#f6e3d9;color:#af5233;font-size:12px;font-weight:700;line-height:1.6;letter-spacing:0;vertical-align:middle;">①</span><span style="font-size:19px;font-weight:800;margin-left:8px;vertical-align:middle;letter-spacing:0;">看图知今天</span></p>
+    <p style="margin:6px 0 0;font-size:12.5px;line-height:1.6;color:#6b6760;">头条与深读各一张图 · 图是证据，一句话是导读 · 标 ◔ 的是按原文生成的示意图</p>
+    {% for card in lead_tiles %}<section style="margin-top:12px;border:1px solid #d97757;border-radius:12px;background:#fefdfa;overflow:hidden;">
+      {% if card.has_fig %}<section style="background:#f0eee6;text-align:center;line-height:0;"><img src="{{ card.fig.src }}" alt="{{ card.fig.alt }}" style="display:block;width:100%;height:auto;margin:0;"></section>{% endif %}
+      {% if not card.has_fig %}{% if card.stat %}<section style="background:#f0eee6;padding:22px 12px;text-align:center;"><p style="margin:0;font-size:34px;font-weight:800;line-height:1.1;color:#af5233;letter-spacing:0;">{{ card.stat.value }}</p><p style="margin:6px 0 0;font-size:12.5px;color:#58554f;">{{ card.stat.label }}</p></section>{% endif %}{% endif %}
+      <section style="padding:10px 12px 12px;">
+        <p style="margin:0;font-size:11px;font-weight:700;line-height:1.5;color:#af5233;letter-spacing:0.06em;">头条 · {{ card.track }}{% if card.synth %}<span style="color:#75716a;font-weight:500;"> · ◔ 示意 · Codex 生成</span>{% endif %}</p>
+        <p style="margin:4px 0 0;font-size:17px;font-weight:800;line-height:1.45;letter-spacing:0;">{{ card.title }}</p>
+      </section>
+    </section>{% endfor %}
+    {% for pair in tile_rows %}<section style="margin-top:10px;font-size:0;line-height:0;">{% for card in pair.cards %}<section style="display:inline-block;vertical-align:top;width:48.5%;{{ card.gap }}box-sizing:border-box;border:1px solid #ebe7e1;border-radius:10px;background:#fefdfa;overflow:hidden;font-size:13px;line-height:1.5;">
+        <section style="height:96px;background:#f0eee6;text-align:center;overflow:hidden;line-height:96px;">{% if card.has_fig %}<img src="{{ card.fig.src }}" alt="{{ card.fig.alt }}" style="display:inline-block;max-width:100%;max-height:96px;width:auto;height:auto;vertical-align:middle;">{% endif %}{% if not card.has_fig %}{% if card.stat %}<span style="display:inline-block;vertical-align:middle;line-height:1.2;font-size:22px;font-weight:800;color:#af5233;letter-spacing:0;">{{ card.stat.value }}</span>{% endif %}{% endif %}</section>
+        <section style="padding:7px 9px 9px;">
+          <p style="margin:0;font-size:10.5px;font-weight:700;line-height:1.5;color:#af5233;letter-spacing:0.04em;">深读 · {{ card.track }}{% if card.synth %}<span style="color:#75716a;font-weight:500;"> · ◔ 示意</span>{% endif %}</p>
+          <p style="margin:3px 0 0;font-size:13px;font-weight:700;line-height:1.45;color:#1f1e1d;letter-spacing:0;">{{ card.title }}</p>
+        </section>
+      </section>{% endfor %}</section>{% endfor %}
+  </section>
+
+  <!-- ② N 秒读完今天 -->
+  <section style="margin-top:26px;padding-top:20px;border-top:1px solid #ebe7e1;">
+    <p style="margin:0;"><span style="display:inline-block;padding:1px 9px;border-radius:999px;background:#f6e3d9;color:#af5233;font-size:12px;font-weight:700;line-height:1.6;letter-spacing:0;vertical-align:middle;">②</span><span style="font-size:19px;font-weight:800;margin-left:8px;vertical-align:middle;letter-spacing:0;">{{ brief_secs }} 秒读完今天</span></p>
+    <p style="margin:6px 0 0;font-size:12.5px;line-height:1.6;color:#6b6760;">{{ brief_total }} 条，每条一句 · 加粗的是头条与深读，值得往下翻 · 其余看过这一句就算接收</p>
+    {% for row in brief_rows %}<section style="margin-top:10px;padding-left:30px;">
+      <p style="margin:0 0 0 -30px;font-size:10.5px;font-weight:700;line-height:1.5;color:#75716a;letter-spacing:0.06em;"><span style="display:inline-block;width:20px;height:20px;line-height:20px;border-radius:50%;text-align:center;font-size:11px;font-weight:700;letter-spacing:0;margin-right:10px;vertical-align:middle;{{ row.dot }}">{{ row.no }}</span><span style="vertical-align:middle;">{{ row.track }}</span>{% if row.depth_label %}<span style="vertical-align:middle;color:#af5233;"> · {{ row.depth_label }}</span>{% endif %}</p>
+      <p style="margin:2px 0 0;font-size:15px;line-height:1.65;color:#1f1e1d;{{ row.weight }}">{{ row.text }}</p>
+    </section>{% endfor %}
+  </section>
+
+  <!-- ③ 正文：按方向分栏，每条按密度档出卡片 -->
+  <section style="margin-top:26px;padding-top:20px;border-top:1px solid #ebe7e1;">
+    <p style="margin:0;"><span style="display:inline-block;padding:1px 9px;border-radius:999px;background:#f6e3d9;color:#af5233;font-size:12px;font-weight:700;line-height:1.6;letter-spacing:0;vertical-align:middle;">③</span><span style="font-size:19px;font-weight:800;margin-left:8px;vertical-align:middle;letter-spacing:0;">正文</span></p>
+    <p style="margin:6px 0 0;font-size:12.5px;line-height:1.6;color:#6b6760;">深读 {{ deep_with_lead }} 条 · 浅读 {{ glance_total }} 条 · 快讯 {{ quick_total }} 条 · 本期约 {{ issue_chars }} 字 · {{ issue_minutes }} 分钟 · 文中 [n] 见文末原文链接</p>
+
+    {% for group in groups %}<section style="margin-top:22px;">
+      <p style="margin:0;padding-bottom:6px;border-bottom:1px solid #ebe7e1;"><span style="font-size:13px;font-weight:700;color:#af5233;letter-spacing:0;">{{ group.no }}</span><span style="font-size:16px;font-weight:800;margin-left:8px;letter-spacing:0;">{{ group.title }}</span>{% if group.everyone %}<span style="font-size:10.5px;color:#75716a;margin-left:8px;letter-spacing:0.1em;">必看</span>{% endif %}<span style="font-size:12px;color:#75716a;margin-left:8px;">{{ group.count }} 条{% if group.quick_count %} · 快讯 {{ group.quick_count }}{% endif %}</span></p>
+
+      {% for item in group.items %}<section style="margin-top:12px;padding:{{ item.pad }};border:1px solid {{ item.border }};border-radius:12px;background:#fefdfa;">
+        <p style="margin:0;font-size:11.5px;line-height:1.6;color:#75716a;">{{ item.source }}{% if item.depth_label %}<span style="display:inline-block;margin-left:6px;padding:0 6px;border-radius:3px;background:{{ item.badge_bg }};color:{{ item.badge_fg }};font-size:10.5px;font-weight:700;line-height:1.7;">{{ item.depth_label }}</span>{% endif %}{% if item.is_lead %}<span style="display:inline-block;margin-left:6px;padding:0 6px;border-radius:3px;background:#f6e3d9;color:#af5233;font-size:10.5px;font-weight:700;line-height:1.7;">{{ item.track_title }}</span>{% endif %}<span style="margin-left:6px;">{{ item.date_text }}</span></p>
+        <p style="margin:6px 0 0;font-size:{{ item.title_size }};font-weight:700;line-height:1.45;color:#1f1e1d;letter-spacing:0;">{{ item.title }}{% if item.read_text %}<span style="font-size:12px;font-weight:400;color:#75716a;">（{{ item.read_text }}）</span>{% endif %}</p>
+        {% if item.line %}<p style="margin:6px 0 0;font-size:{{ item.line_size }};font-weight:{{ item.line_weight }};line-height:1.7;color:{{ item.line_color }};">{{ item.line }}</p>{% endif %}
+        {% if item.figure %}<section style="margin:12px 0 0;">
+          <section style="border:1px solid #f6f3ef;border-radius:8px;background:#f0eee6;overflow:hidden;line-height:0;"><img src="{{ item.figure.src }}" alt="{{ item.figure.alt }}" style="display:block;width:100%;height:auto;margin:0;"></section>
+          <p style="margin:6px 0 0;font-size:12px;line-height:1.6;color:#75716a;">{% if item.figure.note %}<span style="color:#1f1e1d;font-weight:600;">看这里：{{ item.figure.note }}</span> · {% endif %}{% if item.figure.synth %}◔ 示意 · Codex 按原文生成，数字照抄原文；原文没有信息图{% endif %}{% if not item.figure.synth %}图源：原文 [{{ item.cite }}]{% endif %}</p>
+        </section>{% endif %}
+        {% if item.synth_label %}<p style="margin:12px 0 0;font-size:10.5px;line-height:1.5;color:#75716a;letter-spacing:0.06em;">◔ 示意 · 编辑整理，数字照抄原文</p>{% endif %}
+        {% if item.wx_stats %}<p style="margin:6px 0 0;line-height:1.9;">{% for st in item.wx_stats %}<span style="display:inline-block;margin-right:16px;"><span style="font-size:16px;font-weight:800;color:#af5233;letter-spacing:0;">{{ st.value }}</span><span style="font-size:12.5px;color:#75716a;margin-left:5px;">{{ st.label }}</span></span>{% endfor %}</p>{% endif %}
+        {% if item.wx_logic %}<section style="margin:10px 0 0;">{% for n in item.wx_logic.chain %}<p style="margin:0;padding:6px 10px;border:1px solid {{ n.border }};border-radius:8px;text-align:center;font-size:13.5px;line-height:1.5;color:{{ n.color }};font-weight:{{ n.weight }};">{{ n.text }}</p>{% if n.arrow %}<p style="margin:0;text-align:center;font-size:13px;line-height:1.5;color:#75716a;">↓</p>{% endif %}{% endfor %}
+          {% if item.wx_logic.evidence %}<p style="margin:8px 0 0;font-size:12.5px;line-height:1.7;color:#58554f;"><span style="font-size:11px;font-weight:700;color:#355781;margin-right:8px;">证据</span>{{ item.wx_logic.evidence }}</p>{% endif %}
+          {% if item.wx_logic.caveat %}<p style="margin:4px 0 0;font-size:12.5px;line-height:1.7;color:#58554f;"><span style="font-size:11px;font-weight:700;color:#883324;margin-right:8px;">但是</span>{{ item.wx_logic.caveat }}</p>{% endif %}
+        </section>{% endif %}
+        {% if item.meme %}<p style="margin:10px 0 0;padding-left:10px;border-left:2px solid #d7d2ca;font-size:13.5px;line-height:1.7;color:#58554f;">{{ item.meme }}</p>{% endif %}
+        {% if item.editor_note %}<p style="margin:10px 0 0;padding-left:12px;border-left:2px solid #d97757;font-size:13.5px;line-height:1.75;color:#58554f;"><span style="font-weight:700;color:#1f1e1d;">为什么重要</span> · {{ item.editor_note }}</p>{% endif %}
+        <p style="margin:8px 0 0;font-size:12px;line-height:1.5;color:#75716a;">原文 [{{ item.cite }}]</p>
+      </section>{% endfor %}
+
+      {% if group.quick %}<section style="margin-top:12px;padding:12px 14px;border:1px solid #ebe7e1;border-radius:12px;background:#f0eee6;">
+        <p style="margin:0 0 4px;font-size:11px;font-weight:700;line-height:1.5;color:#75716a;letter-spacing:0.08em;">快讯</p>
+        {% for q in group.quick %}<p style="margin:8px 0 0;font-size:13.5px;line-height:1.65;color:#1f1e1d;"><span style="font-weight:700;">{{ q.title }}</span>{% if q.line %}<span style="color:#58554f;"> — {{ q.line }}</span>{% endif %}<span style="display:block;font-size:11px;color:#75716a;">{{ q.source }} · {{ q.date_text }} · [{{ q.cite }}]</span></p>{% endfor %}
+      </section>{% endif %}
+    </section>{% endfor %}
+  </section>
+
+  <!-- 原文链接：公众号正文外链不可点，统一放文末 -->
+  <section style="margin-top:28px;padding-top:16px;border-top:1px solid #d7d2ca;">
+    <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#58554f;letter-spacing:0.08em;">原文链接</p>
+    {% for ref in refs %}<p style="margin:4px 0 0;font-size:11.5px;line-height:1.6;color:#75716a;word-break:break-all;">[{{ ref.no }}] {{ ref.title }}<br>{{ ref.url }}</p>{% endfor %}
+    <p style="margin:16px 0 0;font-size:11.5px;line-height:1.7;color:#75716a;">千里眼 {{ version }} · 原文图版权归原作者；标「◔ 示意」的图由 Codex 按原文生成，数字逐字核对过原文。</p>
+  </section>
+</section>
+</body>
+</html>
