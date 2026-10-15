@@ -77,6 +77,7 @@ SPEED_PNG_NAME = "speed.png"
 WECHAT_TEMPLATE = "wechat.md.jinja"
 WECHAT_NAME = "wechat.md"
 WECHAT_AUTHOR = "千里眼"
+WECHAT_TITLE_MAX = 64
 TIMELINE_TEMPLATE = "timeline.html.jinja"
 ITEM_TEMPLATE = "item.html.jinja"
 
@@ -2862,9 +2863,14 @@ def _wechat_context(date_str: str, items: Sequence[Dict[str, Any]], now,
     chars = _issue_chars(layout["groups"])
     sources = {name for entry in list(items) + list(quick or [])
                for name in (entry.get("source_list") or [entry.get("source")]) if name}
-    head = lead_cards[0]["title"] if lead_cards else (rows[0]["text"] if rows else "")
+    # 标题用头条那句带主体的结论（速读行同一套判定，没主体就是原标题）；公众号标题上限 64 字，
+    # 超了宁可去掉日期前缀也不在词中间截断
+    head = rows[0]["text"] if rows else ""
+    title = "千里眼 AI 日报 {0}｜{1}".format(date_str[5:].replace("-", "."), head)
+    if len(title) > WECHAT_TITLE_MAX:
+        title = head if len(head) <= WECHAT_TITLE_MAX else head[:WECHAT_TITLE_MAX - 1] + "…"
     return {
-        "title": "千里眼 AI 日报 {0}｜{1}".format(date_str[5:].replace("-", "."), head)[:64],
+        "title": title,
         "author": WECHAT_AUTHOR,
         "summary": (lead_cards[0]["text"] if lead_cards and lead_cards[0]["text"] else head)[:120],
         "date": date_str,

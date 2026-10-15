@@ -1377,7 +1377,11 @@ def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_
     final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
     by_sig = {e["sig"]: e for e in final["items"]}
     md = paths.data_path("archive", date_str, daily.WECHAT_NAME).read_text(encoding="utf-8")
-    assert md.startswith("---\ntitle: 千里眼 AI 日报 ")
+    # 标题 = 「千里眼 AI 日报 MM.DD｜」+ 头条那句；超过 64 字就去掉前缀，不在词中间截断
+    title = md.split("\n", 2)[1][len("title: "):]
+    head = daily._display_title(by_sig[lead])
+    assert len(title) <= daily.WECHAT_TITLE_MAX, title
+    assert title.endswith(head) or title == head[:daily.WECHAT_TITLE_MAX - 1] + "…", title
     assert "coverImage: imgs/cover.png" in md
     brief, body = md.index("秒读完今天"), md.index("## 今日头条")
     assert brief < body < md.index("## 深读") < md.index("## 浅读")
