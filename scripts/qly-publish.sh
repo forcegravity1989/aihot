@@ -11,6 +11,7 @@
 #   brief-prompt [DAY]   打印写要点的简报（入选条目 + 原文）
 #   apply-briefs FILE [DAY]  把要点 JSON 写进定稿并重新渲染
 #   stage   OUT_DIR      把数据根的 daily.html 与它链接的详情页、原文配图整理进 OUT_DIR，供发布 artifact
+#   wechat  OUT_DIR [DAY]  把公众号稿 wechat.md 与它的配图整理成发布包（article.md + imgs/），交 baoyu-post-to-wechat
 #
 # DAY 缺省为今天（UTC，与 qly-daily.sh 一致）。
 
@@ -148,6 +149,41 @@ for extra in ("speed.png",):
 print("staged={0}".format(out))
 print("files=daily.html " + " ".join(stories + copied))
 PYEOF
+        ;;
+    wechat)
+        # 公众号稿发布包：archive/<DAY>/wechat.md + 它引用的配图 + 速读图，图片改成包内相对路径 imgs/，
+        # 交给 baoyu-post-to-wechat（API 模式会逐张上传正文图；封面放 imgs/cover.png）
+        OUT="${1:?用法: qly-publish.sh wechat OUT_DIR [DAY]}"
+        DAY="${2:-$(date -u +%Y-%m-%d)}"
+        "$PY" - "$QLY_DATA_DIR" "$OUT" "$DAY" <<'PYEOF2'
+import re, shutil, sys
+from pathlib import Path
+
+data, out, day = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+src = data / "archive" / day / "wechat.md"
+if not src.is_file():
+    sys.exit("wechat.md 不存在：先 --html 重出 {0}".format(day))
+(out / "imgs").mkdir(parents=True, exist_ok=True)
+text = src.read_text(encoding="utf-8")
+copied = []
+
+def local(match):
+    alt, ref = match.group(1), match.group(2)
+    if ref.startswith("http"):
+        return match.group(0)
+    path = (src.parent / ref).resolve()
+    if not path.is_file():
+        return ""  # 图丢了就不留破图
+    shutil.copyfile(path, out / "imgs" / path.name)
+    copied.append("imgs/" + path.name)
+    return "![{0}](imgs/{1})".format(alt, path.name)
+
+text = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)\)", local, text)
+(out / "article.md").write_text(text, encoding="utf-8")
+print("article={0}".format(out / "article.md"))
+print("images={0}".format(len(copied)))
+print("cover={0}".format("yes" if (out / "imgs" / "cover.png").is_file() else "missing"))
+PYEOF2
         ;;
     *)
         sed -n '2,16p' "$0"

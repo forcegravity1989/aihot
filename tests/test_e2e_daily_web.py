@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 
 import pytest
@@ -1362,3 +1363,39 @@ def test_codex_illustration_fills_the_slot_only_when_the_source_has_no_figure(tm
     assert "示意 · Codex" in lead_row and "原文图注·" + lead not in lead_row, "头条的装饰图不上页，示意图顶上"
     story = client.get("/story/{0}.html".format(numbers)).text
     assert "示意 · Codex" in story and "图源：" not in story.split("示意 · Codex", 1)[0]
+
+
+def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_dir, monkeypatch, tmp_path):
+    """公众号稿和首页同一份三部分内容：速读图 → N 秒读完（头条 / 深读加粗）→ 头条 / 深读 / 浅读；
+    qly-publish.sh wechat 打成发布包时，正文图全部换成包内 imgs/ 相对路径、文件真的拷进去，
+    发布脚本（baoyu-post-to-wechat）拿到的是一个自包含目录。"""
+    import subprocess
+    from pathlib import Path
+
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    lead, deep_fig = roles["figured"]
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    by_sig = {e["sig"]: e for e in final["items"]}
+    md = paths.data_path("archive", date_str, daily.WECHAT_NAME).read_text(encoding="utf-8")
+    assert md.startswith("---\ntitle: 千里眼 AI 日报 ")
+    assert "coverImage: imgs/cover.png" in md
+    brief, body = md.index("秒读完今天"), md.index("## 今日头条")
+    assert brief < body < md.index("## 深读") < md.index("## 浅读")
+    # 这条的一句话结论里没有主体，速读退回用标题（同首页规则），且加粗
+    assert "1. **{0}**".format(daily._display_title(by_sig[lead])) in md[brief:body], "速读里头条要加粗"
+    for sig in roles["thin"]:
+        assert "**{0}**".format(daily._display_title(by_sig[sig])) in md[md.index("## 浅读"):], "浅读只列标题"
+        assert "薄条目的图·" + sig not in md
+    assert "看这里：" not in md or "**看这里**" in md
+    assert "原文没有这个数" not in md, "核对丢掉的数字也不许进公众号稿"
+
+    repo = Path(daily.__file__).resolve().parents[2]
+    out = tmp_path / "pkg"
+    res = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "wechat", str(out), date_str],
+                         capture_output=True, text=True, env=dict(os.environ, QLY_DATA_DIR=str(tmp_data_dir)))
+    assert res.returncode == 0, res.stderr
+    article = (out / "article.md").read_text(encoding="utf-8")
+    refs = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", article)
+    assert refs and all(r.startswith("imgs/") for r in refs), refs
+    assert all((out / r).is_file() for r in refs)
+    assert "../../media/" not in article

@@ -1,0 +1,67 @@
+---
+title: {{ title }}
+author: {{ author }}
+description: {{ summary }}
+coverImage: imgs/cover.png
+---
+
+![速读图：{{ date }} 头条与深读一图看完]({{ speed_png }})
+
+> 千里眼每天从 {{ source_count }} 个信源里选 {{ total }} 条正文、{{ quick_total }} 条快讯。头条 {{ lead_total }} · 深读 {{ deep_total }} · 浅读 {{ glance_total }}。全文约 {{ issue_chars }} 字，读完约 {{ issue_minutes }} 分钟。
+
+## ⏱ {{ brief_secs }} 秒读完今天
+
+加粗的是头条与深读，值得往下翻；其余看过这一句就算接收。
+
+{% for row in brief_rows %}{{ row.no }}. {% if row.is_deepish %}**{{ row.text }}**{% endif %}{% if not row.is_deepish %}{{ row.text }}{% endif %}（{{ row.track }}）
+{% endfor %}
+
+{% for card in lead_cards %}## 今日头条 · {{ card.track }}
+
+### {{ card.title }}
+
+{% if card.has_fig %}![{{ card.fig.alt }}]({{ card.fig.src }})
+
+{% if card.synth %}*◔ 示意图：Codex 按原文生成，数字照抄原文；原文没有信息图。*{% endif %}{% if not card.synth %}*图源：原文。*{% endif %}{% if card.note %} **看这里**：{{ card.note }}{% endif %}
+
+{% endif %}**{{ card.text }}**
+
+{% if card.stats %}{% for st in card.stats %}- **{{ st.value }}** {{ st.label }}
+{% endfor %}
+{% endif %}{% if card.logic %}{{ card.logic }}
+
+{% endif %}{% if card.editor_note %}> **为什么重要** · {{ card.editor_note }}
+
+{% endif %}[阅读原文]({{ card.url }})
+
+{% endfor %}{% if deep_cards %}## 深读
+
+{% for card in deep_cards %}### {{ card.title }}
+
+{% if card.has_fig %}![{{ card.fig.alt }}]({{ card.fig.src }})
+
+{% if card.synth %}*◔ 示意图：Codex 按原文生成，数字照抄原文；原文没有信息图。*{% endif %}{% if not card.synth %}*图源：原文。*{% endif %}{% if card.note %} **看这里**：{{ card.note }}{% endif %}
+
+{% endif %}{% if not card.has_fig %}{% if card.stat %}- **{{ card.stat.value }}** {{ card.stat.label }}
+
+{% endif %}{% endif %}**{{ card.text }}**
+
+{% if card.editor_note %}> **为什么重要** · {{ card.editor_note }}
+
+{% endif %}[阅读原文]({{ card.url }}) · {{ card.track }}
+
+{% endfor %}{% endif %}{% if glance_rows %}## 浅读
+
+看过标题和一句话就算接收。
+
+{% for row in glance_rows %}- **{{ row.title }}**{% if row.line %} — {{ row.line }}{% endif %} [原文]({{ row.url }})
+{% endfor %}
+{% endif %}{% if quick_groups %}## 快讯
+
+{% for group in quick_groups %}**{{ group.title }}**
+
+{% for q in group.quick %}- [{{ q.title }}]({{ q.url }}){% if q.line %} — {{ q.line }}{% endif %}
+{% endfor %}
+{% endfor %}{% endif %}---
+
+千里眼 {{ version }} · 原文图版权归原作者；标「示意」的图由 Codex 按原文生成，数字逐字核对过原文。完整版（含每条详情页）见日报页。

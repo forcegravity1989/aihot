@@ -73,6 +73,10 @@ DEEP_TEMPLATE = "deep.html.jinja"
 SPEED_TEMPLATE = "speed.html.jinja"
 SPEED_NAME = "speed.html"
 SPEED_PNG_NAME = "speed.png"
+#: 公众号稿（Markdown，baoyu-post-to-wechat 直接吃）：三部分同一份内容，图走相对路径
+WECHAT_TEMPLATE = "wechat.md.jinja"
+WECHAT_NAME = "wechat.md"
+WECHAT_AUTHOR = "千里眼"
 TIMELINE_TEMPLATE = "timeline.html.jinja"
 ITEM_TEMPLATE = "item.html.jinja"
 
@@ -2829,6 +2833,67 @@ def render_speed(date_str: str, items: Sequence[Dict[str, Any]], now=None,
     return minitpl.render(_load_template(SPEED_TEMPLATE), ctx), int(ctx["page_height"])
 
 
+def _wechat_context(date_str: str, items: Sequence[Dict[str, Any]], now,
+                    quick: Sequence[Dict[str, Any]], media_base: str, speed_png: str) -> Dict[str, Any]:
+    """公众号稿：和首页同一份三部分内容（速读图 → N 秒读完 → 头条 / 深读 / 浅读 / 快讯），
+    外链交给发布脚本转成文末引用。"""
+    layout = _grouped_by_track(items, quick, now, media_base)
+    cards = _speed_cards(layout["groups"])
+    rows = _brief_rows(layout["groups"])
+    by_sig = {str(e.get("sig")): e for e in items}
+    for i, row in enumerate(rows, start=1):
+        row["no"] = str(i)
+        row["is_deepish"] = row["depth"] != "glance"
+    for card in cards:
+        entry = by_sig.get(card["sig"]) or {}
+        card["stats"] = _stats_view(entry) if card["depth"] == "lead" else []
+        logic = _logic_view(entry) if card["depth"] == "lead" else None
+        card["logic"] = (" → ".join(n["text"] for n in logic["chain"])
+                         + ("；但是：" + logic["caveat"] if logic["caveat"] else "")) if logic else ""
+        card["editor_note"] = _editor_note(entry)
+    glance_rows = []
+    for group in layout["groups"]:
+        for item in group["items"]:
+            if item["depth"] == "glance":
+                glance_rows.append({"title": item["title"], "line": item.get("takeaway") or item.get("summary") or "",
+                                    "url": item["url"]})
+    quick_groups = [{"title": g["title"], "quick": g["quick"]} for g in layout["groups"] if g.get("quick")]
+    lead_cards = [c for c in cards if c["depth"] == "lead"]
+    chars = _issue_chars(layout["groups"])
+    sources = {name for entry in list(items) + list(quick or [])
+               for name in (entry.get("source_list") or [entry.get("source")]) if name}
+    head = lead_cards[0]["title"] if lead_cards else (rows[0]["text"] if rows else "")
+    return {
+        "title": "千里眼 AI 日报 {0}｜{1}".format(date_str[5:].replace("-", "."), head)[:64],
+        "author": WECHAT_AUTHOR,
+        "summary": (lead_cards[0]["text"] if lead_cards and lead_cards[0]["text"] else head)[:120],
+        "date": date_str,
+        "version": __version__,
+        "speed_png": speed_png,
+        "source_count": len(sources),
+        "total": len(items),
+        "quick_total": layout["quick_total"],
+        "lead_total": len(lead_cards),
+        "deep_total": sum(1 for c in cards if c["depth"] == "deep"),
+        "glance_total": len(glance_rows),
+        "issue_chars": str(chars),
+        "issue_minutes": str(max(1, int(round(chars / READ_CJK_PER_MIN)))),
+        "brief_secs": str(_brief_seconds(rows)),
+        "brief_rows": rows,
+        "lead_cards": lead_cards,
+        "deep_cards": [c for c in cards if c["depth"] == "deep"],
+        "glance_rows": glance_rows,
+        "quick_groups": quick_groups,
+    }
+
+
+def render_wechat(date_str: str, items: Sequence[Dict[str, Any]], now=None, quick: Sequence[Dict[str, Any]] = (),
+                  media_base: str = MEDIA_BASE_ARCHIVE, speed_png: str = SPEED_PNG_NAME) -> str:
+    now = utils.as_utc(now or utils.now_utc())
+    return minitpl.render(_load_template(WECHAT_TEMPLATE),
+                          _wechat_context(date_str, items, now, quick, media_base, speed_png))
+
+
 def _chrome_binary() -> Optional[str]:
     """找一份能无头截图的 Chrome / Chromium：``QLY_CHROME`` 指定的优先，其次 macOS 应用包与 PATH。"""
     candidates = [os.environ.get("QLY_CHROME") or ""]
@@ -3077,6 +3142,12 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
             except OSError as exc:
                 logger.warning("复制速读图到数据根失败: %s", exc)
 
+    # 公众号稿落在归档目录（图片路径 ../../media/ 与 speed.png 都相对它）
+    try:
+        _write_text(_archive_path(date_str, WECHAT_NAME),
+                    render_wechat(date_str, items, now=now, quick=quick, speed_png=speed_png or ""))
+    except Exception as exc:  # noqa: BLE001 - 公众号稿是副产物，不拖垮首页
+        logger.warning("公众号稿渲染失败: %s", exc)
     try:
         merged = render_merged(date_str, items, now=now, quick=quick, speed_png=speed_png)
         # 归档目录里那份的往期链接要用 ../ 前缀（同级是别的日期目录），数据根那份用 archive/
