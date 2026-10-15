@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="generator" content="qianliyan speed">
+<title>{{ page_title }} · {{ date }} · 速读图</title>
+<style>
+/* 速读图（docs/adr-daily-format.md D0 的第一部分，独立可分享版）：定宽 1080、每块定高，
+   页高由 daily_digest_all._speed_height 算好写进 body，无头 Chrome 按同一个高度截图。
+   不引主题 CSS：这是一张要被转发的图，白天黑夜都得长一个样。 */
+:root { --ink: #1c1917; --ink-2: #57534e; --ink-3: #8a847c; --line: #e7e2da; --paper: #fffaf0; --card: #ffffff;
+  --accent: #b45309; --accent-soft: #fdebd3; --shade: #f5f0e8;
+  --font: -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: "SF Mono", Menlo, Consolas, monospace; }
+html, body { margin: 0; padding: 0; }
+body { width: {{ page_width }}px; height: {{ page_height }}px; overflow: hidden; background: var(--paper); color: var(--ink);
+  font-family: var(--font); -webkit-font-smoothing: antialiased; }
+.wrap { padding: 0 48px; }
+.mast { height: 150px; box-sizing: border-box; display: flex; align-items: center; gap: 18px; border-bottom: 2px solid var(--ink); }
+.logo { width: 56px; height: 56px; border-radius: 16px; background: var(--accent); color: #fff; font-weight: 800; font-size: 28px;
+  display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.mast h1 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; }
+.mast .sub { font-size: 15px; color: var(--ink-2); margin-top: 6px; }
+.mast .right { margin-left: auto; text-align: right; font-family: var(--mono); font-size: 13px; color: var(--ink-2); line-height: 1.7; }
+.k { font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--ink-3); }
+.k b { color: var(--accent); }
+.img { background: var(--shade); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.img { position: relative; }
+.img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.synth { position: absolute; right: 10px; bottom: 10px; font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  background: var(--card); color: var(--ink-3); border: 1px solid var(--line); }
+.t { font-weight: 800; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.x { color: var(--ink-2); line-height: 1.5; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.num { font-family: var(--mono); font-weight: 800; color: var(--accent); text-align: center; line-height: 1.1; padding: 0 20px; }
+.num small { display: block; font-family: var(--font); font-weight: 500; color: var(--ink-2); margin-top: 10px; }
+/* 头条：横幅图 + 文案，整块 600 高 */
+.lead { height: 600px; box-sizing: border-box; margin-top: 40px; display: flex; flex-direction: column; background: var(--card);
+  border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+.lead .img { height: 420px; flex: 0 0 420px; border-bottom: 1px solid var(--line); }
+.lead .num { font-size: 72px; }
+.lead .num small { font-size: 18px; }
+.lead .txt { padding: 18px 24px; display: flex; flex-direction: column; gap: 6px; }
+.lead .t { font-size: 26px; -webkit-line-clamp: 2; }
+.lead .x { font-size: 17px; -webkit-line-clamp: 2; }
+/* 深读：两列，每格 368 高 */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 32px; }
+.tile { height: 368px; box-sizing: border-box; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  overflow: hidden; display: flex; flex-direction: column; }
+.tile .img { height: 236px; flex: 0 0 236px; border-bottom: 1px solid var(--line); }
+.tile .num { font-size: 52px; }
+.tile .num small { font-size: 14px; }
+.tile .txt { padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; }
+.tile .t { font-size: 18px; -webkit-line-clamp: 2; }
+.tile .x { font-size: 14px; -webkit-line-clamp: 2; }
+/* 浅读：标题一行，看过就算接收 */
+.glance { margin-top: 40px; }
+.glance .k { height: 44px; box-sizing: border-box; display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.glance ol { list-style: none; margin: 0; padding: 0; }
+.glance li { height: 46px; box-sizing: border-box; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--line);
+  font-size: 16px; white-space: nowrap; overflow: hidden; }
+.glance li .n { font-family: var(--mono); font-size: 13px; color: var(--ink-3); width: 24px; flex: 0 0 auto; }
+.glance li .tr { font-size: 12px; color: var(--ink-3); flex: 0 0 auto; padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px; }
+.glance li .ti { overflow: hidden; text-overflow: ellipsis; }
+.foot { height: 104px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; color: var(--ink-3); font-family: var(--mono); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="logo">千</div>
+    <div><h1>千里眼 · AI 日报</h1><div class="sub">{{ date_label }} · 正文 {{ total }} 条 · 读完全文约 {{ issue_minutes }} 分钟</div></div>
+    <div class="right">头条 {{ lead_total }} · 深读 {{ deep_total }} · 浅读 {{ glance_total }}<br>图是原文图 · 一句话是编辑导读</div>
+  </header>
+  {% for card in lead_cards %}
+  <section class="lead">
+    <div class="img">{% if card.has_fig %}<img src="{{ card.fig.src }}" alt="{{ card.fig.alt }}">{% endif %}{% if card.synth %}<span class="synth">◔ 示意 · Codex 生成</span>{% endif %}{% if not card.has_fig %}<div class="num">{% if card.stat %}{{ card.stat.value }}<small>{{ card.stat.label }}</small>{% endif %}{% if not card.stat %}{{ card.track }}<small>原文没有信息图</small>{% endif %}</div>{% endif %}</div>
+    <div class="txt"><span class="k"><b>头条</b> · {{ card.track }}</span><div class="t">{{ card.title }}</div>{% if card.text %}<div class="x">{{ card.text }}</div>{% endif %}</div>
+  </section>
+  {% endfor %}
+  {% if deep_cards %}<div class="grid">{% for card in deep_cards %}<section class="tile">
+    <div class="img">{% if card.has_fig %}<img src="{{ card.fig.src }}" alt="{{ card.fig.alt }}">{% endif %}{% if card.synth %}<span class="synth">◔ 示意 · Codex 生成</span>{% endif %}{% if not card.has_fig %}<div class="num">{% if card.stat %}{{ card.stat.value }}<small>{{ card.stat.label }}</small>{% endif %}{% if not card.stat %}{{ card.track }}<small>原文没有信息图</small>{% endif %}</div>{% endif %}</div>
+    <div class="txt"><span class="k"><b>深读</b> · {{ card.track }}</span><div class="t">{{ card.title }}</div>{% if card.text %}<div class="x">{{ card.text }}</div>{% endif %}</div>
+  </section>{% endfor %}</div>{% endif %}
+  {% if glance_rows %}<section class="glance"><div class="k">浅读 · 看过标题就算接收</div><ol>{% for row in glance_rows %}<li><span class="n">{{ row.no }}</span><span class="tr">{{ row.track }}</span><span class="ti">{{ row.title }}</span></li>{% endfor %}</ol></section>{% endif %}
+  <footer class="foot"><span>千里眼 {{ version }} · {{ date }}</span><span>原文图版权归原作者 · 完整版与出处见日报页</span></footer>
+</div>
+</body>
+</html>

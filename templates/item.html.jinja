@@ -31,13 +31,13 @@
 
   {% if has_images %}
   <section class="dt-sec dt-figures">
-    {% for fig in images %}<figure class="src-fig"><img src="{{ fig.src }}" alt="{{ fig.alt }}" loading="lazy"><figcaption>{% if fig.caption %}<span>{{ fig.caption }}</span>{% endif %}<span class="src-credit">图源：<a href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ source_text }} 原文</a></span></figcaption></figure>{% endfor %}
+    {% for fig in images %}<figure class="src-fig"><img src="{{ fig.src }}" alt="{{ fig.alt }}" loading="lazy"><figcaption>{% if fig.note %}<span class="fig-note">看这里：{{ fig.note }}</span>{% endif %}{% if fig.caption %}<span>{{ fig.caption }}</span>{% endif %}{% if fig.synth %}<span class="src-credit synth-credit">◔ 示意 · Codex 按<a href="{{ url }}" target="_blank" rel="noopener noreferrer">原文</a>生成，数字照抄原文；原文没有信息图</span>{% endif %}{% if not fig.synth %}<span class="src-credit">图源：<a href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ source_text }} 原文</a></span>{% endif %}</figcaption></figure>{% endfor %}
   </section>
   {% endif %}
 
   <section class="dt-sec">
       {% if meme %}<blockquote class="viz-meme">{{ meme }}</blockquote>{% endif %}
-      {% if logic %}<div class="viz-logic"><div class="lg-chain">{% for n in logic.chain %}<div class="lg-node {{ n.cls }}">{{ n.text }}</div>{% endfor %}</div>{% if logic.evidence %}<div class="lg-row"><span class="lg-k">证据</span>{% for ev in logic.evidence %}<span class="lg-ev">{{ ev }}</span>{% endfor %}</div>{% endif %}{% if logic.caveat %}<div class="lg-row lg-caveat"><span class="lg-k">但是</span><span>{{ logic.caveat }}</span></div>{% endif %}</div>{% endif %}</section>
+      {% if logic %}<div class="synth-k">示意 · 编辑整理，数字照抄原文</div><div class="viz-logic"><div class="lg-chain">{% for n in logic.chain %}<div class="lg-node {{ n.cls }}">{{ n.text }}</div>{% endfor %}</div>{% if logic.evidence %}<div class="lg-row"><span class="lg-k">证据</span>{% for ev in logic.evidence %}<span class="lg-ev">{{ ev }}</span>{% endfor %}</div>{% endif %}{% if logic.caveat %}<div class="lg-row lg-caveat"><span class="lg-k">但是</span><span>{{ logic.caveat }}</span></div>{% endif %}</div>{% endif %}</section>
   {% if stats %}<section class="dt-sec"><div class="viz-stats">{% for st in stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div></section>{% endif %}
   {% if chart %}<section class="dt-sec"><figure class="viz-chart"><figcaption>{{ chart.title }}</figcaption>{{ chart.svg|safe }}</figure></section>{% endif %}
 

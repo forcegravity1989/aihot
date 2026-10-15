@@ -11,6 +11,10 @@
 #   brief-prompt [DAY]   打印写要点的简报（入选条目 + 原文）
 #   apply-briefs FILE [DAY]  把要点 JSON 写进定稿并重新渲染
 #   stage   OUT_DIR      把数据根的 daily.html 与它链接的详情页、原文配图整理进 OUT_DIR，供发布 artifact
+#   wechat  OUT_DIR [DAY]  把公众号稿 wechat.md 与它的配图整理成发布包（article.md + imgs/），交 baoyu-post-to-wechat
+#   figures [DAY]        列出每条的密度档与原文配图（下标 / 本地绝对路径 / kind / 图注），定主图用
+#   depth   FILE [DAY]   把定档 JSON（{"depth":[{sig,depth,figure,figure_note,synth_image}]}）写进定稿并重新渲染
+#   synth   OUT_DIR [DAY] [SIG,SIG]  给头条 / 深读里没有信息图的条目用 Codex 出示意图（每张 3~5 分钟），打印 image=<sig>\t<png>
 #
 # DAY 缺省为今天（UTC，与 qly-daily.sh 一致）。
 
@@ -50,7 +54,21 @@ print("edited_by={0}".format((draft or {}).get("edited_by") or ("human" if picke
 print("final={0}".format("yes" if final else "no"))
 finals = (final or {}).get("items") or []
 print("briefs={0}/{1}".format(sum(1 for e in finals if e.get("takeaway") or e.get("brief")), len(finals)))
-print("distilled={0}/{1}".format(sum(1 for e in finals if e.get("takeaway") and e.get("logic")), len(finals)))
+# 提炼按密度档算（ADR D1）：每条都要一句结论，只有头条还要逻辑链
+def _distilled(e):
+    return bool(e.get("takeaway")) and (e.get("depth") != "lead" or bool(e.get("logic")))
+print("distilled={0}/{1}".format(sum(1 for e in finals if _distilled(e)), len(finals)))
+depths = {"lead": 0, "deep": 0, "glance": 0, "": 0}
+for e in finals:
+    depths[e.get("depth") if e.get("depth") in depths else ""] += 1
+print("depths=lead:{0},deep:{1},glance:{2},none:{3}".format(depths["lead"], depths["deep"], depths["glance"], depths[""]))
+def _has_info_fig(e):
+    return any(isinstance(f, dict) and f.get("kind", "article") in ("article", "synth") and f.get("file")
+               for f in e.get("figures") or [])
+print("deep_without_figure={0}".format(",".join(e.get("sig", "") for e in finals
+                                                if e.get("depth") in ("lead", "deep") and not _has_info_fig(e))))
+print("figure_notes={0}/{1}".format(sum(1 for e in finals if e.get("depth") in ("lead", "deep") and e.get("figure_note")),
+                                     depths["lead"] + depths["deep"]))
 from qianliyan.pipeline import tracks
 cfg = tracks.load()
 counts = tracks.count(finals or picked, cfg)
@@ -140,12 +158,112 @@ for name in sorted(media):
         (out / "media").mkdir(exist_ok=True)
         shutil.copyfile(data / "media" / name, out / "media" / name)
         copied.append("media/" + name)
+# 速读图（第一部分的独立 PNG，页首「⤓ 速读图」链到它）
+for extra in ("speed.png",):
+    if (data / extra).is_file() and 'href="{0}"'.format(extra) in page:
+        shutil.copyfile(data / extra, out / extra)
+        copied.append(extra)
 print("staged={0}".format(out))
 print("files=daily.html " + " ".join(stories + copied))
 PYEOF
         ;;
+    wechat)
+        # 公众号稿发布包：archive/<DAY>/wechat.md + 它引用的配图 + 速读图，图片改成包内相对路径 imgs/，
+        # 交给 baoyu-post-to-wechat（API 模式会逐张上传正文图；封面放 imgs/cover.png）
+        OUT="${1:?用法: qly-publish.sh wechat OUT_DIR [DAY]}"
+        DAY="${2:-$(date -u +%Y-%m-%d)}"
+        "$PY" - "$QLY_DATA_DIR" "$OUT" "$DAY" <<'PYEOF2'
+import re, shutil, sys
+from pathlib import Path
+
+data, out, day = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+src = data / "archive" / day / "wechat.md"
+if not src.is_file():
+    sys.exit("wechat.md 不存在：先 --html 重出 {0}".format(day))
+(out / "imgs").mkdir(parents=True, exist_ok=True)
+text = src.read_text(encoding="utf-8")
+copied = []
+
+def local(match):
+    alt, ref = match.group(1), match.group(2)
+    if ref.startswith("http"):
+        return match.group(0)
+    path = (src.parent / ref).resolve()
+    if not path.is_file():
+        return ""  # 图丢了就不留破图
+    shutil.copyfile(path, out / "imgs" / path.name)
+    copied.append("imgs/" + path.name)
+    return "![{0}](imgs/{1})".format(alt, path.name)
+
+text = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)\)", local, text)
+(out / "article.md").write_text(text, encoding="utf-8")
+print("article={0}".format(out / "article.md"))
+print("images={0}".format(len(copied)))
+print("cover={0}".format("yes" if (out / "imgs" / "cover.png").is_file() else "missing"))
+PYEOF2
+        ;;
+    figures)
+        DAY="${1:-$(date -u +%Y-%m-%d)}"
+        "$PY" - "$QLY_DATA_DIR" "$DAY" <<'PYEOF2'
+import json, sys
+from pathlib import Path
+data, day = Path(sys.argv[1]), sys.argv[2]
+doc = json.loads((data / "archive" / day / "digest-final.json").read_text(encoding="utf-8"))
+items = sorted(doc.get("items") or [], key=lambda e: e.get("editor_rank") or 999)
+for e in items:
+    title = e.get("title_zh") or (e.get("extra") or {}).get("title_zh") or e.get("title") or ""
+    print("== {0}\tdepth={1}\tchars={2}\t{3}".format(e.get("sig"), e.get("depth") or "-",
+          (e.get("extra") or {}).get("fulltext_chars") or 0, title[:60]))
+    for i, f in enumerate(e.get("figures") or []):
+        if not isinstance(f, dict):
+            continue
+        path = data / str(f.get("file") or "")
+        print("   [{0}] kind={1}\t{2}\t{3}".format(i, f.get("kind") or "article",
+              path if path.is_file() else "(missing)", (f.get("caption") or f.get("alt") or "")[:60]))
+print("status=ok")
+PYEOF2
+        ;;
+    depth)
+        FILE="${1:?用法: qly-publish.sh depth FILE [DAY]}"
+        DAY="${2:-$(date -u +%Y-%m-%d)}"
+        out="$("$PY" -m qianliyan.cli.daily_digest_all --apply-depth "$FILE" --html --date "$DAY" 2>&1)"
+        rc=$?
+        printf '%s\n' "$out" | grep -v -i 'warn'
+        exit $rc
+        ;;
+    synth)
+        # 示意图：提示词 = 风格模板 + 日报提炼 + 原文全文；Codex 出图 → 铺象牙底 → 缩到 1280 宽。
+        # 出不来就跳过那条（页面退回数字卡），不阻塞出刊
+        OUT="${1:?用法: qly-publish.sh synth OUT_DIR [DAY] [SIG,SIG]}"
+        DAY="${2:-$(date -u +%Y-%m-%d)}"
+        SIGS="${3:-}"
+        GEN="$HOME/.baoyu-skills/codex-gen-images.sh"
+        FLAT="$HOME/.baoyu-skills/flatten-alpha.swift"
+        [ -x "$GEN" ] || [ -f "$GEN" ] || { echo "status=skipped reason=no-codex-gen-images.sh"; exit 0; }
+        mkdir -p "$OUT"
+        "$PY" -m qianliyan.cli.daily_digest_all --synth-prompts "$OUT" --sigs "$SIGS" --date "$DAY" 2>/dev/null | grep -v -i warn
+        specs=()
+        for pf in "$OUT"/prompts/*.md; do
+            [ -f "$pf" ] || continue
+            sig="$(basename "$pf" .md)"
+            [ -n "$SIGS" ] && [[ ",$SIGS," != *",$sig,"* ]] && continue
+            specs+=("$sig.md=$sig.png")
+        done
+        [ ${#specs[@]} -eq 0 ] && { echo "status=ok images=0"; exit 0; }
+        bash "$GEN" "$OUT" "${specs[@]}"
+        n=0
+        for spec in "${specs[@]}"; do
+            png="$OUT/${spec##*=}"; sig="${spec%%.md=*}"
+            [ -f "$png" ] || { echo "missing=$sig"; continue; }
+            [ -f "$FLAT" ] && swift "$FLAT" FFFAF0 "$png" >/dev/null 2>&1
+            sips -Z 1280 "$png" >/dev/null 2>&1
+            printf 'image=%s\t%s\n' "$sig" "$png"
+            n=$((n+1))
+        done
+        echo "status=ok images=$n"
+        ;;
     *)
-        sed -n '2,16p' "$0"
+        sed -n '2,20p' "$0"
         exit 1
         ;;
 esac

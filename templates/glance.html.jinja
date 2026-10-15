@@ -11,8 +11,8 @@
 <div class="qly-glance qly-view-inner" id="view-glance-inner">
   <div class="glance-head">
     <div class="qly-page-head">
-      <h1 class="qly-page-title">📑 今日日报</h1>
-      <div class="qly-page-sub">{{ date }} · 正文 {{ total }} 条 · 快讯 {{ quick_total }} 条 · {{ group_count }} 栏</div>
+      <h1 class="qly-page-title">{% if part_no %}<span class="part-no">{{ part_no }}</span> {% endif %}📑 {{ body_title }}</h1>
+      <div class="qly-page-sub">{{ date }} · 深读 {{ deep_total }} 条 · 浅读 {{ glance_total }} 条 · 快讯 {{ quick_total }} 条 · 本期约 {{ issue_chars }} 字 · {{ issue_minutes }} 分钟</div>
     </div>
     <button type="button" class="btn mark-all" id="glance-mark-all">✅ 全部已接收</button>
   </div>
@@ -20,7 +20,7 @@
     <span class="trk-bar-k">我关注</span>
     <span class="trk-chip is-fixed" title="所有人必看">模型发布</span>
     {% for chip in chips %}<button type="button" class="trk-chip" data-follow="{{ chip.id }}" aria-pressed="{{ chip.pressed }}">{{ chip.title }}<span class="n">{{ chip.count }}</span></button>{% endfor %}
-    <span class="trk-bar-hint">关注的方向展开在前，其余只看标题和结论</span>
+    <span class="trk-bar-hint">关注的方向排在前面；每条的深浅由条目自己决定</span>
   </div>{% endif %}
   <hr class="qly-divider">
   <div class="trk-list">
@@ -32,10 +32,9 @@
       {% if group.everyone %}<span class="report-section-kicker">必看</span>{% endif %}
       {% if group.blurb %}<span class="trk-blurb">{{ group.blurb }}</span>{% endif %}
       <span class="report-section-count">{{ group.count }} 条{% if group.quick_count %} · 快讯 {{ group.quick_count }}{% endif %}</span>
-      {% if not group.everyone %}<button type="button" class="trk-expand" data-track="{{ group.id }}">展开</button>{% endif %}
     </div>
     {% for item in group.items %}
-    <article class="report-entry glance-row{% if item.is_lead %} is-lead{% endif %}{% if item.figure %} has-fig{% endif %}" id="e-{{ item.sig }}" data-sig="{{ item.sig }}" data-track="{{ group.id }}">
+    <article class="report-entry glance-row {{ item.depth_cls }}{% if item.is_lead %} is-lead{% endif %}{% if item.figure %} has-fig{% endif %}" id="e-{{ item.sig }}" data-sig="{{ item.sig }}" data-track="{{ group.id }}" data-depth="{{ item.depth }}">
       <div class="report-entry-meta">
         <span class="timeline-source">{{ item.source }}</span>
         {% if item.is_lead %}<span class="badge badge-track">{{ item.track_title }}</span>{% endif %}
@@ -45,16 +44,17 @@
       </div>
       <h3 class="report-entry-title"><a class="gtitle" href="{{ item.detail_href }}">{{ item.title }}</a>{% if item.read_text %} <span class="read-time">（{{ item.read_text }}）</span>{% endif %}</h3>
       {% if item.takeaway %}<p class="viz-takeaway">{{ item.takeaway }}</p>{% endif %}
-      {% if item.figure %}<figure class="src-fig card-fig"><a href="{{ item.detail_href }}"><img src="{{ item.figure.src }}" alt="{{ item.figure.alt }}" loading="lazy"></a><figcaption>{% if item.figure.caption %}<span>{{ item.figure.caption }}</span>{% endif %}<span class="src-credit">图源：原文{% if item.figure_more %} · 详情页另有 {{ item.figure_more }} 张{% endif %}</span></figcaption></figure>{% endif %}
+      {% for fig in item.figures %}<figure class="src-fig card-fig"><a href="{{ item.detail_href }}"><img src="{{ fig.src }}" alt="{{ fig.alt }}" loading="lazy"></a><figcaption>{% if fig.note %}<span class="fig-note">看这里：{{ fig.note }}</span>{% endif %}{% if fig.caption %}<span>{{ fig.caption }}</span>{% endif %}{% if fig.synth %}<span class="src-credit synth-credit">◔ 示意 · Codex 按<a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">原文</a>生成，数字照抄原文；原文没有信息图</span>{% endif %}{% if not fig.synth %}<span class="src-credit">图源：<a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">原文</a>{% if fig.more %} · 详情页另有 {{ fig.more }} 张{% endif %}</span>{% endif %}</figcaption></figure>{% endfor %}
       <div class="entry-body">
-      {% if item.stats %}<div class="viz-stats">{% for st in item.stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div>{% endif %}
+      {% if item.has_synth %}<div class="synth-k">示意 · 编辑整理，数字照抄原文</div>{% endif %}
+      {% if item.stats %}{% if not item.figure %}<div class="viz-stats">{% for st in item.stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div>{% endif %}{% endif %}
+      {% if item.stats %}{% if item.figure %}{% if item.is_lead %}<div class="viz-stats">{% for st in item.stats %}<div class="viz-stat"><b>{{ st.value }}</b><span>{{ st.label }}</span></div>{% endfor %}</div>{% endif %}{% endif %}{% endif %}
       {% if item.logic %}<div class="viz-logic"><div class="lg-chain">{% for n in item.logic.chain %}<div class="lg-node {{ n.cls }}">{{ n.text }}</div>{% endfor %}</div>{% if item.logic.evidence %}<div class="lg-row"><span class="lg-k">证据</span>{% for ev in item.logic.evidence %}<span class="lg-ev">{{ ev }}</span>{% endfor %}</div>{% endif %}{% if item.logic.caveat %}<div class="lg-row lg-caveat"><span class="lg-k">但是</span><span>{{ item.logic.caveat }}</span></div>{% endif %}</div>{% endif %}
       {% if item.meme %}<blockquote class="viz-meme">{{ item.meme }}</blockquote>{% endif %}
       {% if item.chart %}{% if not item.figure %}<figure class="viz-chart"><figcaption>{{ item.chart.title }}</figcaption>{{ item.chart.svg|safe }}</figure>{% endif %}{% endif %}
-      {% if not item.has_distill %}{% if item.brief_head %}<ul class="report-entry-brief">{% for point in item.brief_head %}<li>{{ point }}</li>{% endfor %}</ul>{% endif %}
-      {% if item.brief_more %}<details class="brief-more"><summary>展开其余 {{ item.brief_more_n }} 条要点</summary><ul class="report-entry-brief">{% for point in item.brief_more %}<li>{{ point }}</li>{% endfor %}</ul></details>{% endif %}{% endif %}
+      {% if item.brief_head %}<ul class="report-entry-brief">{% for point in item.brief_head %}<li>{{ point }}</li>{% endfor %}</ul>{% endif %}
       {% if item.summary %}<p class="report-entry-summary">{{ item.summary }}</p>{% endif %}
-      {% if item.editor_note %}<p class="editor-note"><b>编辑短评</b> · {{ item.editor_note }}</p>{% endif %}
+      {% if item.editor_note %}<p class="editor-note"><b>为什么重要</b> · {{ item.editor_note }}</p>{% endif %}
       <div class="report-entry-meta" style="margin-top:8px">
         <a class="chip" href="{{ item.detail_href }}">详情页 →</a>
         <a class="chip glink" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">原文 ↗</a>
@@ -78,6 +78,13 @@
   font-size: 12px; cursor: pointer; padding: 0 4px; margin-left: auto; }
 .gread:hover { color: var(--accent-cyan-fg); }
 .glance-row.is-read { opacity: .42; }
+/* 三档密度（docs/adr-daily-format.md）：浅读 = 标题 + 一句结论 + 原文链接，一行能扫完 */
+.glance-row.is-glance { padding-top: 10px; padding-bottom: 10px; }
+.glance-row.is-glance .report-entry-title { font-size: 15.5px; }
+.glance-row.is-glance .viz-takeaway { font-size: 14px; font-weight: 500; color: var(--text-1); margin-top: 4px; }
+.glance-row.is-glance .entry-body > .report-entry-meta { margin-top: 4px !important; }
+.glance-row.is-deep .report-entry-title { font-size: 17px; }
+
 .glance-row.is-read .gtitle { font-weight: 400; text-decoration: line-through; }
 .glance-empty { color: var(--text-2); padding: 24px 4px; }
 /* 方向（issue #49）：关注的展开，其余收成「标题 + 一句结论」 */
@@ -94,18 +101,9 @@
 .trk-chip:focus-visible, .trk-expand:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 2px; }
 .trk-list { display: flex; flex-direction: column; }
 .trk-blurb { font-size: 12px; color: var(--text-2); }
-.trk-expand { border: 1px solid var(--border); background: transparent; color: var(--text-1); font: inherit;
-  font-size: 11.5px; border-radius: 6px; padding: 1px 8px; cursor: pointer; }
-.trk-sec:not(.is-compact) .trk-expand { display: none; }
-.trk-sec.is-compact .entry-body { display: none; }
-.trk-sec.is-compact .glance-row { padding-top: 10px; padding-bottom: 10px; }
-.trk-sec.is-compact .viz-takeaway { margin-bottom: 0; }
-/* 没关注的方向：一行标题 + 一句结论，有原文配图就在右侧放缩略图 */
-.trk-sec.is-compact .glance-row.has-fig { display: grid; grid-template-columns: minmax(0, 1fr) 132px; column-gap: 16px; }
-.trk-sec.is-compact .glance-row.has-fig > * { grid-column: 1; }
-.trk-sec.is-compact .glance-row.has-fig > .card-fig { grid-column: 2; grid-row: 1 / span 3; margin: 0; align-self: center; }
-.trk-sec.is-compact .card-fig img { max-height: 88px; }
-.trk-sec.is-compact .card-fig figcaption { display: none; }
+/* 「关注」只决定方向的顺序（关注的排前面）；密度由每条的 depth 决定（ADR D1），
+   不再把没关注的方向整栏收成标题——深读条目在哪一栏都是深读 */
+.trk-sec.is-compact .report-section-head { opacity: .85; }
 .read-time { font-size: 12px; font-weight: 400; color: var(--text-2); white-space: nowrap; }
 .badge-track { background: var(--theme-accent-soft); color: var(--theme-accent-fg); }
 .quick-links { margin-top: 12px; padding: 12px 16px; border-radius: var(--radius); background: var(--bg-1);
@@ -126,11 +124,17 @@
   function save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
   var state = load();
   var rows = document.querySelectorAll(".qly-glance .glance-row");
+  // 首页的速读行（②）与图块（①）是同一条的镜像：打勾、置灰同步
+  var mirrors = document.querySelectorAll(".rb-row[data-sig], .sp-tile[data-sig]");
   function apply() {
-    for (var i = 0; i < rows.length; i++) {
-      var sig = rows[i].getAttribute("data-sig");
-      if (sig && state[sig]) { rows[i].classList.add("is-read"); }
-      else { rows[i].classList.remove("is-read"); }
+    var i, sig;
+    for (i = 0; i < rows.length; i++) {
+      sig = rows[i].getAttribute("data-sig");
+      rows[i].classList.toggle("is-read", !!(sig && state[sig]));
+    }
+    for (i = 0; i < mirrors.length; i++) {
+      sig = mirrors[i].getAttribute("data-sig");
+      mirrors[i].classList.toggle("is-read", !!(sig && state[sig]));
     }
     // 侧栏「本期导读」据此刷新已读勾与进度
     try { document.dispatchEvent(new CustomEvent("qly-read-change")); } catch (e) {}
@@ -147,7 +151,8 @@
     } catch (e) {}
   }
   function mark(sig) { if (!sig) { return; } state[sig] = 1; save(state); apply(); postHistory(sig); }
-  var btns = document.querySelectorAll(".qly-glance .gread");
+  // 「标记已读」按钮在正文行里，也在页首速读行的勾上（ADR D0：浅读看过一句就算接收）
+  var btns = document.querySelectorAll(".gread");
   for (var b = 0; b < btns.length; b++) {
     btns[b].addEventListener("click", function (ev) {
       ev.preventDefault();
@@ -207,13 +212,6 @@
       if (at >= 0) { follow.splice(at, 1); } else { follow.push(id); }
       try { localStorage.setItem(KEY, JSON.stringify(follow)); } catch (e) {}
       apply();
-    });
-  }
-  var ex = document.querySelectorAll(".qly-glance .trk-expand");
-  for (var j = 0; j < ex.length; j++) {
-    ex[j].addEventListener("click", function (ev) {
-      var sec = document.getElementById("trk-" + ev.currentTarget.getAttribute("data-track"));
-      if (sec) { sec.classList.remove("is-compact"); }
     });
   }
   apply();
