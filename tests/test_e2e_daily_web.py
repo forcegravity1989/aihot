@@ -1403,3 +1403,48 @@ def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_
     assert refs and all(r.startswith("imgs/") for r in refs), refs
     assert all((out / r).is_file() for r in refs)
     assert "../../media/" not in article
+
+
+def test_scheduled_task_commands_cover_the_new_editing_steps(tmp_data_dir, monkeypatch, tmp_path):
+    """定时任务只能调 qly-publish.sh：status 要按密度档报提炼覆盖（浅读不要逻辑链）、报哪些头条 / 深读
+    没有信息图；figures 列出可选主图；depth 写定档并重新渲染；--synth-prompts 只挑没有信息图的头条 / 深读。"""
+    import subprocess
+    from pathlib import Path
+
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    repo = Path(daily.__file__).resolve().parents[2]
+    env = dict(os.environ, QLY_DATA_DIR=str(tmp_data_dir), QLY_SPEED_PNG="0")
+
+    def run(*args):
+        res = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh")] + list(args),
+                             capture_output=True, text=True, env=env)
+        assert res.returncode == 0, res.stdout + res.stderr
+        return res.stdout
+
+    status = dict(line.split("=", 1) for line in run("status", date_str).splitlines() if "=" in line)
+    total = int(status["distilled"].split("/")[1])
+    assert status["distilled"] == "{0}/{0}".format(total), "浅读、深读不要求逻辑链"
+    assert status["depths"].startswith("lead:1,")
+    assert roles["numbers"] in status["deep_without_figure"].split(","), "没有原文信息图的深读要点名"
+
+    figs = run("figures", date_str)
+    lead = roles["figured"][0]
+    assert "== {0}\tdepth=lead".format(lead) in figs and "kind=article" in figs and "aaaaaaaaaaaaaaaa.png" in figs
+
+    out = tmp_path / "synth"
+    res = subprocess.run([str(Path(daily.__file__).resolve().parents[2] / ".venv" / "bin" / "python")
+                          if (repo / ".venv" / "bin" / "python").exists() else "python3",
+                          "-m", "qianliyan.cli.daily_digest_all", "--synth-prompts", str(out), "--date", date_str],
+                         capture_output=True, text=True, env=env, cwd=str(repo))
+    assert res.returncode == 0, res.stderr
+    picked = sorted(p.stem for p in (out / "prompts").glob("*.md"))
+    assert picked == [roles["numbers"]], picked
+    prompt = (out / "prompts" / "{0}.md".format(roles["numbers"])).read_text(encoding="utf-8")
+    assert prompt.startswith("aspect: 16:9") and "【原文全文】" in prompt and "120 ms" in prompt
+
+    plan = tmp_path / "depth.json"
+    plan.write_text(json.dumps({"depth": [{"sig": roles["thin"][0], "depth": "glance"},
+                                          {"sig": lead, "depth": "lead", "figure_note": "改过的图注"}]}),
+                    encoding="utf-8")
+    assert "密度档已写入 2 条" in run("depth", str(plan), date_str)
+    assert "看这里：改过的图注" in client.get("/daily").text
