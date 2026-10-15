@@ -198,7 +198,28 @@ def local(match):
 text = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)\)", local, text)
 (out / "article.md").write_text(text, encoding="utf-8")
 print("article={0}".format(out / "article.md"))
+
+# HTML 正文（和首页同一套样式）：<img src> 同样改成包内 imgs/；发布脚本读 article.html，
+# 标题 / 摘要从同名的 article.md frontmatter 取
+html_src = src.with_suffix(".html")
+if html_src.is_file():
+    def local_img(match):
+        ref = match.group(2)
+        if ref.startswith("http"):
+            return match.group(0)
+        path = (src.parent / ref).resolve()
+        if not path.is_file():
+            return ""
+        shutil.copyfile(path, out / "imgs" / path.name)
+        copied.append("imgs/" + path.name)
+        return '{0}imgs/{1}{2}'.format(match.group(1), path.name, match.group(3))
+    html = re.sub(r'(<img\b[^>]*\bsrc=")([^"]+)(")', local_img, html_src.read_text(encoding="utf-8"))
+    (out / "article.html").write_text(html, encoding="utf-8")
+    print("html={0}".format(out / "article.html"))
 print("images={0}".format(len(copied)))
+# 封面：放在 archive/<日>/cover.png（数据目录，重启不丢），打包时带上
+if (src.parent / "cover.png").is_file():
+    shutil.copyfile(src.parent / "cover.png", out / "imgs" / "cover.png")
 print("cover={0}".format("yes" if (out / "imgs" / "cover.png").is_file() else "missing"))
 PYEOF2
         ;;
@@ -218,7 +239,7 @@ for e in items:
         if not isinstance(f, dict):
             continue
         path = data / str(f.get("file") or "")
-        print("   [{0}] kind={1}\t{2}\t{3}".format(i, f.get("kind") or "article",
+        print("   [{0}] kind={1}\t{2}\t{3}".format(f.get("n", i), f.get("kind") or "article",
               path if path.is_file() else "(missing)", (f.get("caption") or f.get("alt") or "")[:60]))
 print("status=ok")
 PYEOF2

@@ -11,7 +11,7 @@
 <div class="qly-glance qly-view-inner" id="view-glance-inner">
   <div class="glance-head">
     <div class="qly-page-head">
-      <h1 class="qly-page-title">{% if part_no %}<span class="part-no">{{ part_no }}</span> {% endif %}📑 {{ body_title }}</h1>
+      <h1 class="qly-page-title">{% if part_no %}<span class="part-no">{{ part_no }}</span> {% endif %}{{ body_title }}</h1>
       <div class="qly-page-sub">{{ date }} · 深读 {{ deep_total }} 条 · 浅读 {{ glance_total }} 条 · 快讯 {{ quick_total }} 条 · 本期约 {{ issue_chars }} 字 · {{ issue_minutes }} 分钟</div>
     </div>
     <button type="button" class="btn mark-all" id="glance-mark-all">✅ 全部已接收</button>

@@ -9,7 +9,7 @@ coverImage: imgs/cover.png
 
 > 千里眼每天从 {{ source_count }} 个信源里选 {{ total }} 条正文、{{ quick_total }} 条快讯。头条 {{ lead_total }} · 深读 {{ deep_total }} · 浅读 {{ glance_total }}。全文约 {{ issue_chars }} 字，读完约 {{ issue_minutes }} 分钟。
 
-## ⏱ {{ brief_secs }} 秒读完今天
+## {{ brief_secs }} 秒读完今天
 
 加粗的是头条与深读，值得往下翻；其余看过这一句就算接收。
 
@@ -22,7 +22,7 @@ coverImage: imgs/cover.png
 
 {% if card.has_fig %}![{{ card.fig.alt }}]({{ card.fig.src }})
 
-{% if card.synth %}*◔ 示意图：Codex 按原文生成，数字照抄原文；原文没有信息图。*{% endif %}{% if not card.synth %}*图源：原文。*{% endif %}{% if card.note %} **看这里**：{{ card.note }}{% endif %}
+{% if card.synth %}◔ 示意图：Codex 按原文生成，数字照抄原文；原文没有信息图。{% endif %}{% if not card.synth %}图源：原文。{% endif %}{% if card.note %} **看这里**：{{ card.note }}{% endif %}
 
 {% endif %}**{{ card.text }}**
 
@@ -40,7 +40,7 @@ coverImage: imgs/cover.png
 
 {% if card.has_fig %}![{{ card.fig.alt }}]({{ card.fig.src }})
 
-{% if card.synth %}*◔ 示意图：Codex 按原文生成，数字照抄原文；原文没有信息图。*{% endif %}{% if not card.synth %}*图源：原文。*{% endif %}{% if card.note %} **看这里**：{{ card.note }}{% endif %}
+{% if card.synth %}◔ 示意图：Codex 按原文生成，数字照抄原文；原文没有信息图。{% endif %}{% if not card.synth %}图源：原文。{% endif %}{% if card.note %} **看这里**：{{ card.note }}{% endif %}
 
 {% endif %}{% if not card.has_fig %}{% if card.stat %}- **{{ card.stat.value }}** {{ card.stat.label }}
 
