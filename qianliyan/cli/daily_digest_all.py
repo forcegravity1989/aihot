@@ -122,7 +122,9 @@ DRAFT_FIELDS = (
 #: 不用自动生成覆盖。这是本项目「Agent 在环」的落点：选稿、中文化、深读提炼这些需要
 #: 判断力的活由编辑做，代码只负责取原料（正文/字幕）与渲染。
 EDITOR_FIELDS = ("title_zh", "summary_zh", "editor_note", "distill", "editor_rank", "brief", "stats", "chart",
-                 "takeaway", "meme", "logic", "track", "quick", "depth", "figure_note")
+                 "takeaway", "meme", "logic", "track", "quick", "depth", "figure_note",
+                 # 编辑定的主图下标与挂上的示意图：定稿重跑会重新抓配图，靠这两个字段把选择接回来
+                 "figure_pick", "synth_figure")
 
 #: 条目的密度档（docs/adr-daily-format.md）：头条 lead / 深读 deep / 浅读 glance。
 #: 深浅按**条目**分，不按方向——方向只管顺序与分组。编辑给的 depth 优先；没给的按
@@ -1442,6 +1444,22 @@ def _pick_figure(entry: Dict[str, Any], index: Optional[int]) -> None:
     entry["figures"] = figures
 
 
+def _reapply_figure_choice(entry: Dict[str, Any]) -> None:
+    """定稿重跑（07:30 的定时抓取会再 finalize 一次）会重新抓原文配图；把编辑定过的主图与示意图接回来。"""
+    pick = entry.get("figure_pick")
+    figures = [f for f in entry.get("figures") or [] if isinstance(f, dict)]
+    if pick == -1:
+        _pick_figure(entry, -1)
+    elif isinstance(pick, str) and pick:
+        at = next((i for i, f in enumerate(figures) if f.get("file") == pick), None)
+        if at is not None:
+            _pick_figure(entry, at)
+    synth = entry.get("synth_figure")
+    if isinstance(synth, dict) and synth.get("file") and not _has_article_figure(entry):
+        figures = [f for f in entry.get("figures") or [] if isinstance(f, dict) and f.get("kind") != "synth"]
+        entry["figures"] = [dict(synth)] + figures
+
+
 def _attach_synth_figure(entry: Dict[str, Any], src_path: str) -> bool:
     """把一张我们生成的示意图（Codex 按原文画的逻辑图）挂到条目最前，``kind=synth``。
 
@@ -1465,14 +1483,16 @@ def _attach_synth_figure(entry: Dict[str, Any], src_path: str) -> bool:
         logger.warning("示意图写盘失败: %s", exc)
         return False
     figures = [f for f in entry.get("figures") or [] if isinstance(f, dict) and f.get("kind") != "synth"]
-    figures.insert(0, {
+    synth = {
         "file": "{0}/{1}.{2}".format(MEDIA_DIR, stem, ext),
         "src": "",
         "kind": "synth",
         "caption": "",
         "alt": str(entry.get("takeaway") or _display_title(entry)),
-    })
+    }
+    figures.insert(0, synth)
     entry["figures"] = figures
+    entry["synth_figure"] = synth
     return True
 
 
@@ -1566,6 +1586,11 @@ def cmd_apply_depth(date_str: str, path: str) -> int:
             row = given[str(entry["sig"])]
             entry["depth"], entry["figure_note"] = row["depth"], row["figure_note"]
             _pick_figure(entry, row.get("figure"))
+            # 记住选的是哪张（按文件，不按下标——下标随重排会变）；-1 = 没有信息图
+            if row.get("figure") is not None:
+                figs = [f for f in entry.get("figures") or [] if isinstance(f, dict)]
+                entry["figure_pick"] = -1 if row["figure"] < 0 else (
+                    str(figs[0].get("file") or "") if figs and figs[0].get("kind") == "article" else None)
             if row.get("synth_image"):
                 if _has_article_figure(entry):
                     print("跳过示意图（原文有信息图）: {0}".format(_display_title(entry)[:40]))
@@ -1576,9 +1601,11 @@ def cmd_apply_depth(date_str: str, path: str) -> int:
     draft = _load_draft(date_str) or {}
     for entry in draft.get("items") or []:
         if str(entry.get("sig")) in known:
-            entry["depth"] = known[str(entry["sig"])].get("depth", "")
-            if known[str(entry["sig"])].get("figure_note"):
-                entry["figure_note"] = known[str(entry["sig"])]["figure_note"]
+            src = known[str(entry["sig"])]
+            entry["depth"] = src.get("depth", "")
+            for key in ("figure_note", "figure_pick", "synth_figure"):
+                if src.get(key) is not None and src.get(key) != "":
+                    entry[key] = src[key]
     if draft:
         storage.write_json(_archive_path(date_str, DRAFT_NAME), draft)
     print("密度档已写入 {0} 条：头条 {1} · 深读 {2} · 浅读 {3}".format(
@@ -1680,6 +1707,7 @@ def cmd_finalize(date_str: str, do_html: bool) -> int:
         record["distill"] = distill
         record["images"] = _collect_images(record)
         figure_count += _attach_figures(record)
+        _reapply_figure_choice(record)
         record["format"] = infer_format(record)
         record["track"] = tracks_mod.track_of(record, cfg)
         _verify_numbers(record)

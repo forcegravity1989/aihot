@@ -1448,3 +1448,27 @@ def test_scheduled_task_commands_cover_the_new_editing_steps(tmp_data_dir, monke
                     encoding="utf-8")
     assert "密度档已写入 2 条" in run("depth", str(plan), date_str)
     assert "看这里：改过的图注" in client.get("/daily").text
+
+
+def test_editor_figure_choices_survive_a_second_finalize(tmp_data_dir, monkeypatch, tmp_path):
+    """07:30 的定时抓取会对当天再 finalize 一次、重新抓原文配图；编辑定的主图（「没有信息图」）和挂上的
+    示意图必须接回来，不能回到原文的品牌横幅。"""
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    lead, numbers = roles["figured"][0], roles["numbers"]
+    synth = tmp_path / "synth.png"
+    synth.write_bytes(b"\x89PNG\r\n\x1a\n" + b"keep" * 30)
+    plan = tmp_path / "depth.json"
+    plan.write_text(json.dumps({"depth": [
+        {"sig": lead, "depth": "lead", "figure": -1, "synth_image": str(synth), "figure_note": "看示意图"},
+        {"sig": numbers, "depth": "deep", "synth_image": str(synth)},
+    ]}), encoding="utf-8")
+    assert daily.cmd_apply_depth(date_str, str(plan)) == 0
+    assert daily.cmd_finalize(date_str, do_html=True) == 0, "第二次定稿"
+
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    by_sig = {e["sig"]: e for e in final["items"]}
+    assert by_sig[lead]["depth"] == "lead" and by_sig[lead]["figure_note"] == "看示意图"
+    assert [f["kind"] for f in by_sig[lead]["figures"]] == ["synth", "decorative"], "装饰判定与示意图要接回来"
+    assert by_sig[numbers]["figures"][0]["kind"] == "synth"
+    row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(lead), client.get("/daily").text, re.S).group(0)
+    assert "示意 · Codex" in row and "原文图注·" + lead not in row
