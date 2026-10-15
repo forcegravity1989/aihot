@@ -209,6 +209,10 @@ AIHOT 是唯一把门槛和常量全部公开、可以照着复现的版式（`d
 | 10-13 | 75 秒 | 5 / 12 | 头条 AA 指数图 + 深读 5 格（AWS priming 无图 → ">99%"） | 同上 |
 | 10-14 | 100 秒 | 3 / 14（Claude Code 提示词、DeepMind 防诈骗等——用户截图里点名的那两行） | 头条 Argon + 深读 Run:ai / Spyre Inductor / Character.ai 四条无信息图 → 用户要求换 Codex 示意图（`synth_image`），每张逐字核对过数字与名字；深读 5 格 | 同上 |
 
+| 10-15 | 75 秒 | 12 条里 3 条退回标题 | 头条 Linus（原文图是 1×1 占位）与深读 MIT 天气（只有封面动图）用 Codex 示意图；深读 vLLM / Argon GA / Muse Wonder / Kombai 用原文图 | 同上 |
+
+10-15 是第一期「从头按新流程出」的：定时任务（旧代码）出的定稿 → 会话内 Claude 看图定档、写图注、给两条无图的出示意图 → `--apply-depth --html` → 新 artifact https://claude.ai/artifact/9pQSF2j6AkUvU5ukZMgxm8。
+
 两条观察：① 「30 秒」确实虚——三期 75～100 秒，按字数标真实秒数后读者的预期才对；② 结论里丢主体的行每期 3～5 条，占四分之一，简报里加「必须带事件主体」这条规则后应降到零，代码里的标题回退只是兜底。另：定时任务（launchd `com.qianliyan.daily`）跑的是 main 分支的旧代码，10-14 的归档在当天 08:06 被它覆盖过一次（depth / 图注全丢），本轮用 `--apply-depth` 重新定档；分支合并前每天都会这样，合并后自愈。
 
 ## 7. 风险与回看
