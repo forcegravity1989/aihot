@@ -81,6 +81,11 @@ WECHAT_HTML_TEMPLATE = "wechat.html.jinja"
 WECHAT_HTML_NAME = "wechat.html"
 WECHAT_AUTHOR = "千里眼"
 WECHAT_TITLE_MAX = 64
+#: 公众号贴图（newspic）文案：标题 + 纯文本正文，图（速读图 + 封面）由 qly-publish.sh wechat 打包时配上。
+#: 贴图标题上限 20 字、正文纯文本上限 1000 字
+NEWSPIC_NAME = "wechat-newspic.json"
+NEWSPIC_TITLE_MAX = 20
+NEWSPIC_TEXT_MAX = 1000
 #: 示意图提示词：风格约束（模板）+ 日报提炼 + 原文全文，整篇喂给 Codex（ADR D3「示意」位）
 SYNTH_TEMPLATE = "synth-prompt.md"
 SYNTH_SOURCE_CHARS = 12000
@@ -3086,6 +3091,40 @@ def render_wechat(date_str: str, items: Sequence[Dict[str, Any]], now=None, quic
             minitpl.render(_load_template(WECHAT_HTML_TEMPLATE), ctx))
 
 
+def render_newspic(date_str: str, items: Sequence[Dict[str, Any]], now=None,
+                   quick: Sequence[Dict[str, Any]] = ()) -> Dict[str, str]:
+    """公众号贴图文案：标题「千里眼 AI 日报 · MM-DD」+ 纯文本正文（N 秒读完那几句 → 头条为什么重要 → 指向日报）。
+    贴图正文不能加粗、不能放链接，所以只留句子本身；超 1000 字先丢头条那段，再从末尾收行。"""
+    now = utils.as_utc(now or utils.now_utc())
+    layout = _grouped_by_track(items, quick, now, MEDIA_BASE_ARCHIVE)
+    rows = _brief_rows(layout["groups"])
+    by_sig = {str(e.get("sig")): e for e in items}
+    lead = next((r for r in rows if r["depth"] == "lead"), None)
+    note = _editor_note(by_sig.get(lead["sig"]) or {}) if lead else ""
+    note = re.sub(r"（见[^）]*栏）", "", note)  # 「见 infra 栏」指的是网页分栏，贴图里没有
+    opening = "今天 {0} 条正文，{1} 秒读完：".format(len(rows), _brief_seconds(rows))
+    closing = "完整版（逻辑链、原文链接{0}）见千里眼日报。".format(
+        "、{0} 条快讯".format(layout["quick_total"]) if layout["quick_total"] else "")
+
+    def compose(lines: List[str], with_note: bool, rest: int) -> str:
+        parts = [opening, "\n".join(lines) + ("\n……另有 {0} 条见日报".format(rest) if rest else "")]
+        if with_note and note:
+            parts.append("头条：" + note)
+        parts.append(closing)
+        return "\n\n".join(parts)
+
+    lines = ["{0}. {1}".format(i, r["text"]) for i, r in enumerate(rows, start=1)]
+    text = compose(lines, True, 0)
+    if len(text) > NEWSPIC_TEXT_MAX:
+        text = compose(lines, False, 0)
+    keep = len(lines)
+    while len(text) > NEWSPIC_TEXT_MAX and keep > 1:
+        keep -= 1
+        text = compose(lines[:keep], False, len(lines) - keep)
+    title = "千里眼 AI 日报 · {0}".format(date_str[5:])
+    return {"title": title[:NEWSPIC_TITLE_MAX], "author": WECHAT_AUTHOR, "text": text[:NEWSPIC_TEXT_MAX]}
+
+
 def _chrome_binary() -> Optional[str]:
     """找一份能无头截图的 Chrome / Chromium：``QLY_CHROME`` 指定的优先，其次 macOS 应用包与 PATH。"""
     candidates = [os.environ.get("QLY_CHROME") or ""]
@@ -3339,6 +3378,8 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
         wechat_md, wechat_html = render_wechat(date_str, items, now=now, quick=quick, speed_png=speed_png or "")
         _write_text(_archive_path(date_str, WECHAT_NAME), wechat_md)
         _write_text(_archive_path(date_str, WECHAT_HTML_NAME), wechat_html)
+        _write_text(_archive_path(date_str, NEWSPIC_NAME),
+                    json.dumps(render_newspic(date_str, items, now=now, quick=quick), ensure_ascii=False, indent=2))
     except Exception as exc:  # noqa: BLE001 - 公众号稿是副产物，不拖垮首页
         logger.warning("公众号稿渲染失败: %s", exc)
     try:

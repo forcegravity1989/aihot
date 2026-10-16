@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import re
@@ -1367,7 +1368,7 @@ def test_codex_illustration_fills_the_slot_only_when_the_source_has_no_figure(tm
 
 def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_dir, monkeypatch, tmp_path):
     """公众号稿和首页同一份三部分内容：速读图 → N 秒读完（头条 / 深读加粗）→ 头条 / 深读 / 浅读；
-    qly-publish.sh wechat 打成发布包时，正文图全部换成包内 imgs/ 相对路径、文件真的拷进去，
+    qly-publish.sh wechat-article 打成发布包时，正文图全部换成包内 imgs/ 相对路径、文件真的拷进去，
     发布脚本（baoyu-post-to-wechat）拿到的是一个自包含目录。"""
     import subprocess
     from pathlib import Path
@@ -1395,7 +1396,7 @@ def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_
 
     repo = Path(daily.__file__).resolve().parents[2]
     out = tmp_path / "pkg"
-    res = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "wechat", str(out), date_str],
+    res = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "wechat-article", str(out), date_str],
                          capture_output=True, text=True, env=dict(os.environ, QLY_DATA_DIR=str(tmp_data_dir)))
     assert res.returncode == 0, res.stderr
     article = (out / "article.md").read_text(encoding="utf-8")
@@ -1418,6 +1419,56 @@ def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_
     assert imgs and all(src.startswith("imgs/") and (out / src).is_file() for src in imgs), imgs
     lead_card = body.split(">正文<", 1)[1]
     assert "为什么重要" in lead_card and "↓" in lead_card, "头条卡要有逻辑链与为什么重要"
+
+
+def test_wechat_newspic_package_is_speed_image_cover_and_brief_text(tmp_data_dir, monkeypatch, tmp_path):
+    """公众号默认推贴图（newspic）：--html 出标题 + 纯文本文案，qly-publish.sh wechat 配上速读图（在前）与封面（在后）
+    打成 index.html + imgs/。贴图标题 ≤20 字、正文 ≤1000 字、纯文本（没有链接、没有 Markdown 记号），
+    N 秒读完的每一句按版面顺序都在；超字数时先丢头条那段、再从末尾收行，收尾那句始终在。"""
+    import subprocess
+    from pathlib import Path
+
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    lead = roles["figured"][0]
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    by_sig = {e["sig"]: e for e in final["items"]}
+    arch = paths.data_path("archive", date_str)
+    post = json.loads((arch / daily.NEWSPIC_NAME).read_text(encoding="utf-8"))
+    assert post["title"] == "千里眼 AI 日报 · " + date_str[5:] and len(post["title"]) <= daily.NEWSPIC_TITLE_MAX
+    text = post["text"]
+    assert len(text) <= daily.NEWSPIC_TEXT_MAX
+    assert "http" not in text and "**" not in text and "](" not in text, "贴图正文是纯文本"
+    assert text.startswith("今天 {0} 条正文".format(len(final["items"])))
+    assert "1. " + daily._display_title(by_sig[lead]) in text, "第一句是头条（没主体的结论退回标题）"
+    numbered = re.findall(r"^(\d+)\. ", text, re.M)
+    assert numbered == [str(i) for i in range(1, len(final["items"]) + 1)], "每条一句、按版面顺序编号"
+    assert text.rstrip().endswith("见千里眼日报。")
+
+    # 打包：速读图在前、封面在后；没有速读图时只剩封面，也能发
+    (arch / "speed.png").write_bytes(b"\x89PNG speed")
+    (arch / "cover.png").write_bytes(b"\x89PNG cover")
+    repo = Path(daily.__file__).resolve().parents[2]
+    out = tmp_path / "newspic"
+    res = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "wechat", str(out), date_str],
+                         capture_output=True, text=True, env=dict(os.environ, QLY_DATA_DIR=str(tmp_data_dir)))
+    assert res.returncode == 0, res.stderr
+    report = dict(line.split("=", 1) for line in res.stdout.splitlines() if "=" in line)
+    assert report["cover"] == "yes" and report["images"] == "imgs/01-speed.png imgs/02-cover.png"
+    page = (out / "index.html").read_text(encoding="utf-8")
+    assert re.findall(r'<img src="([^"]+)"', page) == ["imgs/01-speed.png", "imgs/02-cover.png"]
+    assert (out / "imgs" / "01-speed.png").read_bytes() == b"\x89PNG speed"
+    assert (out / "imgs" / "02-cover.png").read_bytes() == b"\x89PNG cover"
+    assert "<title>{0}</title>".format(post["title"]) in page and "<a " not in page
+    # 发布脚本的纯文本化：</p> → 换行、去标签、解实体，要能还原出同一份文案
+    plain = html.unescape(re.sub(r"<[^>]+>", "", page.split("<body>", 1)[1].replace("</p>", "\n")))
+    assert plain.strip() == text.strip()
+
+    # 超字数：先丢头条那段，再从末尾收行并说明还剩几条；开头和收尾都留着
+    monkeypatch.setattr(daily, "NEWSPIC_TEXT_MAX", 160)
+    assert daily.cmd_html_only(date_str) == 0
+    short = json.loads((arch / daily.NEWSPIC_NAME).read_text(encoding="utf-8"))["text"]
+    assert len(short) <= 160 and "头条：" not in short
+    assert short.startswith("今天 ") and short.rstrip().endswith("见千里眼日报。") and "条见日报" in short
 
 
 def test_scheduled_task_commands_cover_the_new_editing_steps(tmp_data_dir, monkeypatch, tmp_path):
