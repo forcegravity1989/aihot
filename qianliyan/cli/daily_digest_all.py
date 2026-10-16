@@ -76,6 +76,9 @@ SPEED_PNG_NAME = "speed.png"
 #: 公众号稿（Markdown，baoyu-post-to-wechat 直接吃）：三部分同一份内容，图走相对路径
 WECHAT_TEMPLATE = "wechat.md.jinja"
 WECHAT_NAME = "wechat.md"
+#: 公众号正文 HTML：和首页同一套 token 与组件，全部行内样式（公众号只保留 style=""）
+WECHAT_HTML_TEMPLATE = "wechat.html.jinja"
+WECHAT_HTML_NAME = "wechat.html"
 WECHAT_AUTHOR = "千里眼"
 WECHAT_TITLE_MAX = 64
 #: 示意图提示词：风格约束（模板）+ 日报提炼 + 原文全文，整篇喂给 Codex（ADR D3「示意」位）
@@ -424,7 +427,8 @@ def _attach_figures(record: Dict[str, Any]) -> int:
         seen.add(cand["src"])
         local = _download_image(cand["src"])
         if local:
-            figures.append(dict(cand, file=local))
+            # n = 抓取时的原始序号：编辑定主图按它指，重排后、重跑同一份定档也指得对
+            figures.append(dict(cand, file=local, n=len(figures)))
     record["figures"] = figures
     return len(figures)
 
@@ -1242,6 +1246,9 @@ def _apply_briefs(date_str: str, briefs: Dict[str, Dict[str, Any]]) -> int:
 # 密度档（depth）：编辑给的优先，缺的按「重要 × 原料」补判；数字逐字核对
 # =========================================================================
 _NUM_TOKEN = re.compile(r"\d+(?:[.,]\d+)*")
+_MONTH_NAMES = (("january", "jan"), ("february", "feb"), ("march", "mar"), ("april", "apr"), ("may",),
+                ("june", "jun"), ("july", "jul"), ("august", "aug"), ("september", "sept", "sep"),
+                ("october", "oct"), ("november", "nov"), ("december", "dec"))
 #: 「带单位的数字」——判断原文有没有可核对的硬数据（3.3x / 57% / 500k / 128GB / 1.6 倍 …）
 _HARD_NUMBER = re.compile(r"\d+(?:\.\d+)?\s*(?:%|x\b|×|倍|ms\b|GB\b|TB\b|MB\b|[BMKk]\b|tokens?\b|亿|万)", re.I)
 
@@ -1251,7 +1258,11 @@ def _source_corpus(entry: Dict[str, Any]) -> str:
     extra = _extra(entry)
     parts = [entry.get("title"), entry.get("summary"), extra.get("fulltext"), extra.get("transcript")]
     text = " ".join(str(p) for p in parts if p)
-    return html_lib.unescape(re.sub(r"<[^>]+>", " ", text)).replace(",", "").lower()
+    corpus = html_lib.unescape(re.sub(r"<[^>]+>", " ", text)).replace(",", "").lower()
+    # 英文原文写月份名、中文提炼写数字（november 30 → 11 月 30 日）是照译不是编造：把出现过的月份补成数字
+    months = [str(i) for i, names in enumerate(_MONTH_NAMES, start=1)
+              if re.search(r"\b(?:{0})\b".format("|".join(names)), corpus)]
+    return corpus + (" " + " ".join(months) if months else "")
 
 
 def _numbers_verified(text: Any, corpus: str) -> bool:
@@ -1425,20 +1436,33 @@ def entry_has_depth(entry: Dict[str, Any]) -> bool:
     return str(entry.get("depth") or "") in DEPTHS
 
 
-def _pick_figure(entry: Dict[str, Any], index: Optional[int]) -> None:
+def _figure_position(figures: Sequence[Dict[str, Any]], ref: Any) -> Optional[int]:
+    """编辑指的那张图在当前列表里的位置：整数按抓取时的原始序号 ``n``（老数据没有 n 就按位置），
+    字符串按文件（``media/x.png``、绝对路径或文件名都行）。"""
+    if isinstance(ref, str) and ref.strip():
+        name = ref.strip().rsplit("/", 1)[-1]
+        return next((i for i, f in enumerate(figures) if str(f.get("file") or "").rsplit("/", 1)[-1] == name), None)
+    if isinstance(ref, int) and ref >= 0:
+        if any("n" in f for f in figures):
+            return next((i for i, f in enumerate(figures) if f.get("n") == ref), None)
+        return ref if ref < len(figures) else None
+    return None
+
+
+def _pick_figure(entry: Dict[str, Any], index: Any) -> None:
     """编辑定主图：``index`` 是 figures 里的下标，挪到最前；``-1`` = 原文没有信息图（横幅、头像、
     现场照片不算），全部标 decorative，日报页改用数字卡 / 对比图，详情页照放。"""
     figures = [f for f in entry.get("figures") or [] if isinstance(f, dict)]
     if index is None or not figures:
         return
-    if index < 0:
+    if isinstance(index, int) and index < 0:
         for fig in figures:
             # 我们挂上的示意图（synth）不是原文图，不参与「主图 / 装饰图」的判定；重跑 --apply-depth 时也不能
             # 被改成装饰图留在详情页里
             if fig.get("kind") not in ("cover", "synth"):
                 fig["kind"] = "decorative"
-    elif index < len(figures):
-        chosen = figures.pop(index)
+    elif _figure_position(figures, index) is not None:
+        chosen = figures.pop(_figure_position(figures, index))
         chosen["kind"] = "article"
         figures.insert(0, chosen)
     entry["figures"] = figures
@@ -1573,10 +1597,14 @@ def cmd_apply_depth(date_str: str, path: str) -> int:
             continue
         note = str(row.get("figure_note") or "").strip()
         given[str(row["sig"])] = {"depth": depth, "figure_note": note[:FIGURE_NOTE_MAX]}
-        try:
-            given[str(row["sig"])]["figure"] = int(row["figure"]) if row.get("figure") is not None else None
-        except (TypeError, ValueError):
-            given[str(row["sig"])]["figure"] = None
+        fig = row.get("figure")
+        if isinstance(fig, str) and fig.strip() and not fig.strip().lstrip("-").isdigit():
+            given[str(row["sig"])]["figure"] = fig.strip()  # 按文件指
+        else:
+            try:
+                given[str(row["sig"])]["figure"] = int(fig) if fig is not None else None
+            except (TypeError, ValueError):
+                given[str(row["sig"])]["figure"] = None
         given[str(row["sig"])]["synth_image"] = str(row.get("synth_image") or "").strip()
     if not given:
         print("depth 不合格：需要 {\"depth\": [{\"sig\": 今日入选条目的 sig, \"depth\": \"lead|deep|glance\"}]}")
@@ -1589,13 +1617,17 @@ def cmd_apply_depth(date_str: str, path: str) -> int:
             # 记住选的是哪张（按文件，不按下标——下标随重排会变）；-1 = 没有信息图
             if row.get("figure") is not None:
                 figs = [f for f in entry.get("figures") or [] if isinstance(f, dict)]
-                entry["figure_pick"] = -1 if row["figure"] < 0 else (
+                entry["figure_pick"] = -1 if row["figure"] == -1 or (isinstance(row["figure"], int) and row["figure"] < 0) else (
                     str(figs[0].get("file") or "") if figs and figs[0].get("kind") == "article" else None)
             if row.get("synth_image"):
                 if _has_article_figure(entry):
                     print("跳过示意图（原文有信息图）: {0}".format(_display_title(entry)[:40]))
                 else:
                     _attach_synth_figure(entry, row["synth_image"])
+    # 定稿可能是别的入口写的（旧代码的定时任务、手改）：定档时把数字与原话再逐字核一遍，编的丢掉
+    dropped = sum(_verify_numbers(entry) for entry in final["items"])
+    if dropped:
+        print("核对原文：丢掉 {0} 处原文里找不到的数字或非原话".format(dropped))
     counts = _assign_depth(final["items"], tracks_mod.load())
     storage.write_json(_archive_path(date_str, FINAL_NAME), final)
     draft = _load_draft(date_str) or {}
@@ -2689,7 +2721,7 @@ MERGED_SHELL = """<!doctype html>
           <section class="qly-part qly-speed" id="part-speed" aria-label="看图知今天">
             <div class="part-head">
               <span class="part-no">①</span>
-              <h2 class="qly-page-title">🖼 看图知今天</h2>
+              <h2 class="qly-page-title">看图知今天</h2>
               {% if speed_png %}<a class="chip part-tools" href="{{ speed_png }}" target="_blank" rel="noopener">🖼 速读图 PNG ↗</a>{% endif %}
               <div class="qly-page-sub">头条与深读各一张原文图，共 {{ speed_fig_count }} 张 · 图是证据，一句话是导读 · 浅读不进图区</div>
             </div>
@@ -2705,7 +2737,7 @@ MERGED_SHELL = """<!doctype html>
           <section class="qly-part qly-brief" id="part-brief" aria-label="{{ brief_secs }} 秒读完今天">
             <div class="part-head">
               <span class="part-no">②</span>
-              <h2 class="qly-page-title">⏱ {{ brief_secs }} 秒读完今天</h2>
+              <h2 class="qly-page-title">{{ brief_secs }} 秒读完今天</h2>
               <div class="qly-page-sub">{{ brief_total }} 条，每条一句 · 加粗的是头条与深读，值得往下点 · 看过就打勾，正文里同步置灰</div>
             </div>
             <ol class="rb-list">{% for row in brief_rows %}<li class="{{ row.cls }}" data-sig="{{ row.sig }}" data-depth="{{ row.depth }}"><div class="rb-main"><span class="rb-k">{{ row.track }}{% if row.depth_label %} · <span class="rb-d">{{ row.depth_label }}</span>{% endif %}</span><a href="#e-{{ row.sig }}" data-sig="{{ row.sig }}" title="{{ row.title }}">{{ row.text }}</a></div><button type="button" class="gread rb-check" data-sig="{{ row.sig }}" aria-label="看过了，标记已接收" title="看过了，标记已接收">✓</button></li>{% endfor %}</ol>
@@ -2946,6 +2978,7 @@ def _wechat_context(date_str: str, items: Sequence[Dict[str, Any]], now,
                for name in (entry.get("source_list") or [entry.get("source")]) if name}
     # 标题用头条那句带主体的结论（速读行同一套判定，没主体就是原标题）；公众号标题上限 64 字，
     # 超了宁可去掉日期前缀也不在词中间截断
+    wx = _wechat_body(layout, rows, cards)
     head = rows[0]["text"] if rows else ""
     title = "千里眼 AI 日报 {0}｜{1}".format(date_str[5:].replace("-", "."), head)
     if len(title) > WECHAT_TITLE_MAX:
@@ -2971,14 +3004,86 @@ def _wechat_context(date_str: str, items: Sequence[Dict[str, Any]], now,
         "deep_cards": [c for c in cards if c["depth"] == "deep"],
         "glance_rows": glance_rows,
         "quick_groups": quick_groups,
+        "date_label": "{0} {1}".format(date_str, _weekday_cn(utils.parse_date(date_str + "T00:00:00+00:00")))
+                      if utils.parse_date(date_str + "T00:00:00+00:00") is not None else date_str,
+        "brief_total": len(rows),
+        "deep_with_lead": len(lead_cards) + sum(1 for c in cards if c["depth"] == "deep"),
+        **wx,
     }
 
 
+#: 公众号卡片按密度档的外观（与首页 .report-entry / .is-lead / .is-glance 同源）
+_WX_DEPTH_STYLE = {
+    "lead": {"pad": "16px 16px 14px", "border": "#d97757", "title_size": "19px", "line_size": "16px",
+             "line_weight": "600", "line_color": "#1f1e1d", "badge_bg": "#d97757", "badge_fg": "#ffffff"},
+    "deep": {"pad": "14px 14px 12px", "border": "#d7d2ca", "title_size": "17px", "line_size": "15.5px",
+             "line_weight": "600", "line_color": "#1f1e1d", "badge_bg": "#f6e3d9", "badge_fg": "#af5233"},
+    "glance": {"pad": "11px 14px 10px", "border": "#ebe7e1", "title_size": "15.5px", "line_size": "14px",
+               "line_weight": "500", "line_color": "#58554f", "badge_bg": "", "badge_fg": ""},
+}
+
+
+def _wechat_body(layout: Dict[str, Any], rows: List[Dict[str, Any]], cards: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """公众号 HTML 的视图：① 图块（头条一整行 + 深读两两一行）② 速读行的圆点与字重 ③ 按方向分栏的卡片，
+    外链统一编号放文末（公众号正文外链不可点）。"""
+    for row in rows:
+        depth = row["depth"]
+        row["dot"] = {"lead": "background:#d97757;color:#ffffff;",
+                      "deep": "background:#f6e3d9;color:#af5233;"}.get(depth, "background:#ebe7e1;color:#58554f;")
+        row["weight"] = "font-weight:700;" if depth != "glance" else "font-weight:400;"
+    lead_tiles = [c for c in cards if c["depth"] == "lead"]
+    deep = [dict(c) for c in cards if c["depth"] == "deep"]
+    tile_rows = []
+    for i in range(0, len(deep), 2):
+        pair = deep[i:i + 2]
+        for j, c in enumerate(pair):
+            c["gap"] = "margin-right:3%;" if j == 0 else ""
+        tile_rows.append({"cards": pair})
+
+    refs: List[Dict[str, str]] = []
+    groups = []
+
+    def cite(title: str, url: str) -> str:
+        refs.append({"no": str(len(refs) + 1), "title": title, "url": url})
+        return str(len(refs))
+
+    for group in layout["groups"]:
+        items = []
+        for it in group["items"]:
+            depth = it["depth"]
+            row = dict(it, **_WX_DEPTH_STYLE[depth])
+            row["cite"] = cite(it["title"], it["url"])
+            row["depth_label"] = DEPTH_LABELS.get(depth, "") if depth != "glance" else ""
+            row["line"] = it.get("takeaway") or it.get("summary") or ""
+            show_stats = bool(it.get("stats")) and (not it.get("figure") or depth == "lead")
+            row["wx_stats"] = it["stats"] if show_stats else []
+            logic = it.get("logic")
+            if logic:
+                chain = []
+                for k, node in enumerate(logic["chain"]):
+                    hl = node["cls"] == "is-hl"
+                    chain.append({"text": node["text"], "arrow": k < len(logic["chain"]) - 1,
+                                  "border": "#d97757" if hl else "#ebe7e1",
+                                  "color": "#af5233" if hl else "#58554f", "weight": "700" if hl else "500"})
+                row["wx_logic"] = {"chain": chain, "evidence": " · ".join(logic["evidence"]), "caveat": logic["caveat"]}
+            else:
+                row["wx_logic"] = None
+            row["synth_label"] = bool(row["wx_stats"] or row["wx_logic"])
+            items.append(row)
+        quick = [dict(q, cite=cite(q["title"], q["url"])) for q in group.get("quick") or []]
+        groups.append({"no": group["no"], "title": group["title"], "everyone": group["everyone"],
+                       "count": group["count"], "quick_count": group["quick_count"], "items": items, "quick": quick})
+    return {"lead_tiles": lead_tiles, "tile_rows": tile_rows, "groups": groups, "refs": refs}
+
+
 def render_wechat(date_str: str, items: Sequence[Dict[str, Any]], now=None, quick: Sequence[Dict[str, Any]] = (),
-                  media_base: str = MEDIA_BASE_ARCHIVE, speed_png: str = SPEED_PNG_NAME) -> str:
+                  media_base: str = MEDIA_BASE_ARCHIVE, speed_png: str = SPEED_PNG_NAME) -> Tuple[str, str]:
+    """公众号稿：(Markdown 稿, HTML 正文)。发布用 HTML（和首页同一套样式）；Markdown 只留 frontmatter
+    给发布脚本取标题 / 摘要，正文作兜底。"""
     now = utils.as_utc(now or utils.now_utc())
-    return minitpl.render(_load_template(WECHAT_TEMPLATE),
-                          _wechat_context(date_str, items, now, quick, media_base, speed_png))
+    ctx = _wechat_context(date_str, items, now, quick, media_base, speed_png)
+    return (minitpl.render(_load_template(WECHAT_TEMPLATE), ctx),
+            minitpl.render(_load_template(WECHAT_HTML_TEMPLATE), ctx))
 
 
 def _chrome_binary() -> Optional[str]:
@@ -3231,8 +3336,9 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
 
     # 公众号稿落在归档目录（图片路径 ../../media/ 与 speed.png 都相对它）
     try:
-        _write_text(_archive_path(date_str, WECHAT_NAME),
-                    render_wechat(date_str, items, now=now, quick=quick, speed_png=speed_png or ""))
+        wechat_md, wechat_html = render_wechat(date_str, items, now=now, quick=quick, speed_png=speed_png or "")
+        _write_text(_archive_path(date_str, WECHAT_NAME), wechat_md)
+        _write_text(_archive_path(date_str, WECHAT_HTML_NAME), wechat_html)
     except Exception as exc:  # noqa: BLE001 - 公众号稿是副产物，不拖垮首页
         logger.warning("公众号稿渲染失败: %s", exc)
     try:

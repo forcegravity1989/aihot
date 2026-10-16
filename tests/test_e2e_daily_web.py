@@ -118,7 +118,7 @@ def test_homepage_is_three_parts_from_shallow_to_deep(site):
         assert gone not in home, "旧的 tab / 右栏还在：{0}".format(gone)
     brief_html = home[brief:body]
     assert "<details" not in brief_html, "速读是导入层，默认展开"
-    assert re.search(r"⏱ \d+ 秒读完今天", brief_html), "秒数按字数算，不写死 30"
+    assert re.search(r"\d+ 秒读完今天", brief_html), "秒数按字数算，不写死 30"
 
     final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
     assert final["items"]
@@ -1311,7 +1311,7 @@ def test_brief_lines_carry_their_subject_and_tick_marks_received(tmp_data_dir, m
     assert ">一句结论·{0}</a>".format(deep_fig) not in deep_row
     assert "深读" in deep_row and "rb-d" in deep_row, "速读行要标出深浅"
 
-    secs = int(re.search(r"⏱ (\d+) 秒读完今天", home).group(1))
+    secs = int(re.search(r">(\d+) 秒读完今天", home).group(1))
     assert secs % 5 == 0 and 10 <= secs <= 300
     # 勾、图块、正文行三处共用 sig；勾是 .gread（正文「标记已读」同一个事件链）
     assert 'class="gread rb-check" data-sig="{0}"'.format(lead) in brief
@@ -1404,6 +1404,21 @@ def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_
     assert all((out / r).is_file() for r in refs)
     assert "../../media/" not in article
 
+    # 发布用的 HTML 正文：和首页同一套 token 与三部分结构；公众号只认行内样式，外链统一编号放文末
+    html = (out / "article.html").read_text(encoding="utf-8")
+    body = html.split("<body", 1)[1]
+    assert "<style" not in body and "class=" not in body, "公众号会剥掉 <style> 与 class，样式必须全部行内"
+    assert body.index(">看图知今天<") < body.index("秒读完今天<") < body.index(">正文<") < body.index(">原文链接<")
+    assert "#d97757" in body and "#fefdfa" in body and "#faf9f5" in body, "要用首页同一套色"
+    assert "<a " not in body and "href=" not in body, "公众号正文外链不可点，改成文末编号"
+    assert "font-style:italic" not in body and "<em" not in body, "中文不用斜体"
+    for e in final["items"]:
+        assert e["url"] in body, "每条原文链接都要进文末"
+    imgs = re.findall(r'<img\b[^>]*\bsrc="([^"]+)"', body)
+    assert imgs and all(src.startswith("imgs/") and (out / src).is_file() for src in imgs), imgs
+    lead_card = body.split(">正文<", 1)[1]
+    assert "为什么重要" in lead_card and "↓" in lead_card, "头条卡要有逻辑链与为什么重要"
+
 
 def test_scheduled_task_commands_cover_the_new_editing_steps(tmp_data_dir, monkeypatch, tmp_path):
     """定时任务只能调 qly-publish.sh：status 要按密度档报提炼覆盖（浅读不要逻辑链）、报哪些头条 / 深读
@@ -1472,3 +1487,60 @@ def test_editor_figure_choices_survive_a_second_finalize(tmp_data_dir, monkeypat
     assert by_sig[numbers]["figures"][0]["kind"] == "synth"
     row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(lead), client.get("/daily").text, re.S).group(0)
     assert "示意 · Codex" in row and "原文图注·" + lead not in row
+
+
+def test_reapplying_the_same_depth_file_keeps_the_same_main_figure(tmp_data_dir, monkeypatch, tmp_path):
+    """定档里的 figure 指抓取时的原始序号（qly-publish.sh figures 打印的那个），不是当前位置：同一份定档跑两遍、
+    或定稿后再定一次，主图都不能漂到别的图上。也可以直接写文件名。"""
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    lead = roles["figured"][0]
+    final_path = paths.data_path("archive", date_str, daily.FINAL_NAME)
+    final = storage.read_json(final_path, default={})
+    entry = next(e for e in final["items"] if e["sig"] == lead)
+    for name in ("cccccccccccccccc.png", "dddddddddddddddd.png"):
+        (paths.data_path("media") / name).write_bytes(b"\x89PNG\r\n\x1a\n" + name.encode() * 4)
+    entry["figures"] = [dict(entry["figures"][0], n=0),
+                        {"file": "media/cccccccccccccccc.png", "src": "https://x/c.png", "kind": "article", "n": 1},
+                        {"file": "media/dddddddddddddddd.png", "src": "https://x/d.png", "kind": "article", "n": 2}]
+    storage.write_json(final_path, final)
+    plan = tmp_path / "depth.json"
+    plan.write_text(json.dumps({"depth": [{"sig": lead, "depth": "lead", "figure": 2}]}), encoding="utf-8")
+    for _ in range(2):
+        assert daily.cmd_apply_depth(date_str, str(plan)) == 0
+        first = storage.read_json(final_path, default={})
+        main = next(e for e in first["items"] if e["sig"] == lead)["figures"][0]["file"]
+        assert main == "media/dddddddddddddddd.png", main
+    plan.write_text(json.dumps({"depth": [{"sig": lead, "depth": "lead", "figure": "cccccccccccccccc.png"}]}),
+                    encoding="utf-8")
+    assert daily.cmd_apply_depth(date_str, str(plan)) == 0
+    main = next(e for e in storage.read_json(final_path, default={})["items"] if e["sig"] == lead)["figures"][0]["file"]
+    assert main == "media/cccccccccccccccc.png"
+
+
+def test_tiering_rechecks_numbers_and_quotes_written_by_other_entry_points(tmp_data_dir, monkeypatch, tmp_path):
+    """定稿可能是旧代码或手改写的（没过核对）：定档时再逐字核一遍，原文没有的数字、不是原话的梗不上页。"""
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    lead = roles["figured"][0]
+    final_path = paths.data_path("archive", date_str, daily.FINAL_NAME)
+    final = storage.read_json(final_path, default={})
+    entry = next(e for e in final["items"] if e["sig"] == lead)
+    entry["meme"] = "一句编出来的梗"
+    entry["stats"] = [{"value": "77%", "label": "原文没有"}, {"value": "3.3x", "label": "吞吐提升"}]
+    storage.write_json(final_path, final)
+    plan = tmp_path / "depth.json"
+    plan.write_text(json.dumps({"depth": [{"sig": lead, "depth": "lead"}]}), encoding="utf-8")
+    assert daily.cmd_apply_depth(date_str, str(plan)) == 0
+    assert daily.cmd_html_only(date_str) == 0
+    page = TestClient(api_server.create_app()).get("/daily").text
+    assert "一句编出来的梗" not in page and "77%" not in page
+    assert "3.3x" in page
+
+    # 照译不算编：原文写 november 30，中文写 11 月 30 日
+    final = storage.read_json(final_path, default={})
+    entry = next(e for e in final["items"] if e["sig"] == lead)
+    entry["extra"]["fulltext"] += " Prices rise after November 30."
+    entry["stats"] = [{"value": "3.3x", "label": "11 月 30 日前"}]
+    storage.write_json(final_path, final)
+    assert daily.cmd_apply_depth(date_str, str(plan)) == 0
+    entry = next(e for e in storage.read_json(final_path, default={})["items"] if e["sig"] == lead)
+    assert entry["stats"] == [{"value": "3.3x", "label": "11 月 30 日前"}]
