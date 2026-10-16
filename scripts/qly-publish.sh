@@ -11,7 +11,9 @@
 #   brief-prompt [DAY]   打印写要点的简报（入选条目 + 原文）
 #   apply-briefs FILE [DAY]  把要点 JSON 写进定稿并重新渲染
 #   stage   OUT_DIR      把数据根的 daily.html 与它链接的详情页、原文配图整理进 OUT_DIR，供发布 artifact
-#   wechat  OUT_DIR [DAY]  把公众号稿 wechat.md 与它的配图整理成发布包（article.md + imgs/），交 baoyu-post-to-wechat
+#   wechat  OUT_DIR [DAY]  公众号贴图（newspic）发布包：index.html（速读图 + 封面 + N 秒读完纯文本）+ imgs/，
+#                          交 baoyu-post-to-wechat 的 wechat-api.ts --type newspic
+#   wechat-article OUT_DIR [DAY]  公众号「文章」发布包（article.html / article.md + imgs/），旧做法留作备用
 #   figures [DAY]        列出每条的密度档与原文配图（下标 / 本地绝对路径 / kind / 图注），定主图用
 #   depth   FILE [DAY]   把定档 JSON（{"depth":[{sig,depth,figure,figure_note,synth_image}]}）写进定稿并重新渲染
 #   synth   OUT_DIR [DAY] [SIG,SIG]  给头条 / 深读里没有信息图的条目用 Codex 出示意图（每张 3~5 分钟），打印 image=<sig>\t<png>
@@ -168,9 +170,44 @@ print("files=daily.html " + " ".join(stories + copied))
 PYEOF
         ;;
     wechat)
+        # 公众号贴图发布包：archive/<DAY>/wechat-newspic.json（--html 时出的标题 + 纯文本）配上速读图与封面。
+        # 贴图的图按 index.html 里 <img> 的顺序上传：速读图在前（竖版，信息流里当首图），封面在后
+        OUT="${1:?用法: qly-publish.sh wechat OUT_DIR [DAY]}"
+        DAY="${2:-$(date -u +%Y-%m-%d)}"
+        "$PY" - "$QLY_DATA_DIR" "$OUT" "$DAY" <<'PYEOF2'
+import html, json, shutil, sys
+from pathlib import Path
+
+data, out, day = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+arch = data / "archive" / day
+src = arch / "wechat-newspic.json"
+if not src.is_file():
+    sys.exit("wechat-newspic.json 不存在：先 --html 重出 {0}".format(day))
+post = json.loads(src.read_text(encoding="utf-8"))
+(out / "imgs").mkdir(parents=True, exist_ok=True)
+imgs = []
+for name, dest in (("speed.png", "01-speed.png"), ("cover.png", "02-cover.png")):
+    if (arch / name).is_file():
+        shutil.copyfile(arch / name, out / "imgs" / dest)
+        imgs.append("imgs/" + dest)
+if not imgs:
+    sys.exit("贴图至少要一张图：archive/{0}/ 下 speed.png 与 cover.png 都没有".format(day))
+# 发布脚本把 </p> 换成换行、去掉其余标签，所以一行一个 <p>，空行留空段
+paras = "".join("<p>{0}</p>".format(html.escape(line)) for line in post["text"].split("\n"))
+page = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8"><title>{0}</title></head>\n<body>\n{1}\n{2}\n</body></html>\n'
+        .format(html.escape(post["title"]), "".join('<img src="{0}">'.format(i) for i in imgs), paras))
+(out / "index.html").write_text(page, encoding="utf-8")
+print("article={0}".format(out / "index.html"))
+print("title={0}".format(post["title"]))
+print("chars={0}".format(len(post["text"])))
+print("images={0}".format(" ".join(imgs)))
+print("cover={0}".format("yes" if (arch / "cover.png").is_file() else "missing"))
+PYEOF2
+        ;;
+    wechat-article)
         # 公众号稿发布包：archive/<DAY>/wechat.md + 它引用的配图 + 速读图，图片改成包内相对路径 imgs/，
         # 交给 baoyu-post-to-wechat（API 模式会逐张上传正文图；封面放 imgs/cover.png）
-        OUT="${1:?用法: qly-publish.sh wechat OUT_DIR [DAY]}"
+        OUT="${1:?用法: qly-publish.sh wechat-article OUT_DIR [DAY]}"
         DAY="${2:-$(date -u +%Y-%m-%d)}"
         "$PY" - "$QLY_DATA_DIR" "$OUT" "$DAY" <<'PYEOF2'
 import re, shutil, sys
@@ -284,7 +321,7 @@ PYEOF2
         echo "status=ok images=$n"
         ;;
     *)
-        sed -n '2,20p' "$0"
+        sed -n '2,21p' "$0"
         exit 1
         ;;
 esac
