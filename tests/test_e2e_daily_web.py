@@ -16,6 +16,7 @@ import html
 import json
 import os
 import re
+import urllib.parse
 
 import pytest
 
@@ -1453,7 +1454,7 @@ def test_wechat_newspic_package_is_speed_image_cover_and_brief_text(tmp_data_dir
                          capture_output=True, text=True, env=dict(os.environ, QLY_DATA_DIR=str(tmp_data_dir)))
     assert res.returncode == 0, res.stderr
     report = dict(line.split("=", 1) for line in res.stdout.splitlines() if "=" in line)
-    assert report["cover"] == "yes" and report["images"] == "imgs/01-speed.png imgs/02-cover.png"
+    assert report["cover"] == "manual" and report["images"] == "imgs/01-speed.png imgs/02-cover.png"
     page = (out / "index.html").read_text(encoding="utf-8")
     assert re.findall(r'<img src="([^"]+)"', page) == ["imgs/01-speed.png", "imgs/02-cover.png"]
     assert (out / "imgs" / "01-speed.png").read_bytes() == b"\x89PNG speed"
@@ -1469,6 +1470,51 @@ def test_wechat_newspic_package_is_speed_image_cover_and_brief_text(tmp_data_dir
     short = json.loads((arch / daily.NEWSPIC_NAME).read_text(encoding="utf-8"))["text"]
     assert len(short) <= 160 and "头条：" not in short
     assert short.startswith("今天 ") and short.rstrip().endswith("见千里眼日报。") and "条见日报" in short
+
+
+def test_cover_is_standard_base_with_overlaid_text_and_packs_when_no_manual_cover(tmp_data_dir, monkeypatch, tmp_path):
+    """封面不再每天靠 Codex 现画：--html 用入仓的无字标准底图叠上「千里眼 / AI 日报 / 日期 / 头条那句」，
+    无头 Chrome 截成 2 倍的 cover-auto.png（1880×800，2.35:1）；打贴图包时没有手工 cover.png 就用它，
+    有手工的仍然手工优先。"""
+    import struct
+    import subprocess
+    from pathlib import Path
+
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    lead = roles["figured"][0]
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    by_sig = {e["sig"]: e for e in final["items"]}
+    arch = paths.data_path("archive", date_str)
+    page = (arch / daily.COVER_NAME).read_text(encoding="utf-8")
+    for text in ("千里眼", "AI 日报", date_str, daily._display_title(by_sig[lead])):
+        assert text in page, text
+    base = re.search(r'<img class="base" src="file://([^"]+)"', page).group(1)
+    assert Path(urllib.parse.unquote(base)).is_file(), "标准底图要入仓"
+
+    if daily._chrome_binary() is None:
+        pytest.skip("没有 Chrome，截图那一半验不了")
+    monkeypatch.setenv("QLY_COVER_PNG", "1")
+    assert daily.cmd_html_only(date_str) == 0
+    png = (arch / daily.COVER_PNG_NAME).read_bytes()
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    assert struct.unpack(">II", png[16:24]) == (2 * daily.COVER_WIDTH, 2 * daily.COVER_HEIGHT)
+
+    repo = Path(daily.__file__).resolve().parents[2]
+    env = dict(os.environ, QLY_DATA_DIR=str(tmp_data_dir))
+
+    def pack(name):
+        out = tmp_path / name
+        res = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "wechat", str(out), date_str],
+                             capture_output=True, text=True, env=env)
+        assert res.returncode == 0, res.stderr
+        return out, dict(line.split("=", 1) for line in res.stdout.splitlines() if "=" in line)
+
+    out, report = pack("auto")
+    assert report["cover"] == "auto" and report["images"].endswith("imgs/02-cover.png")
+    assert (out / "imgs" / "02-cover.png").read_bytes() == png
+    (arch / "cover.png").write_bytes(b"\x89PNG manual")
+    out, report = pack("manual")
+    assert report["cover"] == "manual" and (out / "imgs" / "02-cover.png").read_bytes() == b"\x89PNG manual"
 
 
 def test_scheduled_task_commands_cover_the_new_editing_steps(tmp_data_dir, monkeypatch, tmp_path):

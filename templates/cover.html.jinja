@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="generator" content="qianliyan cover">
+<title>千里眼 · AI 日报 · {{ date }} · 封面</title>
+<style>
+/* 公众号封面（2.35:1）：cover-base.jpg 是 Codex 出过一次的无字标准底图（左 45% 留白、右侧插画），
+   每天只换叠在左边的字，不再每天现画。定尺寸 {{ width }}×{{ height }}，无头 Chrome 2 倍截图。
+   底色取自底图实测 #FEFAF3，色板同速读图（赤陶 #b45309 / 深棕）。 */
+html, body { margin: 0; padding: 0; }
+body { width: {{ width }}px; height: {{ height }}px; overflow: hidden; position: relative; background: #fefaf3;
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased; }
+.base { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.text { position: absolute; left: 64px; top: 0; bottom: 0; width: 340px;
+  display: flex; flex-direction: column; justify-content: center; }
+.brand { margin: 0; font-size: 84px; line-height: 1; font-weight: 900; color: #b45309; letter-spacing: .04em; }
+.kind { margin: 14px 0 0; font-size: 46px; line-height: 1; font-weight: 800; color: #4a2c17; letter-spacing: .02em; }
+.date { margin: 18px 0 0; font-size: 22px; line-height: 1; font-weight: 700; color: #b45309;
+  font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.lead { margin: 22px 0 0; padding-top: 14px; border-top: 2px solid #ecd9c4; font-size: 16px; line-height: 1.5;
+  font-weight: 600; color: #57534e; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+</style>
+</head>
+<body>
+<img class="base" src="{{ base_uri }}" alt="">
+<div class="text">
+  <h1 class="brand">千里眼</h1>
+  <p class="kind">AI 日报</p>
+  <p class="date">{{ date }}</p>
+  {% if lead %}<p class="lead">{{ lead }}</p>{% endif %}
+</div>
+</body>
+</html>

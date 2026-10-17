@@ -11,7 +11,8 @@
 #   brief-prompt [DAY]   打印写要点的简报（入选条目 + 原文）
 #   apply-briefs FILE [DAY]  把要点 JSON 写进定稿并重新渲染
 #   stage   OUT_DIR      把数据根的 daily.html 与它链接的详情页、原文配图整理进 OUT_DIR，供发布 artifact
-#   wechat  OUT_DIR [DAY]  公众号贴图（newspic）发布包：index.html（速读图 + 封面 + N 秒读完纯文本）+ imgs/，
+#   wechat  OUT_DIR [DAY]  公众号贴图（newspic）发布包：index.html（速读图 + 封面 + N 秒读完纯文本）+ imgs/；
+#                          封面用手工 cover.png，没有就用 --html 自动截的 cover-auto.png
 #                          交 baoyu-post-to-wechat 的 wechat-api.ts --type newspic
 #   wechat-article OUT_DIR [DAY]  公众号「文章」发布包（article.html / article.md + imgs/），旧做法留作备用
 #   figures [DAY]        列出每条的密度档与原文配图（下标 / 本地绝对路径 / kind / 图注），定主图用
@@ -185,9 +186,11 @@ if not src.is_file():
     sys.exit("wechat-newspic.json 不存在：先 --html 重出 {0}".format(day))
 post = json.loads(src.read_text(encoding="utf-8"))
 (out / "imgs").mkdir(parents=True, exist_ok=True)
+# 封面：手工 / Codex 出的 cover.png 优先，没有就用 --html 时程序截的 cover-auto.png（标准底图 + 叠字）
+cover = next((n for n in ("cover.png", "cover-auto.png") if (arch / n).is_file()), "")
 imgs = []
-for name, dest in (("speed.png", "01-speed.png"), ("cover.png", "02-cover.png")):
-    if (arch / name).is_file():
+for name, dest in (("speed.png", "01-speed.png"), (cover, "02-cover.png")):
+    if name and (arch / name).is_file():
         shutil.copyfile(arch / name, out / "imgs" / dest)
         imgs.append("imgs/" + dest)
 if not imgs:
@@ -201,7 +204,7 @@ print("article={0}".format(out / "index.html"))
 print("title={0}".format(post["title"]))
 print("chars={0}".format(len(post["text"])))
 print("images={0}".format(" ".join(imgs)))
-print("cover={0}".format("yes" if (arch / "cover.png").is_file() else "missing"))
+print("cover={0}".format({"cover.png": "manual", "cover-auto.png": "auto"}.get(cover, "missing")))
 PYEOF2
         ;;
     wechat-article)
@@ -254,9 +257,11 @@ if html_src.is_file():
     (out / "article.html").write_text(html, encoding="utf-8")
     print("html={0}".format(out / "article.html"))
 print("images={0}".format(len(copied)))
-# 封面：放在 archive/<日>/cover.png（数据目录，重启不丢），打包时带上
-if (src.parent / "cover.png").is_file():
-    shutil.copyfile(src.parent / "cover.png", out / "imgs" / "cover.png")
+# 封面：archive/<日>/cover.png（手工）优先，没有就用程序截的 cover-auto.png
+for name in ("cover.png", "cover-auto.png"):
+    if (src.parent / name).is_file():
+        shutil.copyfile(src.parent / name, out / "imgs" / "cover.png")
+        break
 print("cover={0}".format("yes" if (out / "imgs" / "cover.png").is_file() else "missing"))
 PYEOF2
         ;;
@@ -321,7 +326,7 @@ PYEOF2
         echo "status=ok images=$n"
         ;;
     *)
-        sed -n '2,21p' "$0"
+        sed -n '2,22p' "$0"
         exit 1
         ;;
 esac
