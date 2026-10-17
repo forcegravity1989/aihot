@@ -73,6 +73,13 @@ DEEP_TEMPLATE = "deep.html.jinja"
 SPEED_TEMPLATE = "speed.html.jinja"
 SPEED_NAME = "speed.html"
 SPEED_PNG_NAME = "speed.png"
+#: 公众号封面（2.35:1）：入仓的无字标准底图 + 程序叠字（千里眼 / AI 日报 / 日期 / 头条一句），无头 Chrome 截图。
+#: 截成 cover-auto.png；手工或 Codex 出的 cover.png 仍然优先（qly-publish.sh wechat 打包时判）
+COVER_TEMPLATE = "cover.html.jinja"
+COVER_NAME = "cover.html"
+COVER_PNG_NAME = "cover-auto.png"
+COVER_BASE = "cover-base.jpg"
+COVER_WIDTH, COVER_HEIGHT = 940, 400  # CSS 像素；2 倍截图出 1880×800
 #: 公众号稿（Markdown，baoyu-post-to-wechat 直接吃）：三部分同一份内容，图走相对路径
 WECHAT_TEMPLATE = "wechat.md.jinja"
 WECHAT_NAME = "wechat.md"
@@ -3144,29 +3151,55 @@ def _chrome_binary() -> Optional[str]:
     return None
 
 
-def export_speed_png(html_path, png_path, height: int) -> bool:
-    """把 speed.html 截成 PNG（宽 1080 × 页高）。没有 Chrome、或 ``QLY_SPEED_PNG=0`` 时跳过——速读图是
-    第一部分的可分享副本，页面本身不依赖它。"""
-    if os.environ.get("QLY_SPEED_PNG", "1").strip().lower() in ("0", "false", "no", "off"):
+def _screenshot(html_path, png_path, width: int, height: int, switch: str, scale: int = 1) -> bool:
+    """无头 Chrome 把一张定尺寸的 HTML 截成 PNG。没有 Chrome、或开关环境变量设成 0 时跳过。"""
+    if os.environ.get(switch, "1").strip().lower() in ("0", "false", "no", "off"):
         return False
     chrome = _chrome_binary()
     if not chrome:
-        logger.info("没找到 Chrome，跳过速读图 PNG（设 QLY_CHROME 指定路径）")
+        logger.info("没找到 Chrome，跳过 %s（设 QLY_CHROME 指定路径）", Path(png_path).name)
         return False
     profile = tempfile.mkdtemp(prefix="qly-chrome-")
     cmd = [chrome, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
            "--hide-scrollbars", "--disable-extensions", "--user-data-dir={0}".format(profile),
-           "--window-size={0},{1}".format(SPEED_WIDTH, int(height)),
+           "--window-size={0},{1}".format(int(width), int(height)),
+           "--force-device-scale-factor={0}".format(scale),
            "--virtual-time-budget=5000",
            "--screenshot={0}".format(png_path), html_path.resolve().as_uri()]
     try:
         subprocess.run(cmd, check=True, capture_output=True, timeout=120)
     except (OSError, subprocess.SubprocessError) as exc:
-        logger.warning("速读图 PNG 导出失败: %s", exc)
+        logger.warning("%s 导出失败: %s", Path(png_path).name, exc)
         return False
     finally:
         shutil.rmtree(profile, ignore_errors=True)
     return png_path.is_file()
+
+
+def export_speed_png(html_path, png_path, height: int) -> bool:
+    """把 speed.html 截成 PNG（宽 1080 × 页高）。``QLY_SPEED_PNG=0`` 时跳过——速读图是
+    第一部分的可分享副本，页面本身不依赖它。"""
+    return _screenshot(html_path, png_path, SPEED_WIDTH, height, "QLY_SPEED_PNG")
+
+
+def render_cover(date_str: str, items: Sequence[Dict[str, Any]], now=None,
+                 quick: Sequence[Dict[str, Any]] = ()) -> str:
+    """封面 HTML：标准底图（左 45% 留白）+ 叠字。头条那句和 N 秒读完第一行同一套判定（带主体）。"""
+    now = utils.as_utc(now or utils.now_utc())
+    rows = _brief_rows(_grouped_by_track(items, quick, now, MEDIA_BASE_ARCHIVE)["groups"])
+    lead = next((r for r in rows if r["depth"] == "lead"), rows[0] if rows else None)
+    return minitpl.render(_load_template(COVER_TEMPLATE), {
+        "date": date_str,
+        "lead": lead["text"] if lead else "",
+        "base_uri": (paths.templates_dir() / COVER_BASE).resolve().as_uri(),
+        "width": str(COVER_WIDTH),
+        "height": str(COVER_HEIGHT),
+    })
+
+
+def export_cover_png(html_path, png_path) -> bool:
+    """封面截 2 倍图（1880×800）。``QLY_COVER_PNG=0`` 时跳过。"""
+    return _screenshot(html_path, png_path, COVER_WIDTH, COVER_HEIGHT, "QLY_COVER_PNG", scale=2)
 
 def _archive_days(current: str, current_count: int = 0, limit: int = 14) -> List[Dict[str, Any]]:
     """往期归档：扫 ``archive/<date>/`` 下已渲染的日报，新到旧。
@@ -3372,6 +3405,14 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
                 shutil.copyfile(png_path, paths.data_path(SPEED_PNG_NAME))
             except OSError as exc:
                 logger.warning("复制速读图到数据根失败: %s", exc)
+
+    # 封面：标准底图 + 当天日期与头条，截成 cover-auto.png（手工的 cover.png 打包时优先）
+    try:
+        cover_path = _archive_path(date_str, COVER_NAME)
+        if _write_text(cover_path, render_cover(date_str, items, now=now, quick=quick)):
+            export_cover_png(cover_path, _archive_path(date_str, COVER_PNG_NAME))
+    except Exception as exc:  # noqa: BLE001 - 封面是副产物，不拖垮首页
+        logger.warning("封面渲染失败: %s", exc)
 
     # 公众号稿落在归档目录（图片路径 ../../media/ 与 speed.png 都相对它）
     try:
