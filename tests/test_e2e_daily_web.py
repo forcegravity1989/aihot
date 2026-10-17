@@ -1517,6 +1517,61 @@ def test_cover_is_standard_base_with_overlaid_text_and_packs_when_no_manual_cove
     assert report["cover"] == "manual" and (out / "imgs" / "02-cover.png").read_bytes() == b"\x89PNG manual"
 
 
+def test_wechat_push_saves_newspic_draft_once_per_day(tmp_data_dir, monkeypatch, tmp_path):
+    """定时任务打完贴图包紧接着 qly-publish.sh wechat-push 推进公众号草稿箱：在凭证目录下跑发布脚本、
+    --type newspic、署名千里眼；成功记 pushed.json，重跑跳过（一天只进一份草稿），--force 才重推；
+    发布脚本失败要非零退出、不留 pushed.json。用假发布器代替 npx bun wechat-api.ts。"""
+    import subprocess
+    from pathlib import Path
+
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    arch = paths.data_path("archive", date_str)
+    (arch / "speed.png").write_bytes(b"\x89PNG speed")
+    repo = Path(daily.__file__).resolve().parents[2]
+    creds = tmp_path / "creds"
+    (creds / ".baoyu-skills").mkdir(parents=True)
+    (creds / ".baoyu-skills" / ".env").write_text("WECHAT_APP_ID=x\n", encoding="utf-8")
+    api = tmp_path / "wechat-api.ts"
+    api.write_text("// fake\n", encoding="utf-8")
+    calls = tmp_path / "calls.log"
+    fake = tmp_path / "fake-bun.sh"
+    fake.write_text("#!/bin/bash\n"
+                    'echo "$PWD|$*" >> "{0}"\n'
+                    '[ -n "$FAIL" ] && {{ echo "[wechat-api] errcode 40164 invalid ip" >&2; exit 1; }}\n'
+                    "echo '[wechat-api] Publishing to draft...' >&2\n"
+                    'printf \'{{\\n  "success": true,\\n  "media_id": "MID-1",\\n  "title": "T",\\n  "articleType": "newspic"\\n}}\\n\'\n'
+                    .format(calls), encoding="utf-8")
+    fake.chmod(0o755)
+    env = dict(os.environ, QLY_DATA_DIR=str(tmp_data_dir), QLY_WECHAT_RUNNER=str(fake),
+               QLY_WECHAT_API=str(api), QLY_WECHAT_CREDS_DIR=str(creds))
+
+    def run(*args, **extra):
+        return subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh")] + list(args),
+                              capture_output=True, text=True, env=dict(env, **extra))
+
+    pkg = arch / "wechat-newspic"
+    assert run("wechat", str(pkg), date_str).returncode == 0
+    res = run("wechat-push", str(pkg))
+    assert res.returncode == 0, res.stderr
+    report = dict(line.split("=", 1) for line in res.stdout.splitlines() if "=" in line)
+    assert report["pushed"] == "yes" and report["media_id"] == "MID-1"
+    cwd, argv = calls.read_text(encoding="utf-8").splitlines()[0].split("|", 1)
+    assert Path(cwd).resolve() == creds.resolve(), "发布脚本按 cwd 找凭证，要在凭证目录下跑"
+    assert argv == "{0} {1} --type newspic --author 千里眼".format(api, (pkg / "index.html").resolve())
+    assert json.loads((pkg / "pushed.json").read_text(encoding="utf-8"))["media_id"] == "MID-1"
+
+    again = run("wechat-push", str(pkg))
+    assert again.returncode == 0 and "pushed=skip" in again.stdout and "media_id=MID-1" in again.stdout
+    assert len(calls.read_text(encoding="utf-8").splitlines()) == 1, "推过的不再推"
+    assert run("wechat-push", str(pkg), "--force").returncode == 0
+    assert len(calls.read_text(encoding="utf-8").splitlines()) == 2
+
+    (pkg / "pushed.json").unlink()
+    bad = run("wechat-push", str(pkg), FAIL="1")
+    assert bad.returncode != 0 and "40164" in bad.stderr
+    assert not (pkg / "pushed.json").exists(), "失败不能记成已推"
+
+
 def test_scheduled_task_commands_cover_the_new_editing_steps(tmp_data_dir, monkeypatch, tmp_path):
     """定时任务只能调 qly-publish.sh：status 要按密度档报提炼覆盖（浅读不要逻辑链）、报哪些头条 / 深读
     没有信息图；figures 列出可选主图；depth 写定档并重新渲染；--synth-prompts 只挑没有信息图的头条 / 深读。"""
