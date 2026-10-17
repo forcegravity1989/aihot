@@ -15,6 +15,8 @@
 #                          封面用手工 cover.png，没有就用 --html 自动截的 cover-auto.png
 #                          交 baoyu-post-to-wechat 的 wechat-api.ts --type newspic
 #   wechat-article OUT_DIR [DAY]  公众号「文章」发布包（article.html / article.md + imgs/），旧做法留作备用
+#   wechat-push PKG_DIR [--force]  把贴图包推进公众号**草稿箱**（不群发）；成功写 PKG_DIR/pushed.json，已推过就跳过，
+#                          --force 重推。凭证目录 / 运行器 / 发布脚本可用 QLY_WECHAT_CREDS_DIR / _RUNNER / _API 覆盖
 #   figures [DAY]        列出每条的密度档与原文配图（下标 / 本地绝对路径 / kind / 图注），定主图用
 #   depth   FILE [DAY]   把定档 JSON（{"depth":[{sig,depth,figure,figure_note,synth_image}]}）写进定稿并重新渲染
 #   synth   OUT_DIR [DAY] [SIG,SIG]  给头条 / 深读里没有信息图的条目用 Codex 出示意图（每张 3~5 分钟），打印 image=<sig>\t<png>
@@ -207,6 +209,57 @@ print("images={0}".format(" ".join(imgs)))
 print("cover={0}".format({"cover.png": "manual", "cover-auto.png": "auto"}.get(cover, "missing")))
 PYEOF2
         ;;
+    wechat-push)
+        # 贴图包 → 公众号草稿箱（baoyu-post-to-wechat 的 wechat-api.ts --type newspic）。只存草稿，群发永远由人在后台点。
+        # 凭证在 QLY_WECHAT_CREDS_DIR/.baoyu-skills/.env（发布脚本按 cwd 找），所以在那个目录下运行
+        PKG="${1:?用法: qly-publish.sh wechat-push PKG_DIR [--force]}"
+        "$PY" - "$PKG" "${2:-}" <<'PYEOF2'
+import datetime, json, os, shlex, subprocess, sys
+from pathlib import Path
+
+pkg, force = Path(sys.argv[1]).resolve(), sys.argv[2] == "--force"
+page = pkg / "index.html"
+if not page.is_file():
+    sys.exit("{0} 不存在：先 qly-publish.sh wechat 打包".format(page))
+done = pkg / "pushed.json"
+if done.is_file() and not force:
+    prev = json.loads(done.read_text(encoding="utf-8"))
+    print("pushed=skip")
+    print("media_id={0}".format(prev.get("media_id", "")))
+    print("at={0}".format(prev.get("at", "")))
+    sys.exit(0)
+home = Path.home()
+runner = shlex.split(os.environ.get("QLY_WECHAT_RUNNER") or "npx -y bun")
+api = os.environ.get("QLY_WECHAT_API") or str(
+    home / ".claude/plugins/marketplaces/baoyu-skills/skills/baoyu-post-to-wechat/scripts/wechat-api.ts")
+creds = Path(os.environ.get("QLY_WECHAT_CREDS_DIR") or home / "projects" / "writer-wf")
+if not Path(api).is_file():
+    sys.exit("发布脚本不存在：{0}（装 baoyu-skills 或设 QLY_WECHAT_API）".format(api))
+if not (creds / ".baoyu-skills" / ".env").is_file():
+    sys.exit("凭证不存在：{0}/.baoyu-skills/.env（或设 QLY_WECHAT_CREDS_DIR）".format(creds))
+try:
+    res = subprocess.run(runner + [api, str(page), "--type", "newspic", "--author", "千里眼"],
+                         cwd=str(creds), capture_output=True, text=True, timeout=900)
+except (OSError, subprocess.SubprocessError) as exc:
+    sys.exit("推送失败：{0}".format(exc))
+out = res.stdout
+result = {}
+if "{" in out:
+    try:
+        result = json.loads(out[out.index("{"):out.rindex("}") + 1])
+    except ValueError:
+        result = {}
+if res.returncode != 0 or not result.get("success") or not result.get("media_id"):
+    tail = "\n".join((res.stderr or out).strip().splitlines()[-8:])
+    sys.exit("推送失败（退出码 {0}）：\n{1}".format(res.returncode, tail))
+record = {"media_id": result["media_id"], "title": result.get("title", ""), "type": result.get("articleType", ""),
+          "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+done.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+print("pushed=yes")
+print("media_id={0}".format(record["media_id"]))
+print("title={0}".format(record["title"]))
+PYEOF2
+        ;;
     wechat-article)
         # 公众号稿发布包：archive/<DAY>/wechat.md + 它引用的配图 + 速读图，图片改成包内相对路径 imgs/，
         # 交给 baoyu-post-to-wechat（API 模式会逐张上传正文图；封面放 imgs/cover.png）
@@ -326,7 +379,7 @@ PYEOF2
         echo "status=ok images=$n"
         ;;
     *)
-        sed -n '2,22p' "$0"
+        sed -n '2,24p' "$0"
         exit 1
         ;;
 esac
