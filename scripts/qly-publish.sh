@@ -15,7 +15,11 @@
 #                          封面用手工 cover.png，没有就用 --html 自动截的 cover-auto.png
 #                          交 baoyu-post-to-wechat 的 wechat-api.ts --type newspic
 #   wechat-article OUT_DIR [DAY]  公众号「文章」发布包（article.html / article.md + imgs/），旧做法留作备用
-#   wechat-push PKG_DIR [--force]  把贴图包推进公众号**草稿箱**（不群发）；成功写 PKG_DIR/pushed.json，已推过就跳过，
+#   deepdive-prompt [DAY] [SIG]  深度解读写作简报（自动挑原料最厚的头条 / 深读，或指定 SIG）：原文全文 + 配图 + JSON 格式
+#   deepdive FILE [DAY]  校验编辑写的解读 JSON（关键数字逐字核对原文）并渲染 deepdive.html + 「深度解读」封面
+#   wechat-deep OUT_DIR [DAY]  公众号正文（深度解读）发布包：article.html + article.md + imgs/（含 cover.png）
+#   wechat-push PKG_DIR [--force]  把发布包推进公众号**草稿箱**（不群发）：index.html → 贴图，article.html → 正文；
+#                          成功写 PKG_DIR/pushed.json，已推过就跳过，
 #                          --force 重推。凭证目录 / 运行器 / 发布脚本可用 QLY_WECHAT_CREDS_DIR / _RUNNER / _API 覆盖
 #   figures [DAY]        列出每条的密度档与原文配图（下标 / 本地绝对路径 / kind / 图注），定主图用
 #   depth   FILE [DAY]   把定档 JSON（{"depth":[{sig,depth,figure,figure_note,synth_image}]}）写进定稿并重新渲染
@@ -209,8 +213,62 @@ print("images={0}".format(" ".join(imgs)))
 print("cover={0}".format({"cover.png": "manual", "cover-auto.png": "auto"}.get(cover, "missing")))
 PYEOF2
         ;;
+    deepdive-prompt)
+        DAY="${1:-$(date -u +%Y-%m-%d)}"
+        if [ -n "${2:-}" ]; then
+            "$PY" -m qianliyan.cli.wechat_deepdive --prompt --date "$DAY" --sig "$2" 2>&1 | grep -v -i 'warn'
+        else
+            "$PY" -m qianliyan.cli.wechat_deepdive --prompt --date "$DAY" 2>&1 | grep -v -i 'warn'
+        fi
+        exit "${PIPESTATUS[0]}"
+        ;;
+    deepdive)
+        FILE="${1:?用法: qly-publish.sh deepdive FILE [DAY]}"
+        DAY="${2:-$(date -u +%Y-%m-%d)}"
+        "$PY" -m qianliyan.cli.wechat_deepdive --apply "$FILE" --date "$DAY" 2>&1 | grep -v -i 'warn'
+        exit "${PIPESTATUS[0]}"
+        ;;
+    wechat-deep)
+        # 深度解读发布包：archive/<DAY>/deepdive.html（图走 ../../media/）→ article.html（图改成 imgs/），
+        # article.md 给发布脚本取标题 / 摘要，封面 cover-deep.png → imgs/cover.png
+        OUT="${1:?用法: qly-publish.sh wechat-deep OUT_DIR [DAY]}"
+        DAY="${2:-$(date -u +%Y-%m-%d)}"
+        "$PY" - "$QLY_DATA_DIR" "$OUT" "$DAY" <<'PYEOF2'
+import re, shutil, sys
+from pathlib import Path
+
+data, out, day = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+arch = data / "archive" / day
+src = arch / "deepdive.html"
+if not src.is_file():
+    sys.exit("deepdive.html 不存在：先 qly-publish.sh deepdive FILE {0}".format(day))
+cover = arch / "cover-deep.png"
+if not cover.is_file():
+    sys.exit("cover-deep.png 不存在（没有 Chrome？）：正文必须有封面")
+(out / "imgs").mkdir(parents=True, exist_ok=True)
+copied = []
+
+def local_img(match):
+    path = (arch / match.group(2)).resolve()
+    if not path.is_file():
+        return ""
+    shutil.copyfile(path, out / "imgs" / path.name)
+    copied.append("imgs/" + path.name)
+    return '{0}imgs/{1}{2}'.format(match.group(1), path.name, match.group(3))
+
+html = re.sub(r'(<img\b[^>]*\bsrc=")([^"]+)(")', local_img, src.read_text(encoding="utf-8"))
+(out / "article.html").write_text(html, encoding="utf-8")
+shutil.copyfile(arch / "deepdive.md", out / "article.md")
+shutil.copyfile(cover, out / "imgs" / "cover.png")
+title = re.search(r"<title>([^<]*)</title>", html)
+print("article={0}".format(out / "article.html"))
+print("title={0}".format(title.group(1) if title else ""))
+print("images={0}".format(len(copied)))
+print("cover=yes")
+PYEOF2
+        ;;
     wechat-push)
-        # 贴图包 → 公众号草稿箱（baoyu-post-to-wechat 的 wechat-api.ts --type newspic）。只存草稿，群发永远由人在后台点。
+        # 发布包 → 公众号草稿箱（baoyu-post-to-wechat 的 wechat-api.ts，贴图 newspic / 正文 news）。只存草稿，群发永远由人在后台点。
         # 凭证在 QLY_WECHAT_CREDS_DIR/.baoyu-skills/.env（发布脚本按 cwd 找），所以在那个目录下运行
         PKG="${1:?用法: qly-publish.sh wechat-push PKG_DIR [--force]}"
         "$PY" - "$PKG" "${2:-}" <<'PYEOF2'
@@ -218,9 +276,13 @@ import datetime, json, os, shlex, subprocess, sys
 from pathlib import Path
 
 pkg, force = Path(sys.argv[1]).resolve(), sys.argv[2] == "--force"
-page = pkg / "index.html"
-if not page.is_file():
-    sys.exit("{0} 不存在：先 qly-publish.sh wechat 打包".format(page))
+# 包里是 index.html 就是贴图（wechat 打的），article.html 就是正文（wechat-deep 打的，要带封面）
+if (pkg / "index.html").is_file():
+    page, extra = pkg / "index.html", ["--type", "newspic"]
+elif (pkg / "article.html").is_file() and (pkg / "imgs" / "cover.png").is_file():
+    page, extra = pkg / "article.html", ["--type", "news", "--cover", str(pkg / "imgs" / "cover.png")]
+else:
+    sys.exit("{0} 里既没有 index.html（贴图）也没有 article.html + imgs/cover.png（正文）：先打包".format(pkg))
 done = pkg / "pushed.json"
 if done.is_file() and not force:
     prev = json.loads(done.read_text(encoding="utf-8"))
@@ -238,7 +300,7 @@ if not Path(api).is_file():
 if not (creds / ".baoyu-skills" / ".env").is_file():
     sys.exit("凭证不存在：{0}/.baoyu-skills/.env（或设 QLY_WECHAT_CREDS_DIR）".format(creds))
 try:
-    res = subprocess.run(runner + [api, str(page), "--type", "newspic", "--author", "千里眼"],
+    res = subprocess.run(runner + [api, str(page)] + extra + ["--author", "千里眼"],
                          cwd=str(creds), capture_output=True, text=True, timeout=900)
 except (OSError, subprocess.SubprocessError) as exc:
     sys.exit("推送失败：{0}".format(exc))
@@ -379,7 +441,7 @@ PYEOF2
         echo "status=ok images=$n"
         ;;
     *)
-        sed -n '2,24p' "$0"
+        sed -n '2,28p' "$0"
         exit 1
         ;;
 esac

@@ -1572,6 +1572,101 @@ def test_wechat_push_saves_newspic_draft_once_per_day(tmp_data_dir, monkeypatch,
     assert not (pkg / "pushed.json").exists(), "失败不能记成已推"
 
 
+def test_daily_deepdive_article_is_briefed_checked_rendered_and_pushed_as_news(tmp_data_dir, monkeypatch, tmp_path):
+    """每天第二篇（正文）是一篇原文的深度解读：deepdive-prompt 自动挑原料最厚、有原文图的头条，简报带原文全文与配图；
+    编辑交回的 JSON 关键数字必须逐字出自原文、配图下标合法，否则打回；通过后渲染成公众号行内样式正文 + 「深度解读」封面，
+    wechat-deep 打正文包（图改成 imgs/、必须有封面），wechat-push 认出是正文、带封面按 news 推。"""
+    import subprocess
+    from pathlib import Path
+
+    client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
+    lead = roles["figured"][0]
+    final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
+    by_sig = {e["sig"]: e for e in final["items"]}
+    arch = paths.data_path("archive", date_str)
+    repo = Path(daily.__file__).resolve().parents[2]
+    env = dict(os.environ, QLY_DATA_DIR=str(tmp_data_dir))
+
+    def run(*args, **extra):
+        return subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh")] + list(args),
+                              capture_output=True, text=True, env=dict(env, **extra))
+
+    brief = run("deepdive-prompt", date_str)
+    assert brief.returncode == 0, brief.stderr
+    head, _, rest = brief.stdout.partition("## 原文全文")
+    assert "- sig：" + lead in head, "有原文图的头条优先"
+    assert "The throughput improved by 3.3x" in rest, "简报要带原文全文"
+    assert "0. [原文图]" in head and "aaaaaaaaaaaaaaaa.png" in head
+    assert roles["figured"][1] in rest and roles["numbers"] in rest, "其余厚原料的头条 / 深读列为备选"
+    assert all(sig not in brief.stdout for sig in roles["thin"]), "薄原料不配做深度解读"
+
+    para = "这一段解释新 kernel 的做法和它为什么能把吞吐提上去，并说明适用条件与代价。" * 6
+    doc = {"sig": lead, "title": "某团队新 kernel 吞吐提升 3.3x，延迟降到 120 ms", "summary": "一句话摘要",
+           "lede": "导语先给结论：" + para,
+           "sections": [{"heading": "做法", "paras": [para, para], "figure": 0, "figure_note": "看这里：最高那根柱"},
+                        {"heading": "结果", "paras": [para, para], "figure": None, "figure_note": ""},
+                        {"heading": "代价", "paras": [para, para], "figure": None, "figure_note": ""}],
+           "numbers": ["3.3x", "120 ms"], "caveats": ["只测了一种卡。"], "so_what": ["值得在自己的负载上复测。"]}
+
+    def apply(d, name):
+        f = tmp_path / name
+        f.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        return run("deepdive", str(f), date_str)
+
+    bad = apply(dict(doc, numbers=["3.3x", "9.9x"], sections=[dict(doc["sections"][0], figure=5)] + doc["sections"][1:]),
+                "bad.json")
+    assert bad.returncode != 0 and "9.9x" in bad.stdout + bad.stderr and "figure=5" in bad.stdout + bad.stderr
+    assert not (arch / "deepdive.html").exists(), "没通过校验不许出稿"
+
+    ok = apply(doc, "ok.json")
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    report = dict(line.split("=", 1) for line in ok.stdout.splitlines() if "=" in line)
+    assert report["title"] == doc["title"] and int(report["chars"]) >= 1500
+    page = (arch / "deepdive.html").read_text(encoding="utf-8")
+    body = page.split("<body", 1)[1]
+    assert "<style" not in body and "class=" not in body and "<a " not in body, "公众号只认行内样式、外链不可点"
+    assert "font-style:italic" not in body
+    for text in (doc["lede"][:20], "关键数字", "3.3x", "120 ms", "局限与存疑", "对你意味着什么", by_sig[lead]["url"]):
+        assert text in body, text
+    assert body.index(">01<") < body.index(">02<") < body.index(">03<")
+    assert '../../media/aaaaaaaaaaaaaaaa.png' in body and "看这里：最高那根柱" in body
+    assert "title: {0}".format(doc["title"]) in (arch / "deepdive.md").read_text(encoding="utf-8")
+    assert "深度解读" in (arch / "cover-deep.html").read_text(encoding="utf-8")
+
+    # 正文必须有封面：测试环境关了截图（QLY_COVER_PNG=0），没封面就不许打包
+    out = arch / "wechat-deep"
+    nocover = run("wechat-deep", str(out), date_str)
+    assert nocover.returncode != 0 and "封面" in nocover.stderr
+    (arch / "cover-deep.png").write_bytes(b"\x89PNG deep cover")
+    packed = run("wechat-deep", str(out), date_str)
+    assert packed.returncode == 0, packed.stderr
+    article = (out / "article.html").read_text(encoding="utf-8")
+    srcs = re.findall(r'<img\b[^>]*\bsrc="([^"]+)"', article)
+    assert srcs == ["imgs/aaaaaaaaaaaaaaaa.png"] and (out / srcs[0]).is_file()
+    assert (out / "imgs" / "cover.png").read_bytes() == b"\x89PNG deep cover"
+    assert (out / "article.md").is_file()
+
+    creds = tmp_path / "creds"
+    (creds / ".baoyu-skills").mkdir(parents=True)
+    (creds / ".baoyu-skills" / ".env").write_text("WECHAT_APP_ID=x\n", encoding="utf-8")
+    api = tmp_path / "wechat-api.ts"
+    api.write_text("// fake\n", encoding="utf-8")
+    calls = tmp_path / "calls.log"
+    fake = tmp_path / "fake-bun.sh"
+    fake.write_text("#!/bin/bash\n"
+                    'echo "$*" >> "{0}"\n'
+                    'printf \'{{"success": true, "media_id": "MID-NEWS", "title": "T", "articleType": "news"}}\\n\'\n'
+                    .format(calls), encoding="utf-8")
+    fake.chmod(0o755)
+    pushed = run("wechat-push", str(out), QLY_WECHAT_RUNNER=str(fake), QLY_WECHAT_API=str(api),
+                 QLY_WECHAT_CREDS_DIR=str(creds))
+    assert pushed.returncode == 0, pushed.stderr
+    assert "pushed=yes" in pushed.stdout and "media_id=MID-NEWS" in pushed.stdout
+    argv = calls.read_text(encoding="utf-8").strip()
+    assert argv == "{0} {1} --type news --cover {2} --author 千里眼".format(
+        api, (out / "article.html").resolve(), (out / "imgs" / "cover.png").resolve())
+
+
 def test_scheduled_task_commands_cover_the_new_editing_steps(tmp_data_dir, monkeypatch, tmp_path):
     """定时任务只能调 qly-publish.sh：status 要按密度档报提炼覆盖（浅读不要逻辑链）、报哪些头条 / 深读
     没有信息图；figures 列出可选主图；depth 写定档并重新渲染；--synth-prompts 只挑没有信息图的头条 / 深读。"""

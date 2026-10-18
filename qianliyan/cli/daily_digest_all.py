@@ -3183,14 +3183,18 @@ def export_speed_png(html_path, png_path, height: int) -> bool:
 
 
 def render_cover(date_str: str, items: Sequence[Dict[str, Any]], now=None,
-                 quick: Sequence[Dict[str, Any]] = ()) -> str:
-    """封面 HTML：标准底图（左 45% 留白）+ 叠字。头条那句和 N 秒读完第一行同一套判定（带主体）。"""
-    now = utils.as_utc(now or utils.now_utc())
-    rows = _brief_rows(_grouped_by_track(items, quick, now, MEDIA_BASE_ARCHIVE)["groups"])
-    lead = next((r for r in rows if r["depth"] == "lead"), rows[0] if rows else None)
+                 quick: Sequence[Dict[str, Any]] = (), kind: str = "AI 日报", line: Optional[str] = None) -> str:
+    """封面 HTML：标准底图（左 45% 留白）+ 叠字。``kind`` 是第二行（日报 / 深度解读）；``line`` 缺省用头条那句
+    （和 N 秒读完第一行同一套判定，带主体），深度解读传它自己的标题。"""
+    if line is None:
+        now = utils.as_utc(now or utils.now_utc())
+        rows = _brief_rows(_grouped_by_track(items, quick, now, MEDIA_BASE_ARCHIVE)["groups"])
+        lead = next((r for r in rows if r["depth"] == "lead"), rows[0] if rows else None)
+        line = lead["text"] if lead else ""
     return minitpl.render(_load_template(COVER_TEMPLATE), {
         "date": date_str,
-        "lead": lead["text"] if lead else "",
+        "kind": kind,
+        "lead": line,
         "base_uri": (paths.templates_dir() / COVER_BASE).resolve().as_uri(),
         "width": str(COVER_WIDTH),
         "height": str(COVER_HEIGHT),
