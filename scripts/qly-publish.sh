@@ -11,8 +11,8 @@
 #   brief-prompt [DAY]   打印写要点的简报（入选条目 + 原文）
 #   apply-briefs FILE [DAY]  把要点 JSON 写进定稿并重新渲染
 #   stage   OUT_DIR      把数据根的 daily.html 与它链接的详情页、原文配图整理进 OUT_DIR，供发布 artifact
-#   wechat  OUT_DIR [DAY]  公众号贴图（newspic）发布包：index.html（速读图 + 封面 + N 秒读完纯文本）+ imgs/；
-#                          封面用手工 cover.png，没有就用 --html 自动截的 cover-auto.png
+#   wechat  OUT_DIR [DAY]  公众号贴图（newspic）发布包：index.html（3:4 封面 + 速读图 + N 秒读完纯文本）+ imgs/；
+#                          封面用手工 cover-3x4.png，没有就用 --html 自动截的 cover-3x4-auto.png
 #                          交 baoyu-post-to-wechat 的 wechat-api.ts --type newspic
 #   wechat-article OUT_DIR [DAY]  公众号「文章」发布包（article.html / article.md + imgs/），旧做法留作备用
 #   deepdive-prompt [DAY] [SIG]  深度解读写作简报（自动挑原料最厚的头条 / 深读，或指定 SIG）：原文全文 + 配图 + JSON 格式
@@ -178,7 +178,7 @@ PYEOF
         ;;
     wechat)
         # 公众号贴图发布包：archive/<DAY>/wechat-newspic.json（--html 时出的标题 + 纯文本）配上速读图与封面。
-        # 贴图的图按 index.html 里 <img> 的顺序上传：速读图在前（竖版，信息流里当首图），封面在后
+        # 贴图的图按 index.html 里 <img> 的顺序上传：首图是 3:4 封面，速读图在后
         OUT="${1:?用法: qly-publish.sh wechat OUT_DIR [DAY]}"
         DAY="${2:-$(date -u +%Y-%m-%d)}"
         "$PY" - "$QLY_DATA_DIR" "$OUT" "$DAY" <<'PYEOF2'
@@ -192,15 +192,16 @@ if not src.is_file():
     sys.exit("wechat-newspic.json 不存在：先 --html 重出 {0}".format(day))
 post = json.loads(src.read_text(encoding="utf-8"))
 (out / "imgs").mkdir(parents=True, exist_ok=True)
-# 封面：手工 / Codex 出的 cover.png 优先，没有就用 --html 时程序截的 cover-auto.png（标准底图 + 叠字）
-cover = next((n for n in ("cover.png", "cover-auto.png") if (arch / n).is_file()), "")
+# 贴图首图就是封面，公众号要求 3:4：手工 cover-3x4.png 优先，没有就用 --html 时程序截的 cover-3x4-auto.png
+# （标准底图 + 竖版叠字）；第二张是速读图。横版 2.35:1 封面留给正文，不进贴图
+cover = next((n for n in ("cover-3x4.png", "cover-3x4-auto.png") if (arch / n).is_file()), "")
 imgs = []
-for name, dest in (("speed.png", "01-speed.png"), (cover, "02-cover.png")):
+for name, dest in ((cover, "01-cover.png"), ("speed.png", "02-speed.png")):
     if name and (arch / name).is_file():
         shutil.copyfile(arch / name, out / "imgs" / dest)
         imgs.append("imgs/" + dest)
 if not imgs:
-    sys.exit("贴图至少要一张图：archive/{0}/ 下 speed.png 与 cover.png 都没有".format(day))
+    sys.exit("贴图至少要一张图：archive/{0}/ 下 3:4 封面与 speed.png 都没有".format(day))
 # 发布脚本把 </p> 换成换行、去掉其余标签，所以一行一个 <p>，空行留空段
 paras = "".join("<p>{0}</p>".format(html.escape(line)) for line in post["text"].split("\n"))
 page = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8"><title>{0}</title></head>\n<body>\n{1}\n{2}\n</body></html>\n'
@@ -210,7 +211,7 @@ print("article={0}".format(out / "index.html"))
 print("title={0}".format(post["title"]))
 print("chars={0}".format(len(post["text"])))
 print("images={0}".format(" ".join(imgs)))
-print("cover={0}".format({"cover.png": "manual", "cover-auto.png": "auto"}.get(cover, "missing")))
+print("cover={0}".format({"cover-3x4.png": "manual", "cover-3x4-auto.png": "auto"}.get(cover, "missing")))
 PYEOF2
         ;;
     deepdive-prompt)

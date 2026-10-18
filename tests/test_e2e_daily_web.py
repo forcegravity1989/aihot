@@ -1445,20 +1445,20 @@ def test_wechat_newspic_package_is_speed_image_cover_and_brief_text(tmp_data_dir
     assert numbered == [str(i) for i in range(1, len(final["items"]) + 1)], "每条一句、按版面顺序编号"
     assert text.rstrip().endswith("见千里眼日报。")
 
-    # 打包：速读图在前、封面在后；没有速读图时只剩封面，也能发
+    # 打包：3:4 封面在前（贴图首图即封面）、速读图在后
     (arch / "speed.png").write_bytes(b"\x89PNG speed")
-    (arch / "cover.png").write_bytes(b"\x89PNG cover")
+    (arch / "cover-3x4.png").write_bytes(b"\x89PNG cover")
     repo = Path(daily.__file__).resolve().parents[2]
     out = tmp_path / "newspic"
     res = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "wechat", str(out), date_str],
                          capture_output=True, text=True, env=dict(os.environ, QLY_DATA_DIR=str(tmp_data_dir)))
     assert res.returncode == 0, res.stderr
     report = dict(line.split("=", 1) for line in res.stdout.splitlines() if "=" in line)
-    assert report["cover"] == "manual" and report["images"] == "imgs/01-speed.png imgs/02-cover.png"
+    assert report["cover"] == "manual" and report["images"] == "imgs/01-cover.png imgs/02-speed.png"
     page = (out / "index.html").read_text(encoding="utf-8")
-    assert re.findall(r'<img src="([^"]+)"', page) == ["imgs/01-speed.png", "imgs/02-cover.png"]
-    assert (out / "imgs" / "01-speed.png").read_bytes() == b"\x89PNG speed"
-    assert (out / "imgs" / "02-cover.png").read_bytes() == b"\x89PNG cover"
+    assert re.findall(r'<img src="([^"]+)"', page) == ["imgs/01-cover.png", "imgs/02-speed.png"], "贴图首图是 3:4 封面"
+    assert (out / "imgs" / "01-cover.png").read_bytes() == b"\x89PNG cover"
+    assert (out / "imgs" / "02-speed.png").read_bytes() == b"\x89PNG speed"
     assert "<title>{0}</title>".format(post["title"]) in page and "<a " not in page
     # 发布脚本的纯文本化：</p> → 换行、去标签、解实体，要能还原出同一份文案
     plain = html.unescape(re.sub(r"<[^>]+>", "", page.split("<body>", 1)[1].replace("</p>", "\n")))
@@ -1474,8 +1474,8 @@ def test_wechat_newspic_package_is_speed_image_cover_and_brief_text(tmp_data_dir
 
 def test_cover_is_standard_base_with_overlaid_text_and_packs_when_no_manual_cover(tmp_data_dir, monkeypatch, tmp_path):
     """封面不再每天靠 Codex 现画：--html 用入仓的无字标准底图叠上「千里眼 / AI 日报 / 日期 / 头条那句」，
-    无头 Chrome 截成 2 倍的 cover-auto.png（1880×800，2.35:1）；打贴图包时没有手工 cover.png 就用它，
-    有手工的仍然手工优先。"""
+    无头 Chrome 截成 2 倍的 cover-auto.png（1880×800，2.35:1，正文用）与 cover-3x4-auto.png（1080×1440，贴图首图）；
+    打贴图包时没有手工 cover-3x4.png 就用自动的 3:4，有手工的仍然手工优先。"""
     import struct
     import subprocess
     from pathlib import Path
@@ -1490,6 +1490,11 @@ def test_cover_is_standard_base_with_overlaid_text_and_packs_when_no_manual_cove
         assert text in page, text
     base = re.search(r'<img class="base" src="file://([^"]+)"', page).group(1)
     assert Path(urllib.parse.unquote(base)).is_file(), "标准底图要入仓"
+    tall = (arch / daily.COVER_3X4_NAME).read_text(encoding="utf-8")
+    for text in ("千里眼", "AI 日报", date_str, daily._display_title(by_sig[lead]),
+                 "今天 {0} 条正文".format(len(final["items"]))):
+        assert text in tall, text
+    assert 'url("file://' in tall and "cover-base.jpg" in tall, "竖版用同一张标准底图"
 
     if daily._chrome_binary() is None:
         pytest.skip("没有 Chrome，截图那一半验不了")
@@ -1498,6 +1503,9 @@ def test_cover_is_standard_base_with_overlaid_text_and_packs_when_no_manual_cove
     png = (arch / daily.COVER_PNG_NAME).read_bytes()
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
     assert struct.unpack(">II", png[16:24]) == (2 * daily.COVER_WIDTH, 2 * daily.COVER_HEIGHT)
+    tall_png = (arch / daily.COVER_3X4_PNG_NAME).read_bytes()
+    w, h = struct.unpack(">II", tall_png[16:24])
+    assert (w, h) == (1080, 1440) and w * 4 == h * 3, "贴图封面必须 3:4"
 
     repo = Path(daily.__file__).resolve().parents[2]
     env = dict(os.environ, QLY_DATA_DIR=str(tmp_data_dir))
@@ -1510,11 +1518,11 @@ def test_cover_is_standard_base_with_overlaid_text_and_packs_when_no_manual_cove
         return out, dict(line.split("=", 1) for line in res.stdout.splitlines() if "=" in line)
 
     out, report = pack("auto")
-    assert report["cover"] == "auto" and report["images"].endswith("imgs/02-cover.png")
-    assert (out / "imgs" / "02-cover.png").read_bytes() == png
-    (arch / "cover.png").write_bytes(b"\x89PNG manual")
+    assert report["cover"] == "auto" and report["images"].startswith("imgs/01-cover.png")
+    assert (out / "imgs" / "01-cover.png").read_bytes() == tall_png, "贴图首图用 3:4，不用横版"
+    (arch / "cover-3x4.png").write_bytes(b"\x89PNG manual")
     out, report = pack("manual")
-    assert report["cover"] == "manual" and (out / "imgs" / "02-cover.png").read_bytes() == b"\x89PNG manual"
+    assert report["cover"] == "manual" and (out / "imgs" / "01-cover.png").read_bytes() == b"\x89PNG manual"
 
 
 def test_wechat_push_saves_newspic_draft_once_per_day(tmp_data_dir, monkeypatch, tmp_path):
