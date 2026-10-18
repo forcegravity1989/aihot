@@ -27,7 +27,7 @@ body { width: {{ width }}px; height: {{ height }}px; overflow: hidden; position:
 <img class="base" src="{{ base_uri }}" alt="">
 <div class="text">
   <h1 class="brand">千里眼</h1>
-  <p class="kind">AI 日报</p>
+  <p class="kind">{{ kind }}</p>
   <p class="date">{{ date }}</p>
   {% if lead %}<p class="lead">{{ lead }}</p>{% endif %}
 </div>
