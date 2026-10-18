@@ -80,6 +80,13 @@ COVER_NAME = "cover.html"
 COVER_PNG_NAME = "cover-auto.png"
 COVER_BASE = "cover-base.jpg"
 COVER_WIDTH, COVER_HEIGHT = 940, 400  # CSS 像素；2 倍截图出 1880×800
+#: 贴图首图要 3:4 竖版：同一张底图只取右侧插画放下半部，2 倍截图出 1080×1440；手工 cover-3x4.png 打包时优先
+COVER_3X4_TEMPLATE = "cover-3x4.html.jinja"
+COVER_3X4_NAME = "cover-3x4.html"
+COVER_3X4_PNG_NAME = "cover-3x4-auto.png"
+COVER_3X4_WIDTH, COVER_3X4_HEIGHT = 540, 720
+_COVER_SHAPES = {"wide": (COVER_TEMPLATE, COVER_WIDTH, COVER_HEIGHT),
+                 "3x4": (COVER_3X4_TEMPLATE, COVER_3X4_WIDTH, COVER_3X4_HEIGHT)}
 #: 公众号稿（Markdown，baoyu-post-to-wechat 直接吃）：三部分同一份内容，图走相对路径
 WECHAT_TEMPLATE = "wechat.md.jinja"
 WECHAT_NAME = "wechat.md"
@@ -3183,27 +3190,34 @@ def export_speed_png(html_path, png_path, height: int) -> bool:
 
 
 def render_cover(date_str: str, items: Sequence[Dict[str, Any]], now=None,
-                 quick: Sequence[Dict[str, Any]] = (), kind: str = "AI 日报", line: Optional[str] = None) -> str:
-    """封面 HTML：标准底图（左 45% 留白）+ 叠字。``kind`` 是第二行（日报 / 深度解读）；``line`` 缺省用头条那句
-    （和 N 秒读完第一行同一套判定，带主体），深度解读传它自己的标题。"""
+                 quick: Sequence[Dict[str, Any]] = (), kind: str = "AI 日报", line: Optional[str] = None,
+                 shape: str = "wide") -> str:
+    """封面 HTML：标准底图 + 叠字。``shape`` = wide（2.35:1，正文 / 文章封面）或 3x4（贴图首图）；
+    ``kind`` 是第二行（日报 / 深度解读）；``line`` 缺省用头条那句（和 N 秒读完第一行同一套判定，带主体），
+    深度解读传它自己的标题。竖版多一行「今天 N 条正文 · X 秒读完」。"""
+    meta = ""
     if line is None:
         now = utils.as_utc(now or utils.now_utc())
         rows = _brief_rows(_grouped_by_track(items, quick, now, MEDIA_BASE_ARCHIVE)["groups"])
         lead = next((r for r in rows if r["depth"] == "lead"), rows[0] if rows else None)
         line = lead["text"] if lead else ""
-    return minitpl.render(_load_template(COVER_TEMPLATE), {
+        meta = "今天 {0} 条正文 · {1} 秒读完".format(len(rows), _brief_seconds(rows)) if rows else ""
+    template, width, height = _COVER_SHAPES[shape]
+    return minitpl.render(_load_template(template), {
         "date": date_str,
         "kind": kind,
         "lead": line,
+        "meta": meta,
         "base_uri": (paths.templates_dir() / COVER_BASE).resolve().as_uri(),
-        "width": str(COVER_WIDTH),
-        "height": str(COVER_HEIGHT),
+        "width": str(width),
+        "height": str(height),
     })
 
 
-def export_cover_png(html_path, png_path) -> bool:
-    """封面截 2 倍图（1880×800）。``QLY_COVER_PNG=0`` 时跳过。"""
-    return _screenshot(html_path, png_path, COVER_WIDTH, COVER_HEIGHT, "QLY_COVER_PNG", scale=2)
+def export_cover_png(html_path, png_path, shape: str = "wide") -> bool:
+    """封面截 2 倍图（wide 1880×800 / 3x4 1080×1440）。``QLY_COVER_PNG=0`` 时跳过。"""
+    _template, width, height = _COVER_SHAPES[shape]
+    return _screenshot(html_path, png_path, width, height, "QLY_COVER_PNG", scale=2)
 
 def _archive_days(current: str, current_count: int = 0, limit: int = 14) -> List[Dict[str, Any]]:
     """往期归档：扫 ``archive/<date>/`` 下已渲染的日报，新到旧。
@@ -3415,6 +3429,9 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
         cover_path = _archive_path(date_str, COVER_NAME)
         if _write_text(cover_path, render_cover(date_str, items, now=now, quick=quick)):
             export_cover_png(cover_path, _archive_path(date_str, COVER_PNG_NAME))
+        cover_3x4 = _archive_path(date_str, COVER_3X4_NAME)
+        if _write_text(cover_3x4, render_cover(date_str, items, now=now, quick=quick, shape="3x4")):
+            export_cover_png(cover_3x4, _archive_path(date_str, COVER_3X4_PNG_NAME), shape="3x4")
     except Exception as exc:  # noqa: BLE001 - 封面是副产物，不拖垮首页
         logger.warning("封面渲染失败: %s", exc)
 

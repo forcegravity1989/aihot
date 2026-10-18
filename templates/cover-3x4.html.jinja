@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="generator" content="qianliyan cover 3x4">
+<title>千里眼 · {{ kind }} · {{ date }} · 贴图封面</title>
+<style>
+/* 公众号贴图封面（3:4 竖版，贴图首图）：和横版封面同一张无字标准底图 cover-base.jpg，
+   只取右侧插画区放在下半部，上半部叠字。定尺寸 {{ width }}×{{ height }}，无头 Chrome 2 倍截图出 1080×1440。 */
+html, body { margin: 0; padding: 0; }
+body { width: {{ width }}px; height: {{ height }}px; overflow: hidden; position: relative; background: #fefaf3;
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased; }
+.art { position: absolute; left: 0; right: 0; bottom: 0; height: 370px;
+  background: url("{{ base_uri }}") right bottom / auto 100% no-repeat; }
+.text { position: absolute; left: 44px; right: 40px; top: 52px; }
+.brand { margin: 0; font-size: 66px; line-height: 1; font-weight: 900; color: #b45309; letter-spacing: .04em; }
+.kind { margin: 12px 0 0; font-size: 36px; line-height: 1; font-weight: 800; color: #4a2c17; letter-spacing: .02em; }
+.date { margin: 14px 0 0; font-size: 18px; line-height: 1; font-weight: 700; color: #b45309;
+  font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.lead { margin: 18px 0 0; padding-top: 12px; border-top: 2px solid #ecd9c4; font-size: 18px; line-height: 1.5;
+  font-weight: 700; color: #3d2a1c; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.meta { margin: 10px 0 0; font-size: 13px; line-height: 1.4; font-weight: 600; color: #8a6a52; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+<div class="art"></div>
+<div class="text">
+  <h1 class="brand">千里眼</h1>
+  <p class="kind">{{ kind }}</p>
+  <p class="date">{{ date }}</p>
+  {% if lead %}<p class="lead">{{ lead }}</p>{% endif %}
+  {% if meta %}<p class="meta">{{ meta }}</p>{% endif %}
+</div>
+</body>
+</html>
