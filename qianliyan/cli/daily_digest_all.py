@@ -2265,7 +2265,6 @@ MERGED_SHELL = """<!doctype html>
 <title>{{ page_title }}</title>
 <style>{{ theme_css|safe }}</style>
 <style>
-/* 顶栏 */
 .qly-topbar {
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px;
   height: 52px; padding: 0 20px; background: var(--bg-0);
@@ -2295,7 +2294,6 @@ MERGED_SHELL = """<!doctype html>
   content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-emerald);
 }
 .qly-shell { display: flex; align-items: stretch; min-height: 0; }
-/* 左栏「本期导读」（issue #51）：这一期有什么、我关注的方向在哪、读到哪了 */
 .qly-app { grid-template-columns: 272px minmax(0, 1fr); }
 .sb-issue { padding: 2px 8px 14px; border-bottom: 1px solid var(--sidebar-border); }
 .sb-date { font-size: 17px; font-weight: 800; letter-spacing: -.01em; color: var(--text-0); }
@@ -2315,7 +2313,6 @@ MERGED_SHELL = """<!doctype html>
 .sb-items { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
 .sb-item { position: relative; display: block; padding: 5px 8px 5px 20px; border-radius: var(--radius-sm);
   font-size: 12.5px; line-height: 1.45; color: var(--text-1); }
-/* 两行截断放在内层：和内边距放在同一个元素上，第三行会从内边距里露出半截 */
 .sb-t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sb-item::before { content: ""; position: absolute; left: 8px; top: 12px; width: 5px; height: 5px; border-radius: 50%;
   background: var(--border-strong); }
@@ -2329,7 +2326,6 @@ MERGED_SHELL = """<!doctype html>
   border-top: 1px solid var(--sidebar-border); font-size: 11.5px; color: var(--text-2); }
 .sb-archive a.is-current, .sb-archive span.is-current { color: var(--theme-accent-fg); font-weight: 700; }
 .sb-foot { padding: 8px 8px 0; font-size: 10.5px; color: var(--text-2); }
-/* 三个部分（ADR D0）：同一天的内容给三种读法，按读者的时间从少到多排 */
 .qly-part + .qly-part { margin-top: 30px; padding-top: 26px; border-top: 1px solid var(--border); }
 .part-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .part-no { display: inline-block; font-family: var(--font-mono); font-size: 12px; font-weight: 700; line-height: 1.4;
@@ -2337,7 +2333,6 @@ MERGED_SHELL = """<!doctype html>
 .part-head .qly-page-title { font-size: 20px; }
 .part-head .qly-page-sub { flex-basis: 100%; }
 .part-tools { margin-left: auto; }
-/* ① 看图知今天：头条横着一整行，深读一格一张；没信息图的深读放它最大的那个数 */
 .sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 14px; }
 .sp-tile { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface-card); overflow: hidden; color: var(--text-0); box-shadow: var(--shadow-card);
@@ -2364,7 +2359,6 @@ MERGED_SHELL = """<!doctype html>
 .sp-note { font-size: 11.5px; line-height: 1.5; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sp-note b { color: var(--text-0); font-weight: 600; }
 .sp-tile.is-read { opacity: .45; }
-/* ② N 秒读完今天：每条一句；头条/深读加粗带标；右侧的勾 = 看过即接收，和正文行的「标记已读」同一份状态 */
 .rb-list { list-style: none; margin: 12px 0 0; padding: 0; counter-reset: rb; display: flex; flex-direction: column; gap: 6px; }
 .rb-row { counter-increment: rb; display: grid; grid-template-columns: 22px minmax(0, 1fr) 30px; column-gap: 10px;
   align-items: start; padding: 5px 0; }
@@ -2394,7 +2388,6 @@ MERGED_SHELL = """<!doctype html>
   .sb-sec-head { white-space: nowrap; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; }
   .sb-follow, .sb-fixed { display: none; }
 }
-/* 手机：顶栏只留 logo + 三部分跳转（不许换行成竖排单字），往期归档改成一行横滑 */
 @media (max-width: 600px) {
   .qly-topbar { gap: 8px; padding: 0 12px; }
   .qly-wordmark, .qly-topbar-meta { display: none; }
@@ -2489,7 +2482,6 @@ MERGED_SHELL = """<!doctype html>
 <script>
 (function () {
   "use strict";
-  // 本期导读 / 速读行 / 图块：点了跳到正文那一条；滚动时高亮当前条目；已读打勾 + 进度
   var links = document.querySelectorAll('.sb-item[data-sig], .rb-main a[data-sig], .sp-tile[data-sig]');
   for (var i = 0; i < links.length; i++) {
     links[i].addEventListener("click", function (ev) {

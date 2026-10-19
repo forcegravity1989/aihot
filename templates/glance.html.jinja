@@ -120,7 +120,6 @@
   function save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
   var state = load();
   var rows = document.querySelectorAll(".qly-glance .glance-row");
-  // 速读行与图块是同一条的镜像，已读状态要同步
   var mirrors = document.querySelectorAll(".rb-row[data-sig], .sp-tile[data-sig]");
   function apply() {
     var i, sig;
@@ -132,7 +131,6 @@
       sig = mirrors[i].getAttribute("data-sig");
       mirrors[i].classList.toggle("is-read", !!(sig && state[sig]));
     }
-    // 侧栏导读监听它刷新已读进度
     try { document.dispatchEvent(new CustomEvent("qly-read-change")); } catch (e) {}
   }
   function postHistory(sig) {
@@ -170,7 +168,6 @@
   "use strict";
   var KEY = "qly-follow-tracks";
   var list = document.querySelector(".qly-glance .trk-list");
-  // 顶部方向条和侧栏导读共用一份关注状态
   var chips = document.querySelectorAll("[data-follow]");
   var toc = document.querySelector(".sb-toc");
   if (!list || !chips.length) { return; }

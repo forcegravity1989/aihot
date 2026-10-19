@@ -1454,6 +1454,12 @@ def test_daily_deepdive_article_is_briefed_checked_rendered_and_pushed_as_news(t
     assert "title: {0}".format(doc["title"]) in (arch / "deepdive.md").read_text(encoding="utf-8")
     assert "深度解读" in (arch / "cover-deep.html").read_text(encoding="utf-8")
 
+    pages = list(arch.rglob("*.html")) + [paths.data_path("daily.html")]
+    assert len(pages) > 8
+    for p in pages:
+        leaked = re.findall(r"<!--.*?-->|/\*.*?\*/|^[ \t]*//.*$", p.read_text(encoding="utf-8"), re.S | re.M)
+        assert not leaked, "{0} 带着源码注释：{1}".format(p.name, leaked[0][:60])
+
     # 正文必须有封面：测试环境关了截图（QLY_COVER_PNG=0），没封面就不许打包
     out = arch / "wechat-deep"
     nocover = run("wechat-deep", str(out), date_str)
