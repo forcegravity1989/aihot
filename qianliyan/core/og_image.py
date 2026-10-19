@@ -1,11 +1,3 @@
-"""core/og_image.py —— 为头部条目补 Open Graph 封面图（尽力而为，永不影响主链路）。
-
-只对 hotness 前 ``top_n`` 且尚无 ``extra.og_image`` 的条目发一次 GET，正则抽
-``<meta property="og:image" content="...">``；结果（含失败标记 ``""``）写入
-``cache/og_image.json`` 以免重抓。``offline=True`` 或 env ``QLY_OFFLINE=1`` 时直接返回。
-**一切异常静默吞掉**（spec §4），这是全项目唯一豁免「异常必须 warning」的模块。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -15,7 +7,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from . import paths, storage
 
-try:  # requests 属核心依赖，缺失时本模块降级为 no-op 而非 ImportError
+try:  # requests 缺失时本模块降级为 no-op
     import requests
 except ImportError:  # pragma: no cover - 依赖缺失属部署问题
     requests = None  # type: ignore[assignment]
@@ -43,7 +35,6 @@ _OG_CONTENT_FIRST = re.compile(
 
 
 def extract_og_image(html: str) -> str:
-    """从 HTML 文本抽 og:image 地址；抽不到返回空串。"""
     if not html:
         return ""
     for pattern in (_OG_PROPERTY_FIRST, _OG_CONTENT_FIRST):
@@ -63,7 +54,6 @@ def enrich(
     cache_path: Optional[Any] = None,
     offline: bool = False,
 ) -> None:
-    """原地为 hotness 前 ``top_n`` 的条目补 ``extra.og_image``（失败即跳过）。"""
     if _is_offline(offline):
         logger.debug("离线模式，跳过 og_image 补全")
         return

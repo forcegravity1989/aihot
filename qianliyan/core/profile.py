@@ -1,16 +1,3 @@
-"""core/profile.py —— 读者画像 + 历史记录（spec-v0.3 §4）。
-
-三件事：
-  * 历史流水 ``history.jsonl``：``log_history`` 原子追加、``read_history`` 容忍坏行；
-  * 读者画像 ``load_reader_profile``：``config/reader.yaml`` 的显式兴趣 × 从
-    ``history.jsonl`` / ``feedback.jsonl`` 按 recency 衰减派生的近期偏好；
-  * ``personalize``：原地为每条 item 写 ``extra.personal_score`` /
-    ``extra.personal_reasons``，mute 命中归零，**不改 hotness 本身**。
-
-边界：本模块属 core 层，只依赖 ``paths`` / ``storage`` / ``utils``，不 import 上层。
-无历史 / 无 reader.yaml 时 ``personalize`` 退化为 ``personal_score = hotness``，绝不报错。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -33,36 +20,25 @@ HISTORY_NAME = "history.jsonl"
 FEEDBACK_NAME = "feedback.jsonl"
 ITEMS_NAME = "items.jsonl"
 
-# history.action 合法取值（received = 浅读「看过标题即已接收」）
+# received = 浅读「看过标题即已接收」
 HISTORY_ACTIONS = ("seen", "open", "deepread", "received")
 
-# 派生偏好：不同 history.action 的信号强度
 _ACTION_WEIGHTS = {
     "deepread": 2.0,
     "open": 1.5,
     "received": 1.0,
     "seen": 0.5,
 }
-# feedback.action 的信号强度（hide/down 为负向）
 _FEEDBACK_WEIGHTS = {
     "up": 2.0,
     "down": -1.5,
     "hide": -2.0,
 }
-# 近期偏好的半衰期（天）与派生乘数的最大偏移量
 _DERIVE_HALF_LIFE_DAYS = 14.0
 _DERIVE_STRENGTH = 0.5
 
 
-# =========================================================================
-# 历史记录
-# =========================================================================
 def log_history(entries: Sequence[Dict[str, Any]]) -> None:
-    """把历史条目原子追加进 ``history.jsonl``（读改写，复用 storage 原子写）。
-
-    每条归一为 ``{sig, ts, action, title, url}``；``ts`` 缺省填当前 UTC ISO；
-    ``action`` 非法（不在 :data:`HISTORY_ACTIONS`）者跳过并 warning。
-    """
     rows = [e for e in (entries or []) if isinstance(e, dict)]
     normalized: List[Dict[str, Any]] = []
     for entry in rows:
@@ -87,7 +63,6 @@ def log_history(entries: Sequence[Dict[str, Any]]) -> None:
 
 
 def read_history(limit: Optional[int] = None) -> List[Dict[str, Any]]:
-    """读 ``history.jsonl``（坏行跳过）；``limit`` 非空时返回最近 N 条。"""
     rows = storage.read_jsonl(paths.data_path(HISTORY_NAME))
     if limit is None:
         return rows
@@ -100,15 +75,11 @@ def read_history(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     return rows[-n:]
 
 
-# =========================================================================
-# 读者画像
-# =========================================================================
 def _norm_handle(handle: Any) -> str:
     return str(handle or "").strip().lstrip("@").casefold()
 
 
 def _num_map(raw: Any) -> Dict[str, float]:
-    """把 ``{key: number}`` 归一为 ``{str(key): float}``（非数值跳过）。"""
     out: Dict[str, float] = {}
     if not isinstance(raw, dict):
         return out
@@ -121,7 +92,6 @@ def _num_map(raw: Any) -> Dict[str, float]:
 
 
 def _people_map(raw: Any) -> Dict[str, float]:
-    """people 维度键统一按 handle 归一（去 @、casefold）。"""
     out: Dict[str, float] = {}
     for key, value in _num_map(raw).items():
         handle = _norm_handle(key)
@@ -131,7 +101,6 @@ def _people_map(raw: Any) -> Dict[str, float]:
 
 
 def _combine(explicit: Dict[str, float], derived: Dict[str, float]) -> Dict[str, float]:
-    """显式兴趣 × 派生偏好（各维度缺省乘数 1.0）。"""
     keys = set(explicit) | set(derived)
     return {
         k: round(explicit.get(k, 1.0) * derived.get(k, 1.0), 4)
@@ -140,7 +109,6 @@ def _combine(explicit: Dict[str, float], derived: Dict[str, float]) -> Dict[str,
 
 
 def _sig_index() -> Dict[str, Dict[str, Any]]:
-    """sig → 统一池 item（用于把 history/feedback 的 sig 还原成 tag/source/handle）。"""
     index: Dict[str, Dict[str, Any]] = {}
     for item in storage.read_jsonl(paths.data_path(ITEMS_NAME)):
         sig = item.get("sig")
@@ -175,7 +143,7 @@ def _accumulate(
 
 
 def _to_multipliers(scores: Dict[str, float]) -> Dict[str, float]:
-    """原始加权分 → 乘数：按各维度绝对值峰归一到 [-1,1]，映射为 1±STRENGTH。"""
+    """按各维度绝对值峰归一到 [-1,1]，映射为 1±STRENGTH。"""
     if not scores:
         return {}
     peak = max(abs(v) for v in scores.values()) or 1.0
@@ -188,7 +156,6 @@ def _to_multipliers(scores: Dict[str, float]) -> Dict[str, float]:
 
 
 def _derive_preferences(now: Any = None) -> Dict[str, Dict[str, float]]:
-    """从 history.jsonl + feedback.jsonl 派生近期偏好乘数（按 recency 衰减）。"""
     now = now or utils.now_utc()
     index = _sig_index()
     scores: Dict[str, Dict[str, float]] = {"tags": {}, "sources": {}, "people": {}}
@@ -221,12 +188,6 @@ def _derive_preferences(now: Any = None) -> Dict[str, Dict[str, float]]:
 
 
 def load_reader_profile() -> Dict[str, Any]:
-    """读 ``config/reader.yaml`` 显式兴趣 + 派生近期偏好，合成读者画像。
-
-    返回 ``{tags, sources, people, mute, derived}``：前三者是「显式 × 派生」的
-    合并乘数表（供 :func:`personalize` 直接消费），``mute`` 为归零名单，
-    ``derived`` 保留派生明细以便排查。缺 reader.yaml / 缺历史时各维度自然为空。
-    """
     cfg = paths.load_yaml_config("reader") or {}
     interests = cfg.get("interests") if isinstance(cfg.get("interests"), dict) else {}
     explicit_tags = _num_map(interests.get("tags"))
@@ -251,19 +212,11 @@ def load_reader_profile() -> Dict[str, Any]:
     }
 
 
-# =========================================================================
-# 个性化打分
-# =========================================================================
 def personalize(
     items: Sequence[Dict[str, Any]],
     profile: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """原地为每条 item 写 ``extra.personal_score`` / ``extra.personal_reasons``。
-
-    ``personal_score = round(hotness × ∏命中乘数, 4)``；mute 命中则归零。
-    不改 ``hotness`` 本身。``profile`` 缺省调用 :func:`load_reader_profile`。
-    无兴趣 / 无历史时退化为 ``personal_score = hotness``。
-    """
+    """personal_score = hotness × ∏命中乘数；mute 命中归零；不改 hotness 本身。"""
     if profile is None:
         profile = load_reader_profile()
 

@@ -1,25 +1,3 @@
-"""cli/daily_digest_all.py —— 日报编排（深读 / 浅读双视图，spec-v0.3 §6 / §16）。
-
-流水线：``--prepare``（候选按 ``extra.personal_score`` 降序、缺失回退 hotness，取
-全局 top 40 ∪ 各频道 top 5 写选稿草案）→ 人工/Agent 编辑 ``selected`` 字段 →
-``--check``（校验草案）→ ``--write-prompt``（生成选稿提示词供 Agent 参考）→
-``--finalize``（读入已选条目，做深读精读增强：LLM 可选、回退不阻塞，补
-``distill`` 四段 + ``theses`` + ``images``）→ ``--html``（从同一份
-``digest-final.json`` 渲染 **浅读 / 深读 / 带切换的合并页**）。
-
-三种产物（spec-v0.3 §6）：
-
-* **浅读** ``archive/<date>/glance.html``：按 ``extra.format`` 分组的极速标题流，
-  一眼扫完即「已接收」，localStorage 记已读态并置灰；
-* **深读** ``archive/<date>/deep.html``：每条一张精读卡，突出图片与论点，
-  distill 四段 + 交叉验证展开；
-* **合并页** ``archive/<date>/digest.html``：顶部「浅读 / 深读」切换（默认浅读），
-  并复制一份到数据根 ``daily.html``。
-
-V2 PNG 文生图路线已被 HTML 路线取代（intent.md 非目标），``build_v2_png_prompt``
-只保留函数壳以兼容旧引用，不再有任何下游调用。
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -59,48 +37,36 @@ GLANCE_NAME = "glance.html"
 DEEP_NAME = "deep.html"
 DAILY_ROOT_NAME = "daily.html"
 TIMELINE_NAME = "timeline.html"
-#: 详情页目录名——每条一页，落在日报页**同级**的 story/ 下，于是归档页与数据根页
-#: 能用同一个相对链接 story/<sig>.html。
-#:
-#: 刻意**不叫 items/**：数据根的 items/ 已被 cli.sync 占用（items/<date>/<eye>.jsonl，
-#: 各眼的原始条目），往同一个目录里塞 HTML 会把「原始数据」和「渲染产物」混成一锅。
+# 不叫 items/：数据根的 items/ 已被 cli.sync 占用（原始条目），别和渲染产物混在一起
 DETAIL_DIR = "story"
-#: 首页顶部「今日热点」取前几条
 
 GLANCE_TEMPLATE = "glance.html.jinja"
 DEEP_TEMPLATE = "deep.html.jinja"
-#: 速读图（第一部分的独立版）：定宽 1080 的单页，用无头 Chrome 截成 speed.png 随日报发布
 SPEED_TEMPLATE = "speed.html.jinja"
 SPEED_NAME = "speed.html"
 SPEED_PNG_NAME = "speed.png"
-#: 公众号封面（2.35:1）：入仓的无字标准底图 + 程序叠字（千里眼 / AI 日报 / 日期 / 头条一句），无头 Chrome 截图。
-#: 截成 cover-auto.png；手工或 Codex 出的 cover.png 仍然优先（qly-publish.sh wechat 打包时判）
+# 手工或 Codex 出的 cover.png 优先于 cover-auto.png（qly-publish.sh wechat 打包时判）
 COVER_TEMPLATE = "cover.html.jinja"
 COVER_NAME = "cover.html"
 COVER_PNG_NAME = "cover-auto.png"
 COVER_BASE = "cover-base.jpg"
 COVER_WIDTH, COVER_HEIGHT = 940, 400  # CSS 像素；2 倍截图出 1880×800
-#: 贴图首图要 3:4 竖版：同一张底图只取右侧插画放下半部，2 倍截图出 1080×1440；手工 cover-3x4.png 打包时优先
 COVER_3X4_TEMPLATE = "cover-3x4.html.jinja"
 COVER_3X4_NAME = "cover-3x4.html"
 COVER_3X4_PNG_NAME = "cover-3x4-auto.png"
 COVER_3X4_WIDTH, COVER_3X4_HEIGHT = 540, 720
 _COVER_SHAPES = {"wide": (COVER_TEMPLATE, COVER_WIDTH, COVER_HEIGHT),
                  "3x4": (COVER_3X4_TEMPLATE, COVER_3X4_WIDTH, COVER_3X4_HEIGHT)}
-#: 公众号稿（Markdown，baoyu-post-to-wechat 直接吃）：三部分同一份内容，图走相对路径
 WECHAT_TEMPLATE = "wechat.md.jinja"
 WECHAT_NAME = "wechat.md"
-#: 公众号正文 HTML：和首页同一套 token 与组件，全部行内样式（公众号只保留 style=""）
+# 全部行内样式：公众号只保留 style=""
 WECHAT_HTML_TEMPLATE = "wechat.html.jinja"
 WECHAT_HTML_NAME = "wechat.html"
 WECHAT_AUTHOR = "千里眼"
 WECHAT_TITLE_MAX = 64
-#: 公众号贴图（newspic）文案：标题 + 纯文本正文，图（速读图 + 封面）由 qly-publish.sh wechat 打包时配上。
-#: 贴图标题上限 20 字、正文纯文本上限 1000 字
 NEWSPIC_NAME = "wechat-newspic.json"
 NEWSPIC_TITLE_MAX = 20
 NEWSPIC_TEXT_MAX = 1000
-#: 示意图提示词：风格约束（模板）+ 日报提炼 + 原文全文，整篇喂给 Codex（ADR D3「示意」位）
 SYNTH_TEMPLATE = "synth-prompt.md"
 SYNTH_SOURCE_CHARS = 12000
 TIMELINE_TEMPLATE = "timeline.html.jinja"
@@ -111,63 +77,47 @@ PAGE_TITLE = "千里眼 · 每日日报"
 TOP_N_GLOBAL = 40
 TOP_N_CHANNEL = 5
 TOP_N_TRACK = 6
-#: 个性化 top-N 里同一信源（按组织归并后）最多占几席
 PREPARE_MAX_PER_SOURCE = 6
 
-#: extra.format → 浅读/深读图标（spec-v0.3 §16）
 FORMAT_ICONS = {
     "news": "📰", "blog": "📝", "video": "🎬", "talk": "🎤",
     "podcast": "🎧", "repo": "📦", "paper": "📄", "x": "🐦",
 }
-#: extra.format → 中文分组名
 FORMAT_LABELS = {
     "news": "资讯", "blog": "博客", "video": "视频", "talk": "演讲",
     "podcast": "播客", "repo": "仓库", "paper": "论文", "x": "X 动态",
 }
-#: 分组呈现顺序（未出现的 format 追加在后）
 
-#: extra.corroboration.verdict（Wave H1 变更情报写入）→ 深读卡叙事↔实证徽章（spec-v0.3 §19.3）
 CORROBORATION_LABELS = {
     "corroborated": "🔬 实证",
     "unverified": "🔬 存疑",
     "contradicted": "🔬 矛盾",
 }
 
-#: 选稿草案精简字段（保留渲染 + 选稿判断 + 深读增强所需的最小集合）
 DRAFT_FIELDS = (
     "sig", "title", "url", "source", "source_kind", "backend", "source_list",
     "date", "hotness", "weight", "cross_refs", "tags", "badges", "summary",
     "metrics", "extra",
 )
 
-#: 编辑（Agent 或人）可直接写进草案条目的字段——``--finalize`` 一律**尊重已写入的值**，
-#: 不用自动生成覆盖。这是本项目「Agent 在环」的落点：选稿、中文化、深读提炼这些需要
-#: 判断力的活由编辑做，代码只负责取原料（正文/字幕）与渲染。
+# --finalize 一律尊重编辑已写入的这些字段，不用自动生成覆盖
 EDITOR_FIELDS = ("title_zh", "summary_zh", "editor_note", "distill", "editor_rank", "brief", "stats", "chart",
                  "takeaway", "meme", "logic", "track", "quick", "depth", "figure_note",
-                 # 编辑定的主图下标与挂上的示意图：定稿重跑会重新抓配图，靠这两个字段把选择接回来
+                 # 定稿重跑会重抓配图，靠这两个字段把编辑的选择接回来
                  "figure_pick", "synth_figure")
 
-#: 条目的密度档（docs/adr-daily-format.md）：头条 lead / 深读 deep / 浅读 glance。
-#: 深浅按**条目**分，不按方向——方向只管顺序与分组。编辑给的 depth 优先；没给的按
-#: 「重要 × 原料」规则补判（见 ``_assign_depth``）。
 DEPTHS = ("lead", "deep", "glance")
-#: 深读的原料门槛：正文/字幕至少这么多字符，且有原文信息图或有够多可核对的带单位数字
 DEEP_MIN_CHARS = 3000
 DEEP_MIN_NUMBERS = 2
-#: 一期最多几条深读（含头条）、至少几条（有够格候选时）、每方向 / 每信源组最多几条
 DEEP_MAX = 6
 DEEP_MIN = 3
 DEEP_PER_TRACK = 2
 DEEP_PER_SOURCE = 2
-#: 解释图注的长度上限（「看这里：…」）
 FIGURE_NOTE_MAX = 80
-#: 摘要短于此字符数就认为"深读没有原料"，去抓正文（索引页抓取常只有标题，摘要为空）
 THIN_SUMMARY_CHARS = 200
-#: 正文抓取上限，避免个别超长文把草案撑爆
 FULLTEXT_MAX_CHARS = 12000
 
-#: intent.md「设计哲学四条铁律」——与 cli.deliver 同源文案，独立维护避免跨 cli 模块耦合
+# 与 cli.deliver 同源文案，刻意各自维护以免跨 cli 模块耦合
 IRON_LAWS = (
     "1. 以本地数据为准，不凭记忆——一切转述都必须来自落盘的数据底座。",
     "2. 每条必带 URL——可溯源是底线。",
@@ -209,7 +159,6 @@ def _slim_item(item: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _rank_key(item: Dict[str, Any]) -> float:
-    """候选排序键：``extra.personal_score`` 优先，缺失回退 ``hotness``（spec-v0.3 §6）。"""
     ps = _extra(item).get("personal_score")
     if ps is not None:
         try:
@@ -222,11 +171,7 @@ def _rank_key(item: Dict[str, Any]) -> float:
         return 0.0
 
 
-# =========================================================================
-# format 推断（spec-v0.3 §12：Wave E 落 extra.format，缺失则按 backend/source 兜底）
-# =========================================================================
 def infer_format(item: Dict[str, Any]) -> str:
-    """推断条目呈现类型 ∈ FORMAT_ICONS：优先 ``extra.format``，否则按信号兜底归类。"""
     extra = _extra(item)
     fmt = str(extra.get("format") or "").strip().lower()
     if fmt in FORMAT_ICONS:
@@ -254,11 +199,7 @@ def infer_format(item: Dict[str, Any]) -> str:
     return "news"
 
 
-# =========================================================================
-# 深读精读增强（distill + images）
-# =========================================================================
 def _first_sentences(summary: Any, n: int = 3) -> List[str]:
-    """把摘要按中英文句末标点切分，返回前 N 句（回退 distill 的 ``kp`` 用）。"""
     text = str(summary or "").strip()
     if not text:
         return []
@@ -269,17 +210,11 @@ def _first_sentences(summary: Any, n: int = 3) -> List[str]:
 
 
 def _maybe_attach_fulltext(entry: Dict[str, Any]) -> bool:
-    """给入选条目抓单篇正文存进 ``extra.fulltext``；抓到返回 True。
-
-    原来只在摘要太薄（<200 字）时才抓——可摘要再长也只是一段导语，编辑写要点（``brief``）
-    需要的数字、机制、限制都在正文里。入选的每一条都抓。失败/离线静默回退，绝不阻塞。
-    """
     summary = str(entry.get("summary") or "").strip()
     extra = _extra(entry)
     url = str(entry.get("url") or "").strip()
     has_text = bool(str(extra.get("transcript") or "").strip() or str(extra.get("fulltext") or "").strip())
-    # 正文配图和正文同一趟抓（issue #52）；已有正文但还没收过图的（旧草案）也要为图再抓一次——
-    # X / YouTube 页面抓不到东西，只为图就不去了
+    # 已有正文但没收过图的旧草案也为图再抓一次；X / YouTube 页面抓不到图，不去
     need_images = "article_images" not in extra and _is_article_page(url)
     if not url or (has_text and not need_images):
         return False
@@ -301,14 +236,12 @@ def _maybe_attach_fulltext(entry: Dict[str, Any]) -> bool:
         return False
     entry["extra"]["fulltext"] = text[:FULLTEXT_MAX_CHARS]
     entry["extra"]["fulltext_chars"] = len(text)   # 截断前的长度，估阅读时长用
-    # 摘要空时顺手用首段补上，浅读列表才有一句话可看
     if not summary and result.get("lead"):
         entry["summary"] = str(result["lead"])
     return True
 
 
 def _distill_source_text(entry: Dict[str, Any]) -> str:
-    """深读 distill 的输入文本：字幕全文（video/talk）> 网页正文 > 摘要。"""
     extra = _extra(entry)
     for key in ("transcript", "fulltext"):
         value = str(extra.get(key) or "").strip()
@@ -318,7 +251,6 @@ def _distill_source_text(entry: Dict[str, Any]) -> str:
 
 
 def _distill_fallback(entry: Dict[str, Any]) -> Dict[str, Any]:
-    """规则回退：``kp`` = 输入文本（字幕全文/摘要）前 3 句、``theses`` = []、其余留空（spec-v0.3 §6/§18.2）。"""
     return {
         "kp": _first_sentences(_distill_source_text(entry), 3),
         "chain": "",
@@ -329,7 +261,6 @@ def _distill_fallback(entry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _distill_llm(entry: Dict[str, Any], client: "llm_client.LLMClient") -> Optional[Dict[str, Any]]:
-    """LLM 深读增强：补 kp/chain/pull/limits/theses；失败/非法返回 None（调用方保留回退）。"""
     fmt = infer_format(entry)
     has_transcript = bool(_extra(entry).get("transcript"))
     hint = "该条为演讲/视频，theses 侧重「讲了什么观点」。" if fmt in ("talk", "video") else ""
@@ -359,13 +290,9 @@ def _distill_llm(entry: Dict[str, Any], client: "llm_client.LLMClient") -> Optio
     }
 
 
-# -------------------------------------------------------------------------
-# 原文配图（issue #52）：挑出的正文图下载到数据目录 media/，页面用相对路径引用
-# -------------------------------------------------------------------------
 MEDIA_DIR = "media"
-#: 每条最多下几张：日报卡片用第一张，详情页全放
 FIGURES_PER_ITEM = 4
-#: 单张上限。http.get 超限是**静默截断**，截断的图是半张坏图——超限一律不要
+# http.get 超限会静默截断成半张坏图，超限一律不要
 IMAGE_MAX_BYTES = 2500000
 _NO_ARTICLE_HOSTS = ("x.com", "twitter.com", "youtube.com", "youtu.be")
 
@@ -377,7 +304,7 @@ def _is_article_page(url: str) -> bool:
 
 
 def _image_ext(data: bytes) -> str:
-    """按文件头认格式——不信 content-type（有的 CDN 一律回 application/octet-stream）。"""
+    """按文件头认格式：有的 CDN 一律回 application/octet-stream，不能信 content-type。"""
     if data.startswith(b"\x89PNG"):
         return "png"
     if data.startswith(b"\xff\xd8\xff"):
@@ -390,10 +317,6 @@ def _image_ext(data: bytes) -> str:
 
 
 def _download_image(url: str) -> str:
-    """下载一张图到 ``media/<sha1 前 16 位>.<ext>``，返回数据根下的相对路径；失败返回空串。
-
-    同一 URL 只下一次（跨天复用）。不是图片、超过上限、网络失败都静默跳过——配图是锦上添花。
-    """
     stem = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
     media = paths.data_path(MEDIA_DIR)
     for ext in ("png", "jpg", "gif", "webp"):
@@ -422,8 +345,6 @@ def _download_image(url: str) -> str:
 
 
 def _attach_figures(record: Dict[str, Any]) -> int:
-    """给入选条目配原文的图：正文图优先，其次 AIHOT 摘要里的图（推文配图），都没有才用 og:image
-    （多是品牌封面，信息量最低）。写 ``record["figures"]``，返回下到了几张。"""
     extra = _extra(record)
     candidates: List[Dict[str, str]] = []
     for image in extra.get("article_images") or []:
@@ -432,7 +353,7 @@ def _attach_figures(record: Dict[str, Any]) -> int:
                                "alt": str(image.get("alt") or ""), "kind": "article"})
     for src in extra.get("images") or []:
         candidates.append({"src": html_lib.unescape(str(src)), "caption": "", "alt": "", "kind": "post"})
-    # og:image 是分享封面，信息量最低；GitHub 自动生成的仓库卡片纯属装饰，不要
+    # og:image 只作兜底；GitHub 自动生成的仓库卡片纯属装饰，不要
     if not candidates and extra.get("og_image") and "opengraph.githubassets.com" not in str(extra["og_image"]):
         candidates.append({"src": html_lib.unescape(str(extra["og_image"])), "caption": "", "alt": "",
                            "kind": "cover"})
@@ -446,14 +367,13 @@ def _attach_figures(record: Dict[str, Any]) -> int:
         seen.add(cand["src"])
         local = _download_image(cand["src"])
         if local:
-            # n = 抓取时的原始序号：编辑定主图按它指，重排后、重跑同一份定档也指得对
+            # n = 抓取时的原始序号，编辑按它指定主图，重排后也指得对
             figures.append(dict(cand, file=local, n=len(figures)))
     record["figures"] = figures
     return len(figures)
 
 
 def _collect_images(entry: Dict[str, Any]) -> List[str]:
-    """合并 ``extra.og_image`` + ``extra.images``（aihot 描述内嵌图），保序去重。"""
     extra = _extra(entry)
     out: List[str] = []
     seen = set()
@@ -473,8 +393,6 @@ def _collect_images(entry: Dict[str, Any]) -> List[str]:
 
 
 def _maybe_attach_transcript(record: Dict[str, Any]) -> bool:
-    """对 ``extra.format ∈ {video, talk}`` 且有 ``extra.video_id`` 的条目抓字幕全文存
-    ``extra.transcript``（spec-v0.3 §18.2）。失败/无字幕/离线一律静默回退，**绝不阻塞**。"""
     extra = record.get("extra")
     if not isinstance(extra, dict):
         return False
@@ -495,7 +413,6 @@ def _maybe_attach_transcript(record: Dict[str, Any]) -> bool:
 
 
 def _make_client() -> Tuple[Optional["llm_client.LLMClient"], bool]:
-    """构造 LLM 客户端并判定可用性（任何异常按不可用处理，回退不阻塞）。"""
     try:
         client = llm_client.LLMClient.from_env()
         return client, bool(client.is_available())
@@ -504,20 +421,10 @@ def _make_client() -> Tuple[Optional["llm_client.LLMClient"], bool]:
         return None, False
 
 
-# =========================================================================
-# --prepare
-# =========================================================================
-#: 一条候选最多挂几条「同一事件的其它报道」
 MAX_RELATED = 8
 
 
 def _one_per_story(ranked: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """同一事件（``extra.story_key`` 相同）只留排名最高的一条，其余并进它的来源。
-
-    不合并的话，一次发布的五种转述（官方公告、两条只差一个字的快讯、上线 OpenRouter、
-    Arena 开测）各占一个候选席位，编辑要自己去认出它们是一回事。被并掉的报道不丢：
-    来源并进 ``source_list``（多源佐证照常计数），标题与链接留在 ``extra.related``。
-    """
     heads: "Dict[str, Dict[str, Any]]" = {}
     out: List[Dict[str, Any]] = []
     for item in ranked:
@@ -545,11 +452,6 @@ def _one_per_story(ranked: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _keep_editor_work(draft: Dict[str, Any], old: Optional[Dict[str, Any]]) -> int:
-    """重跑 ``--prepare`` 不许抹掉当天已做的选稿：按 sig 把选中状态与编辑字段搬到新草案。
-
-    定时任务、手动刷新都会重跑 prepare；不保留的话，编辑写好的按语在下一次抓取时静默消失。
-    旧草案里选中、但新候选里已经没有的条目，原样追加回来。
-    """
     if not isinstance(old, dict):
         return 0
     picked = {e.get("sig"): e for e in (old.get("items") or [])
@@ -571,16 +473,12 @@ def _keep_editor_work(draft: Dict[str, Any], old: Optional[Dict[str, Any]]) -> i
 
 
 def cmd_prepare(date_str: str) -> int:
-    """候选按 personal_score（回退 hotness）取全局 top 40 ∪ 各频道 top 5，写选稿草案。"""
     items = storage.read_jsonl(paths.data_path("items.jsonl"))
     if not items:
         print("items.jsonl 为空或不存在，请先执行一次 `python -m qianliyan.cli.sync`。")
         return 1
 
-    # 个性化 top-N 也要过同源上限。频道那条路已经限了，这条不限的话草案照样被一家灌满——
-    # 实测「Claude Code 系统提示词」凭 204 条全新鲜的条目独占 87 条候选里的 30 条，
-    # 编辑打开草案看到的三分之一是同一个源的 changelog。用的是频道那把尺子（含组织级归并），
-    # 同样是软上限：铺不满 TOP_N_GLOBAL 时按分数回填，不会让候选变少。
+    # 个性化 top-N 也过同源上限（软上限，铺不满按分数回填），否则一个源能占掉三分之一候选
     ranked = _one_per_story(sorted(items, key=_rank_key, reverse=True))
     chosen: "Dict[str, Dict[str, Any]]" = {}
     for item in channels.diversify(
@@ -598,8 +496,7 @@ def cmd_prepare(date_str: str) -> int:
             if sig:
                 chosen.setdefault(sig, item)
 
-    # 每个方向再保底几条（同样过同源上限）：个性化分数偏向我们自己的口味（Agent / Claude），
-    # 只按分数取候选的话，训练、算子方向的条目连草案都进不来，编辑想给那一栏选稿也无稿可选
+    # 每方向保底几条：个性化分数偏向 Agent / Claude，只按分数取的话其它方向连候选都没有
     cfg = tracks_mod.load()
     groups = channels.load_source_groups()
     for tid in tracks_mod.ids(cfg):
@@ -627,11 +524,7 @@ def cmd_prepare(date_str: str) -> int:
     return 0
 
 
-# =========================================================================
-# --check
-# =========================================================================
 def cmd_check(date_str: str) -> int:
-    """校验草案：文件存在、每条有 url；``selected`` 全 false 属 --prepare 后正常状态。"""
     draft = _load_draft(date_str)
     if draft is None:
         print("draft 不存在: {0}（请先执行 --prepare）".format(_archive_path(date_str, DRAFT_NAME)))
@@ -656,15 +549,7 @@ def cmd_check(date_str: str) -> int:
     return 0
 
 
-# =========================================================================
-# --write-prompt
-# =========================================================================
 def cmd_write_prompt(date_str: str) -> int:
-    """生成 ``archive/<date>/prompt.md``：与编辑 Agent 收到的同一份选稿简报。
-
-    给「人或外部 Agent 手工选稿」用：读完 prompt，按其中的 JSON 格式写一个 picks 文件，
-    再 ``--apply-picks <文件>``——和 ``--auto-edit`` 走同一条校验与落盘路径。
-    """
     draft = _load_draft(date_str)
     if draft is None:
         print("draft 不存在: {0}（请先执行 --prepare）".format(_archive_path(date_str, DRAFT_NAME)))
@@ -685,31 +570,20 @@ def cmd_write_prompt(date_str: str) -> int:
     return 0
 
 
-# =========================================================================
-# --auto-edit：编辑 Agent 在环（定时任务里没人值守时，由它选稿、写按语、排头条）
-# =========================================================================
-#: 编辑 Agent 的调用命令；prompt 走 stdin，stdout 回 JSON。可用 QLY_EDITOR_CMD 覆盖（shlex 语法），
-#: 设成空串即关闭 Agent、只走规则回退。
-#:
-#: ``--tools ""`` 关掉全部工具：候选的标题摘要来自外部信源，是不可信文本，编辑只需要读 prompt、
-#: 回一段 JSON，不需要也不应该能执行任何动作。
+# --tools "" 关掉全部工具：候选标题摘要来自外部信源，是不可信文本
 DEFAULT_EDITOR_CMD = (
     'claude -p --model opus --tools "" --strict-mcp-config '
     "--no-session-persistence --output-format text"
 )
 EDITOR_TIMEOUT_S = 900
-#: 一期日报选几条
 AUTO_PICK_MIN = 8
 AUTO_PICK_MAX = 16
 AUTO_PICK_TARGET = 12
-#: 规则回退：同源最多几条、只看多新的
 AUTO_MAX_PER_SOURCE = 3
 AUTO_FRESH_HOURS = 48
-#: 快讯（TLDR 的 Quick Links）：没进正文、够新的条目，每个方向最多挂几条、全刊最多几条
 QUICK_PER_TRACK = 4
 QUICK_MAX = 16
 QUICK_LINE_MAX = 60
-#: prompt 里每条候选的摘要截断
 EDITOR_SUMMARY_CHARS = 280
 
 EDITOR_BRIEF = """你是「千里眼」AI 日报的值班编辑。下面是今天的候选条目（已按个性化分数排序、同一事件已合并）。
@@ -783,7 +657,6 @@ def _editor_cmd() -> List[str]:
 
 
 def _run_editor(prompt: str) -> Optional[str]:
-    """调编辑 Agent，返回它的原始输出；不可用/超时/非零退出返回 None（原因打日志）。"""
     if os.environ.get("QLY_OFFLINE") == "1" and os.environ.get("QLY_EDITOR_CMD") is None:
         logger.info("离线模式，跳过编辑 Agent")
         return None
@@ -808,7 +681,6 @@ def _run_editor(prompt: str) -> Optional[str]:
 
 
 def _parse_picks(raw: Optional[str], n: int) -> Optional[List[Dict[str, Any]]]:
-    """从 Agent 输出里取出合法的 picks；不合格（条数不对、编号越界、没写按语）返回 None。"""
     if not raw:
         return None
     start, end = raw.find("{"), raw.rfind("}")
@@ -872,9 +744,7 @@ def _parse_picks(raw: Optional[str], n: int) -> Optional[List[Dict[str, Any]]]:
     return picks
 
 
-#: 规则选稿时每个非必看方向先保底几条（有新鲜候选的话）
 RULE_PER_TRACK = 2
-#: 规则选稿时「模型发布」最多占几条正文
 RULE_MODELS_MAX = 4
 
 
@@ -884,15 +754,6 @@ def _is_fresh(entry: Dict[str, Any], now) -> bool:
 
 
 def _rule_picks(entries: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """规则回退：按方向配额选 12 条正文，再给每个方向挂几条快讯。
-
-    顺序：先把新鲜的模型发布放进来（≤4，所有人必看）→ 每个其余方向保底 2 条新鲜候选 →
-    剩下的名额按分数补齐。全程同源最多 3 条；铺不满再放宽到更早的候选、再放宽同源上限。
-    只按分数取的话，12 条会全是分数最高的那一两个方向（09-23 草案里训练方向只有 2 条候选，
-    一条都排不进前 12），读者翻到自己关心的那一栏是空的。
-
-    没有按语、没有中文标题——这是「今天至少有一期」的底线，不是编辑的替代品。
-    """
     now = utils.now_utc()
     groups = channels.load_source_groups()
     cfg = tracks_mod.load()
@@ -925,7 +786,7 @@ def _rule_picks(entries: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
             take([i for i in order if i in fresh and track[i] == tid], RULE_PER_TRACK)
     for capped in (True, False):
         take(order, AUTO_PICK_TARGET, capped)
-    # 正文按分数排回去（草案顺序就是分数顺序），头条是分数最高的那条
+    # 草案顺序即分数顺序，排回去后头条是分数最高的那条
     chosen.sort()
     picks = [{"i": i, "editor_note": "", "title_zh": "", "summary_zh": "", "track": track[i], "quick": False}
              for i in chosen]
@@ -937,11 +798,6 @@ def _rule_picks(entries: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _rule_quick(entries: Sequence[Dict[str, Any]], taken: "set", cfg: Dict[str, Any], now) -> List[int]:
-    """规则挑快讯：没进正文的近 48 小时候选，按分数（草案顺序）每个方向最多 4 条、全刊最多 16 条。
-
-    和正文（或已挑的快讯）讲同一个发布的跳过：09-23 头条是 GPT-6 Sol，快讯里又挂了官方公告、
-    Altman 的话、ChatGPT 推送三条同一件事的转述——同一事件没被聚成一簇的漏网之鱼，在快讯里最扎眼。
-    """
     out: List[int] = []
     per_track: Dict[str, int] = {}
     seen = {headline_cluster_agent.release_entity(e.get("title")) for i, e in enumerate(entries)
@@ -964,7 +820,6 @@ def _rule_quick(entries: Sequence[Dict[str, Any]], taken: "set", cfg: Dict[str, 
 
 
 def cmd_auto_edit(date_str: str) -> int:
-    """草案还没人选过稿时，交给编辑 Agent 选稿；Agent 不可用就按规则选，保证当天有一期。"""
     draft = _load_draft(date_str)
     if draft is None:
         print("draft 不存在: {0}（请先执行 --prepare）".format(_archive_path(date_str, DRAFT_NAME)))
@@ -991,7 +846,6 @@ def cmd_auto_edit(date_str: str) -> int:
 
 
 def _apply_picks(date_str: str, draft: Dict[str, Any], picks: Sequence[Dict[str, Any]], edited_by: str) -> None:
-    """把选稿结果写进草案：先清空旧选择，再按 picks 顺序写 selected / editor_rank / 按语。"""
     entries = draft.get("items") or []
     for entry in entries:
         entry["selected"] = False
@@ -1016,10 +870,6 @@ def _apply_picks(date_str: str, draft: Dict[str, Any], picks: Sequence[Dict[str,
 
 
 def cmd_apply_picks(date_str: str, picks_path: str, edited_by: str = "agent") -> int:
-    """读一个 picks JSON 文件（``--write-prompt`` 规定的格式）写进草案。
-
-    会替换**规则回退**的选稿（那只是保底）；人或 Agent 已经编过的草案不覆盖。
-    """
     draft = _load_draft(date_str)
     if draft is None:
         print("draft 不存在: {0}（请先执行 --prepare）".format(_archive_path(date_str, DRAFT_NAME)))
@@ -1045,16 +895,10 @@ def cmd_apply_picks(date_str: str, picks_path: str, edited_by: str = "agent") ->
     return 0
 
 
-# =========================================================================
-# 要点（brief）：每条的正文——编辑读原文后写的具体事实
-# =========================================================================
 BRIEF_PROMPT_NAME = "brief-prompt.md"
-#: 每条要点条数
 BRIEF_MIN = 3
 BRIEF_MAX = 8
-#: 喂给编辑的原文上限（每条）
 BRIEF_SOURCE_CHARS = 6000
-#: 日报页每条默认展开几条要点
 BRIEF_VISIBLE = 3
 
 BRIEF_BRIEF = """你是「千里眼」AI 日报的编辑。下面是今天已入选的 {n} 条，每条附原文（正文/字幕/摘要）。
@@ -1119,7 +963,6 @@ DEPTH_LABELS = {"lead": "头条", "deep": "深读", "glance": "浅读"}
 
 
 def _lead_figure(entry: Dict[str, Any]) -> str:
-    """写图注要看的那张图：日报页上的主视觉（第一张正文图）的图注 / alt / 地址。"""
     for fig in entry.get("figures") or []:
         if isinstance(fig, dict) and fig.get("kind", "article") != "cover":
             return (str(fig.get("caption") or fig.get("alt") or "").strip() or "（原文图，无图注）") + \
@@ -1133,7 +976,6 @@ def _load_final(date_str: str) -> Optional[Dict[str, Any]]:
 
 
 def cmd_write_brief_prompt(date_str: str) -> int:
-    """生成 ``archive/<date>/brief-prompt.md``：入选条目 + 原文，给编辑写要点。需先 --finalize。"""
     final = _load_final(date_str)
     if final is None:
         print("digest-final.json 不存在或为空，请先 --finalize。")
@@ -1152,11 +994,9 @@ def cmd_write_brief_prompt(date_str: str) -> int:
     return 0
 
 
-#: 关键数字：最多几个、数值与说明的字数上限（超了就是在写句子，不是在给数字）
 STATS_MAX = 4
 STAT_VALUE_MAX = 16
 STAT_LABEL_MAX = 30
-#: 对比图行数范围
 CHART_ROWS = (2, 8)
 
 
@@ -1173,11 +1013,9 @@ def _clean_stats(raw: Any) -> List[Dict[str, str]]:
 
 
 def _clean_chart(raw: Any) -> Optional[Dict[str, Any]]:
-    """对比图数据（条形 / 哑铃 / 散点）：交给 svg_charts 校验，任何一格不是数字就不画。"""
     return svg_charts.clean(raw)
 
 
-#: 提炼字段的长度上限（超了就不是提炼了）
 TAKEAWAY_MAX = 60
 MEME_MAX = 40
 LOGIC_STEP_MAX = 30
@@ -1185,7 +1023,6 @@ LOGIC_STEPS = (2, 5)
 
 
 def _clean_logic(raw: Any) -> Optional[Dict[str, Any]]:
-    """逻辑图：2~5 步因果链 + 关键一步 + 证据 + 代价；链条不成立就不画。"""
     if not isinstance(raw, dict):
         return None
     chain = [str(x).strip() for x in (raw.get("chain") or []) if str(x).strip()]
@@ -1205,7 +1042,6 @@ def _clean_logic(raw: Any) -> Optional[Dict[str, Any]]:
 
 
 def _parse_briefs(raw: Optional[str], sigs: Sequence[str]) -> Dict[str, Dict[str, Any]]:
-    """取出合法的要点与可视化数据：sig 必须是今天入选的、要点条数在范围内；不合格的条目丢弃。"""
     if not raw:
         return {}
     start, end = raw.find("{"), raw.rfind("}")
@@ -1225,7 +1061,7 @@ def _parse_briefs(raw: Optional[str], sigs: Sequence[str]) -> Dict[str, Dict[str
         takeaway = str(row.get("takeaway") or "").strip()
         if len(takeaway) > TAKEAWAY_MAX:
             takeaway = ""
-        # 至少得有结论或要点之一；要点数超上限说明是在复述全文，整条不收
+        # 要点数超上限说明是在复述全文，整条不收
         if (takeaway or points) and len(points) <= BRIEF_MAX:
             meme = str(row.get("meme") or "").strip()
             note = str(row.get("figure_note") or "").strip()
@@ -1242,7 +1078,7 @@ def _parse_briefs(raw: Optional[str], sigs: Sequence[str]) -> Dict[str, Dict[str
 
 
 def _apply_briefs(date_str: str, briefs: Dict[str, Dict[str, Any]]) -> int:
-    """要点与可视化数据同时写进草案（重跑 finalize 不丢）和定稿（不必重抓正文，直接 --html）。"""
+    """同时写进草案（重跑 finalize 不丢）和定稿（不必重抓正文，直接 --html）。"""
     written = 0
     draft = _load_draft(date_str) or {}
     for entry in draft.get("items") or []:
@@ -1261,31 +1097,27 @@ def _apply_briefs(date_str: str, briefs: Dict[str, Dict[str, Any]]) -> int:
     return written
 
 
-# =========================================================================
-# 密度档（depth）：编辑给的优先，缺的按「重要 × 原料」补判；数字逐字核对
-# =========================================================================
 _NUM_TOKEN = re.compile(r"\d+(?:[.,]\d+)*")
 _MONTH_NAMES = (("january", "jan"), ("february", "feb"), ("march", "mar"), ("april", "apr"), ("may",),
                 ("june", "jun"), ("july", "jul"), ("august", "aug"), ("september", "sept", "sep"),
                 ("october", "oct"), ("november", "nov"), ("december", "dec"))
-#: 「带单位的数字」——判断原文有没有可核对的硬数据（3.3x / 57% / 500k / 128GB / 1.6 倍 …）
+# 带单位的数字：3.3x / 57% / 500k / 128GB / 1.6 倍 …
 _HARD_NUMBER = re.compile(r"\d+(?:\.\d+)?\s*(?:%|x\b|×|倍|ms\b|GB\b|TB\b|MB\b|[BMKk]\b|tokens?\b|亿|万)", re.I)
 
 
 def _source_corpus(entry: Dict[str, Any]) -> str:
-    """能拿来核对的原文：标题 + 摘要 + 正文 + 字幕。编辑写的中文标题/摘要不算原文。"""
+    """编辑写的中文标题/摘要不算原文。"""
     extra = _extra(entry)
     parts = [entry.get("title"), entry.get("summary"), extra.get("fulltext"), extra.get("transcript")]
     text = " ".join(str(p) for p in parts if p)
     corpus = html_lib.unescape(re.sub(r"<[^>]+>", " ", text)).replace(",", "").lower()
-    # 英文原文写月份名、中文提炼写数字（november 30 → 11 月 30 日）是照译不是编造：把出现过的月份补成数字
+    # 英文月份名译成中文数字是照译不是编造：把出现过的月份补成数字
     months = [str(i) for i, names in enumerate(_MONTH_NAMES, start=1)
               if re.search(r"\b(?:{0})\b".format("|".join(names)), corpus)]
     return corpus + (" " + " ".join(months) if months else "")
 
 
 def _numbers_verified(text: Any, corpus: str) -> bool:
-    """文本里的每个数字都能在原文里逐字找到（千分位逗号去掉后比）。没有数字算通过。"""
     for token in _NUM_TOKEN.findall(str(text or "")):
         if token.replace(",", "") not in corpus:
             return False
@@ -1293,16 +1125,13 @@ def _numbers_verified(text: Any, corpus: str) -> bool:
 
 
 def _verbatim(text: str, corpus: str) -> bool:
-    """梗是不是原文原话：去掉引号、空白、标点和「——谁说的」后缀，看剩下的是不是原文的子串。"""
     body = re.split(r"\s*(?:——|—|－|\(|（)", text, maxsplit=1)[0]
     norm = re.sub(r"[\s\W_]+", "", body).lower()
     return len(norm) >= 6 and norm in re.sub(r"[\s\W_]+", "", corpus)
 
 
 def _verify_numbers(entry: Dict[str, Any]) -> int:
-    """提炼产物里的数字必须逐字出现在原文：数字卡逐张查、证据逐条查、对比图任一格对不上整张丢、
-    梗不是原话就丢。返回丢掉了几项（记日志）。这是 ADR 的硬规则——精致的提炼卡会被过度信任，
-    错一个数比没有图更糟。"""
+    """数字、原话必须逐字出自原文，对不上就丢，返回丢掉几项——错一个数比没有图更糟。"""
     corpus = _source_corpus(entry)
     if not corpus:
         return 0
@@ -1349,8 +1178,7 @@ def _fmt_num(value: Any) -> str:
 
 
 def _has_article_figure(entry: Dict[str, Any]) -> bool:
-    """原文自带的**信息图**才算原料：封面、编辑判为装饰的横幅 / 头像（decorative）、我们生成的示意图
-    （synth）都不算——示意图是补位，不是证据。"""
+    """封面、装饰图、我们生成的示意图都不算原料——示意图是补位，不是证据。"""
     return any(isinstance(f, dict) and f.get("kind", "article") == "article" and f.get("file")
                for f in entry.get("figures") or [])
 
@@ -1365,8 +1193,7 @@ def _source_chars(entry: Dict[str, Any]) -> int:
 
 
 def _deep_material(entry: Dict[str, Any]) -> bool:
-    """深读的原料门槛：原文够长，且有原文信息图或有够多带单位的硬数字。原料薄的条目无论多重要
-    都只能浅读——否则深读出来的逻辑链、数字全是补的（10-13 的 584 / 930 字符条目就是反例）。"""
+    """原料薄的条目再重要也只能浅读，否则深读的逻辑链、数字全是补的。"""
     if _source_chars(entry) < DEEP_MIN_CHARS:
         return False
     if _has_article_figure(entry):
@@ -1375,8 +1202,7 @@ def _deep_material(entry: Dict[str, Any]) -> bool:
 
 
 def _deep_source_key(entry: Dict[str, Any], groups: Any) -> str:
-    """深读配额按「机构」算：AIHOT 这类聚合源的条目要按原文站点归并，否则一天里 Meta、Anthropic、
-    AWS 的稿都算「AIHOT 的」，两条就把别家的额度占光（10-13 实测）。"""
+    """AIHOT 这类聚合源按原文站点归并，否则别家的稿都算「AIHOT 的」，两条就占光额度。"""
     if str(entry.get("source_kind") or "") == "aihot" or str(entry.get("source") or "").startswith("AIHOT"):
         host = urllib.parse.urlsplit(str(entry.get("url") or "")).netloc.lower()
         host = re.sub(r"^(www|blog|research|news)\.", "", host)
@@ -1386,8 +1212,6 @@ def _deep_source_key(entry: Dict[str, Any], groups: Any) -> str:
 
 
 def _assign_depth(items: Sequence[Dict[str, Any]], cfg: Dict[str, Any]) -> Dict[str, int]:
-    """给每条定密度档：编辑给的保留；编辑排第一的是头条；其余按「重要 × 原料」挑深读，
-    受每方向 / 每信源组 / 全刊上限约束；剩下的浅读。返回各档计数。"""
     groups = channels.load_source_groups()
     everyone = set(tracks_mod.everyone_ids(cfg))
     ordered = sorted(items, key=lambda e: (_editor_rank(e) is None, _editor_rank(e) or 0, -_rank_key(e)))
@@ -1406,7 +1230,7 @@ def _assign_depth(items: Sequence[Dict[str, Any]], cfg: Dict[str, Any]) -> Dict[
             per_track[tracks_mod.track_of(entry, cfg)] = per_track.get(tracks_mod.track_of(entry, cfg), 0) + 1
             key = _deep_source_key(entry, groups)
             per_source[key] = per_source.get(key, 0) + 1
-    # 编辑给多了也裁：深读是版面里最贵的位置
+    # 编辑给多了也裁
     for entry in reversed(ordered):
         if deep_total <= DEEP_MAX:
             break
@@ -1456,8 +1280,7 @@ def entry_has_depth(entry: Dict[str, Any]) -> bool:
 
 
 def _figure_position(figures: Sequence[Dict[str, Any]], ref: Any) -> Optional[int]:
-    """编辑指的那张图在当前列表里的位置：整数按抓取时的原始序号 ``n``（老数据没有 n 就按位置），
-    字符串按文件（``media/x.png``、绝对路径或文件名都行）。"""
+    """整数按抓取时的原始序号 ``n``（老数据没有 n 就按位置），字符串按文件。"""
     if isinstance(ref, str) and ref.strip():
         name = ref.strip().rsplit("/", 1)[-1]
         return next((i for i, f in enumerate(figures) if str(f.get("file") or "").rsplit("/", 1)[-1] == name), None)
@@ -1469,15 +1292,13 @@ def _figure_position(figures: Sequence[Dict[str, Any]], ref: Any) -> Optional[in
 
 
 def _pick_figure(entry: Dict[str, Any], index: Any) -> None:
-    """编辑定主图：``index`` 是 figures 里的下标，挪到最前；``-1`` = 原文没有信息图（横幅、头像、
-    现场照片不算），全部标 decorative，日报页改用数字卡 / 对比图，详情页照放。"""
+    """``-1`` = 原文没有信息图：全部标 decorative，日报页改用数字卡 / 对比图，详情页照放。"""
     figures = [f for f in entry.get("figures") or [] if isinstance(f, dict)]
     if index is None or not figures:
         return
     if isinstance(index, int) and index < 0:
         for fig in figures:
-            # 我们挂上的示意图（synth）不是原文图，不参与「主图 / 装饰图」的判定；重跑 --apply-depth 时也不能
-            # 被改成装饰图留在详情页里
+            # 示意图不是原文图：不参与主图 / 装饰图判定，重跑时也不能被改成装饰图
             if fig.get("kind") not in ("cover", "synth"):
                 fig["kind"] = "decorative"
     elif _figure_position(figures, index) is not None:
@@ -1488,7 +1309,7 @@ def _pick_figure(entry: Dict[str, Any], index: Any) -> None:
 
 
 def _reapply_figure_choice(entry: Dict[str, Any]) -> None:
-    """定稿重跑（07:30 的定时抓取会再 finalize 一次）会重新抓原文配图；把编辑定过的主图与示意图接回来。"""
+    """定稿重跑会重抓原文配图，把编辑定过的主图与示意图接回来。"""
     pick = entry.get("figure_pick")
     figures = [f for f in entry.get("figures") or [] if isinstance(f, dict)]
     if pick == -1:
@@ -1504,10 +1325,6 @@ def _reapply_figure_choice(entry: Dict[str, Any]) -> None:
 
 
 def _attach_synth_figure(entry: Dict[str, Any], src_path: str) -> bool:
-    """把一张我们生成的示意图（Codex 按原文画的逻辑图）挂到条目最前，``kind=synth``。
-
-    只给原文没有信息图的条目补位（ADR D3）：页面上标「示意 · Codex 生成」、不算深读原料、
-    不替代原文图。文件按内容哈希存进 media/，与原文配图同一套发布路径。"""
     try:
         data = Path(src_path).read_bytes()
     except OSError as exc:
@@ -1561,10 +1378,7 @@ def _synth_prompt(entry: Dict[str, Any], style: str) -> str:
 
 
 def cmd_synth_prompts(date_str: str, out_dir: str, sigs: Sequence[str] = ()) -> int:
-    """给「头条 / 深读里原文没有信息图」的条目写示意图提示词到 ``out_dir/prompts/<sig>.md``。
-
-    ``sigs`` 为空时自动挑：depth 是 lead/deep、且没有 kind=article 的原文图、也还没挂示意图。
-    打印 ``synth=<sig>`` 行，供 qly-publish.sh synth 逐条交给 Codex。"""
+    """打印 ``synth=<sig>`` 行，供 qly-publish.sh synth 逐条交给 Codex。"""
     final = _load_final(date_str)
     if final is None:
         print("digest-final.json 不存在或为空，请先 --finalize。")
@@ -1590,12 +1404,7 @@ def cmd_synth_prompts(date_str: str, out_dir: str, sigs: Sequence[str] = ()) -> 
 
 
 def cmd_apply_depth(date_str: str, path: str) -> int:
-    """读编辑写的密度档 JSON ``{"depth": [{"sig", "depth", "figure_note"?, "figure"?, "synth_image"?}]}``，
-    写进草案与定稿。
-
-    ``figure`` 是主图下标（-1 = 没有信息图）；``synth_image`` 是本机一张示意图的路径（Codex 按原文
-    生成），只在原文没有信息图时给，会以 ``kind=synth`` 挂到最前。编辑 Agent 不可用、或人想亲自定
-    哪几条深读时用；之后 ``--html`` 重新渲染即可。"""
+    """输入 ``{"depth": [{"sig", "depth", "figure_note"?, "figure"?, "synth_image"?}]}``；figure = -1 表示没有信息图。"""
     final = _load_final(date_str)
     if final is None:
         print("digest-final.json 不存在或为空，请先 --finalize。")
@@ -1633,7 +1442,7 @@ def cmd_apply_depth(date_str: str, path: str) -> int:
             row = given[str(entry["sig"])]
             entry["depth"], entry["figure_note"] = row["depth"], row["figure_note"]
             _pick_figure(entry, row.get("figure"))
-            # 记住选的是哪张（按文件，不按下标——下标随重排会变）；-1 = 没有信息图
+            # 按文件记，不按下标——下标随重排会变
             if row.get("figure") is not None:
                 figs = [f for f in entry.get("figures") or [] if isinstance(f, dict)]
                 entry["figure_pick"] = -1 if row["figure"] == -1 or (isinstance(row["figure"], int) and row["figure"] < 0) else (
@@ -1643,7 +1452,7 @@ def cmd_apply_depth(date_str: str, path: str) -> int:
                     print("跳过示意图（原文有信息图）: {0}".format(_display_title(entry)[:40]))
                 else:
                     _attach_synth_figure(entry, row["synth_image"])
-    # 定稿可能是别的入口写的（旧代码的定时任务、手改）：定档时把数字与原话再逐字核一遍，编的丢掉
+    # 定稿可能是别的入口写的（旧定时任务、手改），定档时再逐字核一遍
     dropped = sum(_verify_numbers(entry) for entry in final["items"])
     if dropped:
         print("核对原文：丢掉 {0} 处原文里找不到的数字或非原话".format(dropped))
@@ -1687,7 +1496,6 @@ def cmd_apply_briefs(date_str: str, path: str) -> int:
 
 
 def cmd_auto_brief(date_str: str) -> int:
-    """定稿后交给编辑 Agent 写要点；已有要点的条目不重写。Agent 不可用就保留原样（摘要兜底）。"""
     final = _load_final(date_str)
     if final is None:
         print("digest-final.json 不存在或为空，请先 --finalize。")
@@ -1704,11 +1512,7 @@ def cmd_auto_brief(date_str: str) -> int:
     return 0
 
 
-# =========================================================================
-# --finalize
-# =========================================================================
 def cmd_finalize(date_str: str, do_html: bool) -> int:
-    """读 draft 的 selected 条目，做深读增强（LLM 可选、回退不阻塞），写 digest-final.json。"""
     draft = _load_draft(date_str)
     if draft is None:
         print("draft 不存在: {0}（请先执行 --prepare）".format(_archive_path(date_str, DRAFT_NAME)))
@@ -1733,13 +1537,11 @@ def cmd_finalize(date_str: str, do_html: bool) -> int:
         # extra 浅拷贝，避免抓字幕/正文写 extra 时污染原草案条目
         if isinstance(record.get("extra"), dict):
             record["extra"] = dict(record["extra"])
-        # video/talk 先抓字幕全文；其余摘要太薄的抓网页正文（失败/离线静默回退，不阻塞）
         if _maybe_attach_transcript(record):
             transcript_count += 1
         if _maybe_attach_fulltext(record):
             fulltext_count += 1
 
-        # 编辑（Agent/人）已在草案里写好的深读，优先于任何自动生成
         editor_distill = entry.get("distill")
         if isinstance(editor_distill, dict) and any(editor_distill.get(k) for k in editor_distill):
             distill = editor_distill
@@ -1786,13 +1588,11 @@ def cmd_finalize(date_str: str, do_html: bool) -> int:
     return 0
 
 
-#: 快讯只存渲染要用的字段——它不进详情页、不做提炼
 QUICK_FIELDS = ("sig", "title", "title_zh", "summary", "summary_zh", "url", "source", "source_list",
                 "date", "tags", "extra")
 
 
 def _quick_items(draft: Dict[str, Any], cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """编辑挑了快讯（``quick: true``）就用编辑的；没挑（人工编的旧草案）按规则挑。"""
     entries = draft.get("items") or []
     picked = [e for e in entries if e.get("quick") and not e.get("selected")]
     if not picked:
@@ -1808,7 +1608,6 @@ def _quick_items(draft: Dict[str, Any], cfg: Dict[str, Any]) -> List[Dict[str, A
 
 
 def cmd_html_only(date_str: str) -> int:
-    """单独 ``--html``（未同时 --finalize）时，复用已有 ``digest-final.json``。"""
     final_doc = storage.read_json(_archive_path(date_str, FINAL_NAME), default=None)
     if not isinstance(final_doc, dict) or not final_doc.get("items"):
         print("digest-final.json 不存在或为空，请先执行 --finalize（可与 --html 一起）。")
@@ -1816,11 +1615,7 @@ def cmd_html_only(date_str: str) -> int:
     return _render_daily_html(date_str, final_doc.get("items") or [], final_doc.get("quick") or [])
 
 
-# =========================================================================
-# 视图模型
-# =========================================================================
 def _display_title(entry: Dict[str, Any]) -> str:
-    """中文标题优先。编辑写在条目顶层的 ``title_zh`` 优先于自动翻译写进 ``extra`` 的。"""
     for candidate in (entry.get("title_zh"), _extra(entry).get("title_zh")):
         if candidate and str(candidate).strip():
             return str(candidate).strip()
@@ -1828,7 +1623,6 @@ def _display_title(entry: Dict[str, Any]) -> str:
 
 
 def _summary_text(entry: Dict[str, Any]) -> str:
-    """中文摘要优先，同 :func:`_display_title` 的优先级。"""
     for candidate in (entry.get("summary_zh"), _extra(entry).get("summary_zh")):
         if candidate and str(candidate).strip():
             return str(candidate).strip()
@@ -1836,7 +1630,6 @@ def _summary_text(entry: Dict[str, Any]) -> str:
 
 
 def _brief(entry: Dict[str, Any]) -> List[str]:
-    """编辑读原文写的要点（``brief``）——有它时，它就是这一条的正文，摘要退为兜底。"""
     points = entry.get("brief")
     if not isinstance(points, list):
         return []
@@ -1848,7 +1641,6 @@ def _stats_view(entry: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def _chart_view(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """对比图视图：SVG 由 svg_charts 按数据生成（画法取自 ppt-master 图表模板）。"""
     chart = _clean_chart(entry.get("chart"))
     if chart is None:
         return None
@@ -1868,7 +1660,6 @@ def _logic_view(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _distill_views(entry: Dict[str, Any]) -> Dict[str, Any]:
-    """结论 / 梗 / 逻辑图——日报卡片的主体。"""
     takeaway = str(entry.get("takeaway") or "").strip()
     return {
         "takeaway": takeaway,
@@ -1879,12 +1670,6 @@ def _distill_views(entry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _editor_note(entry: Dict[str, Any]) -> str:
-    """编辑写的选稿理由（``editor_note``）。
-
-    这是本项目「Agent 在环」的产出——选稿、中文化、深读提炼这些需要判断力的活由编辑
-    （人或 Agent）做，代码只负责取原料与渲染。既然写了就必须露出来：一条「为什么今天
-    选它」比多一行元数据有价值得多，这也是千里眼区别于纯聚合器的地方。
-    """
     return str(entry.get("editor_note") or "").strip()
 
 
@@ -1901,7 +1686,6 @@ def _source_count(entry: Dict[str, Any]) -> int:
 
 
 def _cross_badge(entry: Dict[str, Any]) -> str:
-    """浅读交叉验证徽章：📈 重磅 / ⚡ 一手速报 / N 源。"""
     badges = entry.get("badges") or []
     parts: List[str] = []
     if "heavy" in badges:
@@ -1942,7 +1726,6 @@ def _reltime(entry: Dict[str, Any], now) -> str:
 
 
 def _timeline_key(entry: Dict[str, Any]) -> float:
-    """时间轴排序键：发布时间的 unix 秒；解析不出的排到最后（不是排到最前）。"""
     dt = utils.parse_date(entry.get("date"))
     if dt is None:
         return float("-inf")
@@ -1952,8 +1735,6 @@ def _timeline_key(entry: Dict[str, Any]) -> float:
         return float("-inf")
 
 
-
-#: 徽章 → 设计系统里的语义色类（badge-heavy / badge-flash / badge-ok）
 _BADGE_STYLES = {
     "heavy": ("📈 重磅", "badge-heavy"),
     "flash": ("⚡ 一手速报", "badge-flash"),
@@ -1962,10 +1743,6 @@ _SIG_SAFE = re.compile(r"[^A-Za-z0-9_.-]")
 
 
 def _badge_views(entry: Dict[str, Any]) -> List[Dict[str, str]]:
-    """条目徽章的视图模型：``[{"text": "📈 重磅", "cls": "badge-heavy"}, ...]``。
-
-    交叉源数单独一枚（``N 源交叉``），因为它是本产品的核心卖点，不该混在灰色小字里。
-    """
     views: List[Dict[str, str]] = []
     badges = entry.get("badges") or []
     for key, (text, cls) in _BADGE_STYLES.items():
@@ -1978,7 +1755,6 @@ def _badge_views(entry: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def _score_view(entry: Dict[str, Any]) -> Dict[str, str]:
-    """热度的视图模型：文案 + 分档类名（高/中/低），供 .qly-score 上色。"""
     try:
         hotness = float(entry.get("hotness") or 0.0)
     except (TypeError, ValueError):
@@ -1993,21 +1769,17 @@ def _score_view(entry: Dict[str, Any]) -> Dict[str, str]:
 
 
 def _detail_href(sig: str) -> str:
-    """条目详情页的相对链接；sig 缺失或含异常字符时退化为空串（模板会渲染成死链而非报错）。"""
     clean = _SIG_SAFE.sub("_", str(sig or "").strip())
     if not clean:
         return ""
     return "{0}/{1}.html".format(DETAIL_DIR, clean)
 
 
-#: date_precision → 时间轴左列的显示法。只到天的不编造时分，未知的干脆不给时间。
 _TIME_LABELS = {"day": "全天", "unknown": "—"}
 
 
 def _date_precision_of(entry: Dict[str, Any], dt) -> str:
-    """取条目的 date 精度。老数据没有这个字段（是在 core.schema 落库时才开始写的），
-    退化为看时间本身：零点当「只到天」，否则当「精确」——这样 40% 的日粒度条目立刻
-    显示正确，剩下 1% 的「未知」要等下一次同步才带上标记。"""
+    """老数据没有 date_precision 字段：零点当「只到天」，否则当「精确」。"""
     known = str(_extra(entry).get("date_precision") or "").strip()
     if known in ("exact", "day", "unknown"):
         return known
@@ -2027,7 +1799,6 @@ def _weekday_cn(dt) -> str:
 
 
 def _editor_rank(entry: Dict[str, Any]) -> Optional[int]:
-    """编辑给的轻重排序（1 = 头条）；没给或不是正整数返回 None。"""
     try:
         rank = int(entry.get("editor_rank"))
     except (TypeError, ValueError):
@@ -2036,7 +1807,6 @@ def _editor_rank(entry: Dict[str, Any]) -> Optional[int]:
 
 
 def _by_editor_rank(items: Sequence[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
-    """编辑排过序就按编辑的来（没排的垫底、彼此保持原序）；一条都没排返回 None。"""
     if not any(_editor_rank(e) is not None for e in items):
         return None
     big = 10 ** 6
@@ -2045,15 +1815,12 @@ def _by_editor_rank(items: Sequence[Dict[str, Any]]) -> Optional[List[Dict[str, 
     )]
 
 
-#: 估阅读时长的语速：中文字/分钟、英文词/分钟
 READ_CJK_PER_MIN = 400
 READ_WORDS_PER_MIN = 230
-#: 正文短于此字符数不标阅读时长——那多半是只抓到了导语
 READ_MIN_CHARS = 800
 
 
 def _read_minutes(entry: Dict[str, Any]) -> Optional[int]:
-    """TLDR 式「N 分钟读」，按抓到的原文长度估。只有抓到正文才标——摘要的长度不是文章的长度。"""
     extra = _extra(entry)
     text = str(extra.get("fulltext") or "")
     try:
@@ -2071,7 +1838,6 @@ def _read_minutes(entry: Dict[str, Any]) -> Optional[int]:
     return max(1, int(round(minutes)))
 
 
-#: 各页面到数据根 media/ 的相对路径：首页（数据根）、归档页（archive/<日期>/）、两处的详情页（story/）
 MEDIA_BASE_ROOT = "media/"
 MEDIA_BASE_ARCHIVE = "../../media/"
 MEDIA_BASE_STORY = "../media/"
@@ -2079,16 +1845,11 @@ MEDIA_BASE_ARCHIVE_STORY = "../../../media/"
 
 
 def _figure_views(entry: Dict[str, Any], media_base: str, include_cover: bool = False) -> List[Dict[str, str]]:
-    """原文配图的视图：本地文件路径换成相对当前页面的地址；图注优先原文 figcaption，其次 alt。
-
-    og 封面（``kind=cover``）是品牌图、信息量为零，日报页一律不要（ADR D3）；只有详情页
-    ``include_cover=True`` 时才在头部放一张。"""
     out: List[Dict[str, str]] = []
     prefix = MEDIA_DIR + "/"
     for fig in entry.get("figures") or []:
         if not isinstance(fig, dict):
             continue
-        # og 封面、编辑判为装饰的图（品牌横幅、作者头像、现场照片）都不是信息图，日报页不放
         if not include_cover and str(fig.get("kind") or "article") in ("cover", "decorative"):
             continue
         local = str(fig.get("file") or "")
@@ -2102,20 +1863,18 @@ def _figure_views(entry: Dict[str, Any], media_base: str, include_cover: bool = 
             "alt": str(fig.get("alt") or caption or ("示意图" if kind == "synth" else "原文配图")),
             "origin": str(fig.get("src") or ""),
             "kind": kind,
-            # 示意图（Codex 按原文生成，ADR D3）：模板据此换掉「图源：原文」的署名，标「示意 · Codex 生成」
+            # 模板据此把「图源：原文」换成「示意 · Codex 生成」
             "synth": kind == "synth",
         })
     return out
 
 
-#: 各档在日报页上放几张原文图：头条、深读各一张主图（AIHOT 也只给头条一张），其余在详情页——
-#: 第二张常是竖排六联的跑分长图，压进 440px 高只剩一条，不如不放
+# 第二张常是竖排六联的跑分长图，压进 440px 高只剩一条，不如留给详情页
 FIGURES_ON_PAGE = {"lead": 1, "deep": 1, "glance": 0}
 
 
 def _annotate_figures(figures: List[Dict[str, str]], entry: Dict[str, Any], total: int) -> List[Dict[str, str]]:
-    """第一张图挂解释图注（``figure_note``），最后一张图挂「详情页另有 N 张」——模板引擎没有
-    loop.first/last，标记在视图里打好。"""
+    """模板引擎没有 loop.first/last，首图图注与「详情页另有 N 张」标记在视图里打好。"""
     if figures:
         figures[0]["note"] = str(entry.get("figure_note") or "").strip()
         more = total - len(figures)
@@ -2140,7 +1899,6 @@ def _glance_row(entry: Dict[str, Any], now, cfg: Dict[str, Any], media_base: str
     chart = _chart_view(entry) if depth != "glance" else None
     distill = _distill_views(entry)
     if depth != "lead":
-        # 逻辑链只给头条；深读的视觉位是原文图，没图才让数字卡 / 对比图顶上（ADR D3）
         distill["logic"] = None
     if depth == "glance":
         distill["meme"] = ""
@@ -2149,7 +1907,6 @@ def _glance_row(entry: Dict[str, Any], now, cfg: Dict[str, Any], media_base: str
         "depth_cls": "is-" + depth,
         "is_glance": depth == "glance",
         "is_deepish": depth != "glance",
-        # 原文配图做卡片主视觉（issue #52）；我们自绘的对比图只在原文没有图时上日报页
         "figure": figures[0] if figures else None,
         "figures": figures,
         "figure_more": str(len(all_figures) - len(figures)) if len(all_figures) > len(figures) else "",
@@ -2164,11 +1921,9 @@ def _glance_row(entry: Dict[str, Any], now, cfg: Dict[str, Any], media_base: str
         "read_text": "原文 {0} 分钟".format(minutes) if minutes else "",
         "track_title": tracks_mod.title_of(tracks_mod.track_of(entry, cfg), cfg),
         "cross": _cross_badge(entry),
-        # 浅读的一句话：结论 → 编辑按语 → 摘要——每条在没图、没提炼时也得自洽（文字优先、图可选）
         "summary": "" if entry.get("takeaway") else (
             (_editor_note(entry) if depth == "glance" else "") or _summary_text(entry)),
         "brief": _brief(entry),
-        # 要点只放详情页（ADR D1）；日报页上没结论、没摘要时才露前几条兜底
         "brief_head": [] if (entry.get("takeaway") or _summary_text(entry)) else _brief(entry)[:BRIEF_VISIBLE],
         "brief_more": [],
         "brief_more_n": "",
@@ -2182,10 +1937,9 @@ def _glance_row(entry: Dict[str, Any], now, cfg: Dict[str, Any], media_base: str
 
 
 def _quick_row(entry: Dict[str, Any], now) -> Dict[str, str]:
-    """快讯一行：标题 + 一句话（编辑写的 summary_zh，没有就取原摘要第一句）。"""
     line = str(entry.get("summary_zh") or "").strip()
     if not line:
-        # RSS 摘要常带 <img>/<p> 原始标签（NVIDIA 博客），先去标签再取第一句
+        # RSS 摘要常带 <img>/<p> 原始标签，先去标签
         plain = html_lib.unescape(re.sub(r"<[^>]+>", " ", str(entry.get("summary") or "")))
         first = _first_sentences(re.sub(r"\s+", " ", plain).strip(), 1)
         line = first[0] if first else ""
@@ -2204,13 +1958,6 @@ def _grouped_by_track(
     items: Sequence[Dict[str, Any]], quick: Sequence[Dict[str, Any]], now,
     media_base: str = MEDIA_BASE_ROOT,
 ) -> Dict[str, Any]:
-    """日报按「方向」分栏（issue #49，参照 TLDR AI 的固定栏目 + Quick Links）。
-
-    头条单独放最上面；其余正文按 tracks.yaml 的方向分栏，栏内按编辑排序（没排过按时间倒序），
-    栏尾挂这个方向的快讯。「模型发布」所有人必看，永远展开；其余方向默认只展开 default 的
-    （Agent 实践），其它收成「标题 + 一句结论」——读者在页面顶部选自己关注的方向。
-    没有正文也没有快讯的方向不出栏。
-    """
     cfg = tracks_mod.load()
     edited = _by_editor_rank(items)
     ordered = edited if edited is not None else sorted(items, key=_timeline_key, reverse=True)
@@ -2270,12 +2017,6 @@ def _grouped_by_track(
 
 
 def _timeline_days(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, Any]]:
-    """时间轴视图模型：按**自然日**分组、日内按发布时间倒序。
-
-    和日报视图（按 format 分类目）是同一批条目的两种读法——日报回答"今天有哪几类事"，
-    时间轴回答"这一天是怎么一路发生的"。解析不出时间的条目单独归到末尾的「时间未知」组，
-    不硬塞进某一天，免得污染时序。
-    """
     buckets: "Dict[str, List[Dict[str, Any]]]" = {}
     labels: Dict[str, Dict[str, str]] = {}
     unknown: List[Dict[str, Any]] = []
@@ -2320,8 +2061,7 @@ def _timeline_days(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, Any]]
 
     days: List[Dict[str, Any]] = []
     for key in sorted(buckets, reverse=True):
-        # 日内：有真实时分的按时间倒序在前，只到天/未知的沉到当天末尾。
-        # 不这么排的话，缺 date 被补成当前时刻的条目会冒充成「今天最新」排在最上面。
+        # 只到天/未知的沉到当天末尾，否则缺 date 被补成当前时刻的条目会冒充「今天最新」
         buckets[key].sort(key=lambda r: (r["precision"] == "exact", r.get("_ts") or 0), reverse=True)
         days.append({
             "key": key,
@@ -2342,7 +2082,6 @@ def _timeline_days(items: Sequence[Dict[str, Any]], now) -> List[Dict[str, Any]]
 
 
 def _corroboration_view(extra: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """叙事↔实证映射视图（Wave H1 写入 ``extra.corroboration``）；缺字段/未知 verdict → None 不显示。"""
     corrob = extra.get("corroboration")
     if not isinstance(corrob, dict):
         return None
@@ -2362,7 +2101,7 @@ def _deep_card(entry: Dict[str, Any], now, media_base: str = MEDIA_BASE_ARCHIVE)
     extra = _extra(entry)
     metrics = _metrics(entry)
     distill = entry.get("distill") if isinstance(entry.get("distill"), dict) else {}
-    # 只用下载到本地的原文配图：外站地址在发布页里会被内容安全策略拦成破图
+    # 只用本地配图：外站地址会被发布页的内容安全策略拦成破图
     images = _annotate_figures(_figure_views(entry, media_base), entry, 0)
 
     kp = [str(x) for x in (distill.get("kp") or []) if str(x).strip()]
@@ -2383,7 +2122,6 @@ def _deep_card(entry: Dict[str, Any], now, media_base: str = MEDIA_BASE_ARCHIVE)
         "title": _display_title(entry),
         "url": str(entry.get("url") or ""),
         "summary": _summary_text(entry),
-        # 深读卡：有要点就以要点为正文，摘要只在没有要点时顶上
         "lead": "" if (_brief(entry) or entry.get("takeaway")) else _summary_text(entry),
         "brief": _brief(entry),
         "stats": _stats_view(entry),
@@ -2397,17 +2135,14 @@ def _deep_card(entry: Dict[str, Any], now, media_base: str = MEDIA_BASE_ARCHIVE)
         "has_images": bool(images),
         "theses": theses,
         "kp": kp,
-        # 只有真提炼（编辑或 LLM 写了脉络/影响/局限）才展示四格；规则回退只是把原文前三句
-        # 原样塞进「要点」、其余三格留「—」——英文原句、网页报错文字都会被当成要点，不如不放
+        # 规则回退只是把原文前三句塞进 kp、其余留空，只有真提炼才展示四格
         "show_distill": any(str(distill.get(k) or "").strip() for k in ("chain", "pull", "limits")),
         "chain": str(distill.get("chain") or ""),
         "pull": str(distill.get("pull") or ""),
         "limits": str(distill.get("limits") or ""),
-        # format 专属
         "is_video": is_video,
         "has_transcript": has_transcript,
-        # 有编辑读原文写的要点时，不再挂机器比对出的「叙事↔实证」——它在非变更类条目上
-        # 常常错配（把 Claude Code 提示词变更当成一篇价格评论的证据），和要点并列只会添乱
+        # 有要点时不挂机器比对的「叙事↔实证」：它在非变更类条目上常错配
         "corroboration": None if _brief(entry) else _corroboration_view(extra),
         "is_repo": fmt == "repo",
         "is_paper": fmt == "paper",
@@ -2437,15 +2172,12 @@ def _glance_context(date_str: str, items: Sequence[Dict[str, Any]], embed: bool,
         "issue_minutes": str(max(1, int(round(chars / READ_CJK_PER_MIN)))),
         "deep_total": counts["lead"] + counts["deep"],
         "glance_total": counts["glance"],
-        # 嵌在首页里时它是第三部分「正文」（前两部分是看图、N 秒读完）；单独打开仍叫今日日报
         "body_title": "正文" if embed else "今日日报",
         "part_no": "③" if embed else "",
     })
 
 
 def _issue_chars(groups: Sequence[Dict[str, Any]]) -> int:
-    """本期在日报页上要读的字数（Axios / The Batch 式「本期 N 字 · M 分钟」）：按各档实际露出的
-    文字算——标题、结论、图注、数字卡、逻辑链、短评、快讯一句话。"""
     total = 0
     for group in groups:
         for row in group["items"]:
@@ -2476,11 +2208,6 @@ def _timeline_context(date_str: str, items: Sequence[Dict[str, Any]], embed: boo
 
 
 def _item_context(entry: Dict[str, Any], now, back_href: str, media_base: str = MEDIA_BASE_STORY) -> Dict[str, Any]:
-    """单条详情页上下文——深读卡有的它全有，外加返回链接与绝对时间。
-
-    详情页是「这一条的终点站」：读者从日报/时间轴点进来，要能不跳外链就把这条读明白，
-    所以摘要、论点、深读四段、实证核验、来源清单一次给全，原文链接只是补充。
-    """
     card = _deep_card(entry, now, media_base)
     card["images"] = _annotate_figures(_figure_views(entry, media_base, include_cover=True), entry, 0)
     card["has_images"] = bool(card["images"])
@@ -2493,13 +2220,10 @@ def _item_context(entry: Dict[str, Any], now, back_href: str, media_base: str = 
         "badges": _badge_views(entry),
         "source_text": _sources_text(entry),
         "source_count_text": "{0} 源交叉".format(card["source_count"]) if card["source_count"] > 1 else "",
-        # 人读格式，不是 ISO 串：详情页的元信息行是给人看的，"2026-08-28 04:24 UTC"
-        # 比 "2026-08-28T04:24:51+00:00" 一眼就能读
         "date_abs": dt.strftime("%Y-%m-%d %H:%M UTC") if dt is not None else "时间未知",
         "date_rel": _reltime(entry, now) if dt is not None else "",
         "score_text": score["text"],
         "score_cls": score["cls"],
-        # 选稿时并进这一条的同一事件其它报道（见 _one_per_story）
         "related": [
             {"title": str(r.get("title") or ""), "url": str(r.get("url") or ""),
              "source": str(r.get("source") or "")}
@@ -2512,7 +2236,6 @@ def _item_context(entry: Dict[str, Any], now, back_href: str, media_base: str = 
 
 def _deep_context(date_str: str, items: Sequence[Dict[str, Any]], embed: bool, now,
                    media_base: str = MEDIA_BASE_ARCHIVE) -> Dict[str, Any]:
-    """深读视图只列头条 + 深读（ADR D1）——它从此有了和日报页不同的含义：全套提炼、不分方向。"""
     picked = [e for e in items if _depth_of(e) != "glance"]
     edited = _by_editor_rank(picked)
     cards = [_deep_card(entry, now, media_base) for entry in (edited if edited is not None else picked)]
@@ -2526,9 +2249,6 @@ def _deep_context(date_str: str, items: Sequence[Dict[str, Any]], embed: bool, n
     }
 
 
-# =========================================================================
-# 渲染
-# =========================================================================
 def _load_template(name: str) -> str:
     path = paths.templates_dir() / name
     if not path.is_file():
@@ -2536,11 +2256,6 @@ def _load_template(name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-#: 首页外壳（minitpl 渲染）。侧栏 + 主体；主体是同一天内容的**三种读法**，按读者肯花的时间从少到多排
-#: （docs/adr-daily-format.md D0）：① 看图知今天——头条与深读各一张原文图；② N 秒读完今天——每条一句、
-#: 带主体、标深浅、能打勾；③ 正文——头条 / 深读 / 浅读，只有一种版式。
-#:
-#: 没有视图 tab、没有右栏：三个部分本身就是三层入口，往下滚就是往深读。侧栏仍是本期目录。
 MERGED_SHELL = """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -2550,7 +2265,6 @@ MERGED_SHELL = """<!doctype html>
 <title>{{ page_title }}</title>
 <style>{{ theme_css|safe }}</style>
 <style>
-/* 顶栏 */
 .qly-topbar {
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px;
   height: 52px; padding: 0 20px; background: var(--bg-0);
@@ -2580,7 +2294,6 @@ MERGED_SHELL = """<!doctype html>
   content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-emerald);
 }
 .qly-shell { display: flex; align-items: stretch; min-height: 0; }
-/* 左栏「本期导读」（issue #51）：这一期有什么、我关注的方向在哪、读到哪了 */
 .qly-app { grid-template-columns: 272px minmax(0, 1fr); }
 .sb-issue { padding: 2px 8px 14px; border-bottom: 1px solid var(--sidebar-border); }
 .sb-date { font-size: 17px; font-weight: 800; letter-spacing: -.01em; color: var(--text-0); }
@@ -2600,7 +2313,6 @@ MERGED_SHELL = """<!doctype html>
 .sb-items { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
 .sb-item { position: relative; display: block; padding: 5px 8px 5px 20px; border-radius: var(--radius-sm);
   font-size: 12.5px; line-height: 1.45; color: var(--text-1); }
-/* 两行截断放在内层：和内边距放在同一个元素上，第三行会从内边距里露出半截 */
 .sb-t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sb-item::before { content: ""; position: absolute; left: 8px; top: 12px; width: 5px; height: 5px; border-radius: 50%;
   background: var(--border-strong); }
@@ -2614,7 +2326,6 @@ MERGED_SHELL = """<!doctype html>
   border-top: 1px solid var(--sidebar-border); font-size: 11.5px; color: var(--text-2); }
 .sb-archive a.is-current, .sb-archive span.is-current { color: var(--theme-accent-fg); font-weight: 700; }
 .sb-foot { padding: 8px 8px 0; font-size: 10.5px; color: var(--text-2); }
-/* 三个部分（ADR D0）：同一天的内容给三种读法，按读者的时间从少到多排 */
 .qly-part + .qly-part { margin-top: 30px; padding-top: 26px; border-top: 1px solid var(--border); }
 .part-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .part-no { display: inline-block; font-family: var(--font-mono); font-size: 12px; font-weight: 700; line-height: 1.4;
@@ -2622,7 +2333,6 @@ MERGED_SHELL = """<!doctype html>
 .part-head .qly-page-title { font-size: 20px; }
 .part-head .qly-page-sub { flex-basis: 100%; }
 .part-tools { margin-left: auto; }
-/* ① 看图知今天：头条横着一整行，深读一格一张；没信息图的深读放它最大的那个数 */
 .sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 14px; }
 .sp-tile { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface-card); overflow: hidden; color: var(--text-0); box-shadow: var(--shadow-card);
@@ -2649,7 +2359,6 @@ MERGED_SHELL = """<!doctype html>
 .sp-note { font-size: 11.5px; line-height: 1.5; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sp-note b { color: var(--text-0); font-weight: 600; }
 .sp-tile.is-read { opacity: .45; }
-/* ② N 秒读完今天：每条一句；头条/深读加粗带标；右侧的勾 = 看过即接收，和正文行的「标记已读」同一份状态 */
 .rb-list { list-style: none; margin: 12px 0 0; padding: 0; counter-reset: rb; display: flex; flex-direction: column; gap: 6px; }
 .rb-row { counter-increment: rb; display: grid; grid-template-columns: 22px minmax(0, 1fr) 30px; column-gap: 10px;
   align-items: start; padding: 5px 0; }
@@ -2679,7 +2388,6 @@ MERGED_SHELL = """<!doctype html>
   .sb-sec-head { white-space: nowrap; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; }
   .sb-follow, .sb-fixed { display: none; }
 }
-/* 手机：顶栏只留 logo + 三部分跳转（不许换行成竖排单字），往期归档改成一行横滑 */
 @media (max-width: 600px) {
   .qly-topbar { gap: 8px; padding: 0 12px; }
   .qly-wordmark, .qly-topbar-meta { display: none; }
@@ -2774,7 +2482,6 @@ MERGED_SHELL = """<!doctype html>
 <script>
 (function () {
   "use strict";
-  // 本期导读 / 速读行 / 图块：点了跳到正文那一条；滚动时高亮当前条目；已读打勾 + 进度
   var links = document.querySelectorAll('.sb-item[data-sig], .rb-main a[data-sig], .sp-tile[data-sig]');
   for (var i = 0; i < links.length; i++) {
     links[i].addEventListener("click", function (ev) {
@@ -2821,7 +2528,7 @@ MERGED_SHELL = """<!doctype html>
 """
 
 
-# 速读行里判「这句带没带主体」用的专有名词：拉丁字母 / 数字开头的词（产品名、型号、机构、人名）
+# 专有名词：拉丁字母 / 数字开头的词（产品名、型号、机构、人名）
 _LATIN_TOKEN = re.compile(r"[A-Za-z0-9À-ɏ][A-Za-z0-9À-ɏ.+:/-]*")
 _CJK_RUN = re.compile(r"[一-鿿]{3,}")
 
@@ -2837,11 +2544,7 @@ def _latin_tokens(text: str) -> "set[str]":
 
 
 def _carries_subject(line: str, title: str) -> bool:
-    """一句话结论脱离标题单独列在「N 秒读完今天」里时，读者得知道说的是谁。
-
-    用标题当主体的代理：标题里的专有名词（拉丁词 / 型号）至少一个出现在这句里；标题是纯中文时，
-    看有没有共用的 3 字片段。判不出主体的行退回用标题——标题永远带主体。简报里同时要求编辑
-    把主体写进 takeaway，这里只是兜底。"""
+    """标题当主体的代理：标题里的专有名词出现在句中；纯中文标题看有没有共用的 3 字片段。"""
     title_tokens = _latin_tokens(title)
     if title_tokens:
         line_tokens = _latin_tokens(line)
@@ -2856,8 +2559,6 @@ def _brief_line(item: Dict[str, Any]) -> str:
 
 
 def _brief_rows(groups: Sequence[Dict[str, Any]]) -> List[Dict[str, str]]:
-    """② 「N 秒读完今天」：按版面顺序（头条 → 模型发布 → 各方向）每条一句带主体的结论，没结论或
-    结论里没主体就用标题；行上带深浅档，读者扫一遍就知道哪几条值得往下点。"""
     rows: List[Dict[str, str]] = []
     for group in groups:
         for item in group["items"]:
@@ -2875,15 +2576,12 @@ def _brief_rows(groups: Sequence[Dict[str, Any]]) -> List[Dict[str, str]]:
 
 
 def _brief_seconds(rows: Sequence[Dict[str, str]]) -> int:
-    """速读要几秒：按实际字数算（READ_CJK_PER_MIN），向上取到 5 秒——叫「30 秒」而实际要 50 秒是虚的。"""
     chars = sum(len(r["text"]) + len(r["track"]) for r in rows)
     secs = chars * 60.0 / READ_CJK_PER_MIN
     return max(10, int(math.ceil(secs / 5.0)) * 5)
 
 
 def _speed_cards(groups: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """① 「看图知今天」：头条与深读各一张原文图（日报页上那张主图）+ 标题 + 一句话 + 解释图注；
-    没有信息图的深读放它数字卡里的第一个数（已逐字核对过）；浅读不进图区（ADR D1：浅读无图）。"""
     cards: List[Dict[str, Any]] = []
     for group in groups:
         for item in group["items"]:
@@ -2912,7 +2610,7 @@ def _speed_cards(groups: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return cards
 
 
-# 速读图（speed.html → speed.png）的定宽版式：每块高度固定，整页高度在这里算出来交给无头 Chrome
+# 速读图各块高度固定，整页高度在这里算出来交给无头 Chrome
 SPEED_WIDTH = 1080
 _SPEED_MAST, _SPEED_LEAD, _SPEED_TILE, _SPEED_GAP, _SPEED_GLANCE_HEAD, _SPEED_GLANCE_ROW, _SPEED_FOOT = (
     150, 600, 368, 32, 84, 46, 104)
@@ -2960,7 +2658,6 @@ def _speed_context(date_str: str, items: Sequence[Dict[str, Any]], now,
 
 def render_speed(date_str: str, items: Sequence[Dict[str, Any]], now=None,
                  quick: Sequence[Dict[str, Any]] = (), media_base: str = MEDIA_BASE_ARCHIVE) -> Tuple[str, int]:
-    """速读图的 HTML 源（定宽 1080、定高）；返回 (html, 页高)。"""
     now = utils.as_utc(now or utils.now_utc())
     ctx = _speed_context(date_str, items, now, quick, media_base)
     return minitpl.render(_load_template(SPEED_TEMPLATE), ctx), int(ctx["page_height"])
@@ -2968,8 +2665,6 @@ def render_speed(date_str: str, items: Sequence[Dict[str, Any]], now=None,
 
 def _wechat_context(date_str: str, items: Sequence[Dict[str, Any]], now,
                     quick: Sequence[Dict[str, Any]], media_base: str, speed_png: str) -> Dict[str, Any]:
-    """公众号稿：和首页同一份三部分内容（速读图 → N 秒读完 → 头条 / 深读 / 浅读 / 快讯），
-    外链交给发布脚本转成文末引用。"""
     layout = _grouped_by_track(items, quick, now, media_base)
     cards = _speed_cards(layout["groups"])
     rows = _brief_rows(layout["groups"])
@@ -2995,8 +2690,7 @@ def _wechat_context(date_str: str, items: Sequence[Dict[str, Any]], now,
     chars = _issue_chars(layout["groups"])
     sources = {name for entry in list(items) + list(quick or [])
                for name in (entry.get("source_list") or [entry.get("source")]) if name}
-    # 标题用头条那句带主体的结论（速读行同一套判定，没主体就是原标题）；公众号标题上限 64 字，
-    # 超了宁可去掉日期前缀也不在词中间截断
+    # 公众号标题上限 64 字：超了宁可去掉日期前缀，也不在词中间截断
     wx = _wechat_body(layout, rows, cards)
     head = rows[0]["text"] if rows else ""
     title = "千里眼 AI 日报 {0}｜{1}".format(date_str[5:].replace("-", "."), head)
@@ -3031,7 +2725,6 @@ def _wechat_context(date_str: str, items: Sequence[Dict[str, Any]], now,
     }
 
 
-#: 公众号卡片按密度档的外观（与首页 .report-entry / .is-lead / .is-glance 同源）
 _WX_DEPTH_STYLE = {
     "lead": {"pad": "16px 16px 14px", "border": "#d97757", "title_size": "19px", "line_size": "16px",
              "line_weight": "600", "line_color": "#1f1e1d", "badge_bg": "#d97757", "badge_fg": "#ffffff"},
@@ -3043,8 +2736,7 @@ _WX_DEPTH_STYLE = {
 
 
 def _wechat_body(layout: Dict[str, Any], rows: List[Dict[str, Any]], cards: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """公众号 HTML 的视图：① 图块（头条一整行 + 深读两两一行）② 速读行的圆点与字重 ③ 按方向分栏的卡片，
-    外链统一编号放文末（公众号正文外链不可点）。"""
+    """外链统一编号放文末：公众号正文外链不可点。"""
     for row in rows:
         depth = row["depth"]
         row["dot"] = {"lead": "background:#d97757;color:#ffffff;",
@@ -3097,8 +2789,7 @@ def _wechat_body(layout: Dict[str, Any], rows: List[Dict[str, Any]], cards: List
 
 def render_wechat(date_str: str, items: Sequence[Dict[str, Any]], now=None, quick: Sequence[Dict[str, Any]] = (),
                   media_base: str = MEDIA_BASE_ARCHIVE, speed_png: str = SPEED_PNG_NAME) -> Tuple[str, str]:
-    """公众号稿：(Markdown 稿, HTML 正文)。发布用 HTML（和首页同一套样式）；Markdown 只留 frontmatter
-    给发布脚本取标题 / 摘要，正文作兜底。"""
+    """返回 (Markdown, HTML)。发布用 HTML；Markdown 只给发布脚本取 frontmatter 标题 / 摘要。"""
     now = utils.as_utc(now or utils.now_utc())
     ctx = _wechat_context(date_str, items, now, quick, media_base, speed_png)
     return (minitpl.render(_load_template(WECHAT_TEMPLATE), ctx),
@@ -3107,8 +2798,7 @@ def render_wechat(date_str: str, items: Sequence[Dict[str, Any]], now=None, quic
 
 def render_newspic(date_str: str, items: Sequence[Dict[str, Any]], now=None,
                    quick: Sequence[Dict[str, Any]] = ()) -> Dict[str, str]:
-    """公众号贴图文案：标题「千里眼 AI 日报 · MM-DD」+ 纯文本正文（N 秒读完那几句 → 头条为什么重要 → 指向日报）。
-    贴图正文不能加粗、不能放链接，所以只留句子本身；超 1000 字先丢头条那段，再从末尾收行。"""
+    """贴图正文不能加粗、不能放链接；超 1000 字先丢头条那段，再从末尾收行。"""
     now = utils.as_utc(now or utils.now_utc())
     layout = _grouped_by_track(items, quick, now, MEDIA_BASE_ARCHIVE)
     rows = _brief_rows(layout["groups"])
@@ -3140,7 +2830,6 @@ def render_newspic(date_str: str, items: Sequence[Dict[str, Any]], now=None,
 
 
 def _chrome_binary() -> Optional[str]:
-    """找一份能无头截图的 Chrome / Chromium：``QLY_CHROME`` 指定的优先，其次 macOS 应用包与 PATH。"""
     candidates = [os.environ.get("QLY_CHROME") or ""]
     candidates += ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
                    "/Applications/Chromium.app/Contents/MacOS/Chromium",
@@ -3159,7 +2848,6 @@ def _chrome_binary() -> Optional[str]:
 
 
 def _screenshot(html_path, png_path, width: int, height: int, switch: str, scale: int = 1) -> bool:
-    """无头 Chrome 把一张定尺寸的 HTML 截成 PNG。没有 Chrome、或开关环境变量设成 0 时跳过。"""
     if os.environ.get(switch, "1").strip().lower() in ("0", "false", "no", "off"):
         return False
     chrome = _chrome_binary()
@@ -3184,17 +2872,12 @@ def _screenshot(html_path, png_path, width: int, height: int, switch: str, scale
 
 
 def export_speed_png(html_path, png_path, height: int) -> bool:
-    """把 speed.html 截成 PNG（宽 1080 × 页高）。``QLY_SPEED_PNG=0`` 时跳过——速读图是
-    第一部分的可分享副本，页面本身不依赖它。"""
     return _screenshot(html_path, png_path, SPEED_WIDTH, height, "QLY_SPEED_PNG")
 
 
 def render_cover(date_str: str, items: Sequence[Dict[str, Any]], now=None,
                  quick: Sequence[Dict[str, Any]] = (), kind: str = "AI 日报", line: Optional[str] = None,
                  shape: str = "wide") -> str:
-    """封面 HTML：标准底图 + 叠字。``shape`` = wide（2.35:1，正文 / 文章封面）或 3x4（贴图首图）；
-    ``kind`` 是第二行（日报 / 深度解读）；``line`` 缺省用头条那句（和 N 秒读完第一行同一套判定，带主体），
-    深度解读传它自己的标题。竖版多一行「今天 N 条正文 · X 秒读完」。"""
     meta = ""
     if line is None:
         now = utils.as_utc(now or utils.now_utc())
@@ -3215,20 +2898,11 @@ def render_cover(date_str: str, items: Sequence[Dict[str, Any]], now=None,
 
 
 def export_cover_png(html_path, png_path, shape: str = "wide") -> bool:
-    """封面截 2 倍图（wide 1880×800 / 3x4 1080×1440）。``QLY_COVER_PNG=0`` 时跳过。"""
     _template, width, height = _COVER_SHAPES[shape]
     return _screenshot(html_path, png_path, width, height, "QLY_COVER_PNG", scale=2)
 
 def _archive_days(current: str, current_count: int = 0, limit: int = 14) -> List[Dict[str, Any]]:
-    """往期归档：扫 ``archive/<date>/`` 下已渲染的日报，新到旧。
-
-    没有跨日导航是原来版面的硬伤——读者进了某一天就出不去，只能改地址栏。
-    条数取自当天定稿文档；读不到就留空而不是让整块导航消失。
-
-    ``current`` **一定在列**，哪怕它的 digest.html 还没落盘：这个函数是在渲染当天页面的
-    过程中被调的，当天那份文件此刻正要写出去。不特判的话，一个新日期的第一次渲染会得到
-    一份「没有今天」的归档列表，只有一天数据时整块导航还会整个消失。
-    """
+    """``current`` 一定在列：渲染当天页面时它的 digest.html 还没落盘。"""
     root = paths.data_path("archive")
     names: List[str] = []
     if root.is_dir():
@@ -3237,8 +2911,7 @@ def _archive_days(current: str, current_count: int = 0, limit: int = 14) -> List
         except OSError:
             names = []
 
-    # 先滤出「真出过日报」的日期再截窗口。反过来做的话，只有草案、没定稿的目录会白占名额——
-    # 实测连续 19 天只有草案，把此前所有定稿挤出了 14 天窗口，侧栏只剩当天一行。
+    # 先滤出真出过日报的日期再截窗口，否则只有草案的目录会把定稿挤出窗口
     names = [n for n in names if n == current or (root / n / MERGED_NAME).is_file()]
 
     days: List[Dict[str, Any]] = []
@@ -3285,8 +2958,7 @@ def render_deep(date_str: str, items: Sequence[Dict[str, Any]], embed: bool = Fa
 
 def render_item(entry: Dict[str, Any], back_href: str = "../daily.html", now=None,
                 media_base: str = MEDIA_BASE_STORY) -> str:
-    """渲染单条详情页。``back_href`` / ``media_base`` 由调用方给——同一份内容会落在两个目录下
-    （数据根 story/ 回 daily.html，归档 story/ 回 digest.html），返回链接和配图路径都不能写死。"""
+    """同一份内容落在数据根与归档两处 story/，返回链接和配图路径由调用方给，不能写死。"""
     now = utils.as_utc(now or utils.now_utc())
     return minitpl.render(_load_template(ITEM_TEMPLATE), _item_context(entry, now, back_href, media_base))
 
@@ -3300,12 +2972,7 @@ def render_merged(
     media_base: str = MEDIA_BASE_ROOT,
     speed_png: str = "",
 ) -> str:
-    """渲染首页：侧栏目录 + 三个部分（看图 / N 秒读完 / 正文）。
-
-    ``archive_base`` 是往期归档链接的前缀——同一份 HTML 会落在数据根和归档目录两处，
-    从数据根看别的日子是 ``archive/<date>/``，从 ``archive/<某日>/`` 看是 ``../<date>/``。
-    ``speed_png`` 是速读图的相对地址（没导出就空串，第一部分不给下载链接）。
-    """
+    """``archive_base`` 是往期链接前缀：数据根用 ``archive/``，归档目录里用 ``..``。"""
     now = utils.as_utc(now or utils.now_utc())
     glance_frag = render_glance(date_str, items, embed=True, now=now, quick=quick, media_base=media_base)
     layout = _grouped_by_track(items, quick, now, media_base)
@@ -3359,11 +3026,7 @@ def _write_text(path, text: str) -> bool:
 def _write_detail_pages(
     date_str: str, items: Sequence[Dict[str, Any]], now,
 ) -> int:
-    """为每条条目渲染一页详情页，落到归档与数据根两处的 ``story/``。
-
-    同一份内容渲两遍而不是渲一遍复制两份：返回链接不一样——归档目录里的合并页叫
-    ``digest.html``，数据根的叫 ``daily.html``，详情页的「← 返回日报」必须各自指对。
-    """
+    """渲两遍而不是复制：归档与数据根的「← 返回日报」分别指 digest.html / daily.html。"""
     written = 0
     targets = (
         (_archive_path(date_str, DETAIL_DIR), "../{0}".format(MERGED_NAME), MEDIA_BASE_ARCHIVE_STORY),
@@ -3389,11 +3052,6 @@ def _write_detail_pages(
 
 def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
                        quick: Sequence[Dict[str, Any]] = ()) -> int:
-    """渲染首页（三部分）+ 速读图 + 每条详情页；日报 / 时间轴 / 深读三个单视图文件照旧落盘（调试与
-    ``/daily?view=`` 用，不再是入口）。
-
-    首页复制到数据根 ``daily.html``（对外入口），速读图 PNG 复制到数据根 ``speed.png``，详情页落在 ``story/`` 下。
-    """
     now = utils.as_utc(utils.now_utc())
     try:
         glance_full = render_glance(date_str, items, embed=False, now=now, quick=quick)
@@ -3412,7 +3070,6 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
     _write_text(_archive_path(date_str, TIMELINE_NAME), timeline_full)
     _write_text(_archive_path(date_str, DEEP_NAME), deep_full)
 
-    # 速读图：先出 HTML 源，再截 PNG；截成了首页才给下载链接
     speed_path = _archive_path(date_str, SPEED_NAME)
     speed_png = ""
     if _write_text(speed_path, speed_html):
@@ -3424,7 +3081,6 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
             except OSError as exc:
                 logger.warning("复制速读图到数据根失败: %s", exc)
 
-    # 封面：标准底图 + 当天日期与头条，截成 cover-auto.png（手工的 cover.png 打包时优先）
     try:
         cover_path = _archive_path(date_str, COVER_NAME)
         if _write_text(cover_path, render_cover(date_str, items, now=now, quick=quick)):
@@ -3435,7 +3091,7 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
     except Exception as exc:  # noqa: BLE001 - 封面是副产物，不拖垮首页
         logger.warning("封面渲染失败: %s", exc)
 
-    # 公众号稿落在归档目录（图片路径 ../../media/ 与 speed.png 都相对它）
+    # 公众号稿落在归档目录：../../media/ 与 speed.png 都相对它
     try:
         wechat_md, wechat_html = render_wechat(date_str, items, now=now, quick=quick, speed_png=speed_png or "")
         _write_text(_archive_path(date_str, WECHAT_NAME), wechat_md)
@@ -3446,7 +3102,6 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
         logger.warning("公众号稿渲染失败: %s", exc)
     try:
         merged = render_merged(date_str, items, now=now, quick=quick, speed_png=speed_png)
-        # 归档目录里那份的往期链接要用 ../ 前缀（同级是别的日期目录），数据根那份用 archive/
         merged_archive = render_merged(date_str, items, now=now, archive_base="..", quick=quick,
                                        media_base=MEDIA_BASE_ARCHIVE, speed_png=speed_png)
     except Exception as exc:  # noqa: BLE001
@@ -3471,25 +3126,13 @@ def _render_daily_html(date_str: str, items: Sequence[Dict[str, Any]],
     return 0
 
 
-# =========================================================================
-# V2 PNG 路线（deprecated）
-# =========================================================================
 def build_v2_png_prompt(draft: Dict[str, Any]) -> str:
-    """V2 PNG 文生图路线的选稿提示词构造器。
-
-    .. deprecated::
-        日报主路线已改为 HTML（本文件的 ``--finalize --html`` 的深读/浅读双视图），
-        本函数只保留函数壳以兼容旧引用，**不再有任何下游调用**。
-    """
     lines = ["[deprecated] V2 PNG 文生图路线已废弃，仅保留函数壳以兼容旧引用。"]
     for entry in (draft or {}).get("items", []) or []:
         lines.append("- {0}".format(entry.get("title") or ""))
     return "\n".join(lines)
 
 
-# =========================================================================
-# CLI
-# =========================================================================
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m qianliyan.cli.daily_digest_all",
@@ -3542,7 +3185,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         exit_code = exit_code or cmd_apply_picks(date_str, args.apply_picks, args.edited_by)
     brief_step = bool(args.write_brief_prompt or args.apply_briefs or args.auto_brief or args.apply_depth)
     if args.finalize:
-        # 要点要在定稿之后写（依赖定稿时抓的正文），渲染挪到要点写完之后
+        # 要点依赖定稿时抓的正文，渲染要等要点写完
         exit_code = exit_code or cmd_finalize(date_str, args.html and not brief_step)
     if args.write_brief_prompt:
         exit_code = exit_code or cmd_write_brief_prompt(date_str)

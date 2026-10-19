@@ -78,7 +78,6 @@
   font-size: 12px; cursor: pointer; padding: 0 4px; margin-left: auto; }
 .gread:hover { color: var(--accent-cyan-fg); }
 .glance-row.is-read { opacity: .42; }
-/* 三档密度（docs/adr-daily-format.md）：浅读 = 标题 + 一句结论 + 原文链接，一行能扫完 */
 .glance-row.is-glance { padding-top: 10px; padding-bottom: 10px; }
 .glance-row.is-glance .report-entry-title { font-size: 15.5px; }
 .glance-row.is-glance .viz-takeaway { font-size: 14px; font-weight: 500; color: var(--text-1); margin-top: 4px; }
@@ -87,7 +86,6 @@
 
 .glance-row.is-read .gtitle { font-weight: 400; text-decoration: line-through; }
 .glance-empty { color: var(--text-2); padding: 24px 4px; }
-/* 方向（issue #49）：关注的展开，其余收成「标题 + 一句结论」 */
 .trk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 14px; }
 .trk-bar-k { font-size: 12px; font-weight: 700; color: var(--text-1); margin-right: 2px; }
 .trk-bar-hint { font-size: 11.5px; color: var(--text-2); margin-left: 4px; }
@@ -101,8 +99,6 @@
 .trk-chip:focus-visible, .trk-expand:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 2px; }
 .trk-list { display: flex; flex-direction: column; }
 .trk-blurb { font-size: 12px; color: var(--text-2); }
-/* 「关注」只决定方向的顺序（关注的排前面）；密度由每条的 depth 决定（ADR D1），
-   不再把没关注的方向整栏收成标题——深读条目在哪一栏都是深读 */
 .trk-sec.is-compact .report-section-head { opacity: .85; }
 .read-time { font-size: 12px; font-weight: 400; color: var(--text-2); white-space: nowrap; }
 .badge-track { background: var(--theme-accent-soft); color: var(--theme-accent-fg); }
@@ -124,7 +120,6 @@
   function save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
   var state = load();
   var rows = document.querySelectorAll(".qly-glance .glance-row");
-  // 首页的速读行（②）与图块（①）是同一条的镜像：打勾、置灰同步
   var mirrors = document.querySelectorAll(".rb-row[data-sig], .sp-tile[data-sig]");
   function apply() {
     var i, sig;
@@ -136,7 +131,6 @@
       sig = mirrors[i].getAttribute("data-sig");
       mirrors[i].classList.toggle("is-read", !!(sig && state[sig]));
     }
-    // 侧栏「本期导读」据此刷新已读勾与进度
     try { document.dispatchEvent(new CustomEvent("qly-read-change")); } catch (e) {}
   }
   function postHistory(sig) {
@@ -151,7 +145,6 @@
     } catch (e) {}
   }
   function mark(sig) { if (!sig) { return; } state[sig] = 1; save(state); apply(); postHistory(sig); }
-  // 「标记已读」按钮在正文行里，也在页首速读行的勾上（ADR D0：浅读看过一句就算接收）
   var btns = document.querySelectorAll(".gread");
   for (var b = 0; b < btns.length; b++) {
     btns[b].addEventListener("click", function (ev) {
@@ -173,10 +166,8 @@
 })();
 (function () {
   "use strict";
-  // 关注的方向：记在本浏览器里（取不到 localStorage 就用默认），关注的展开并排到「模型发布」后面
   var KEY = "qly-follow-tracks";
   var list = document.querySelector(".qly-glance .trk-list");
-  // 关注开关可能有两处：页面顶部的方向条（窄屏/单页）和侧栏导读——同一份状态
   var chips = document.querySelectorAll("[data-follow]");
   var toc = document.querySelector(".sb-toc");
   if (!list || !chips.length) { return; }

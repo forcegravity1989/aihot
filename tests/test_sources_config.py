@@ -1,10 +1,3 @@
-"""test_sources_config.py —— config/sources.yaml 是代码（CLAUDE.md「数据与代码隔离」），按代码的标准校验。
-
-全离线。逐条过 ``sources:`` 列表：类型必须是 engine 认得的；url 不重复；``git`` 类的 URL 必须能解析出
-owner/repo（否则 fetch_source 运行时才抛 ValueError，日报那天才发现）；``youtube`` 类必须带
-channel_id 或 playlist_id；每条都带 name/weight/format/category。顺带钉住 issue #59 补进来的 infra 一手口径。
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -62,7 +55,6 @@ def test_git_sources_resolve_to_owner_repo_so_releases_feed_can_be_built():
 
 
 def test_infra_first_party_coverage_is_present():
-    """infra 读者要的一手口径：推理引擎、算子库、训练框架都得有官方来源，模型厂商里 Mistral 不再缺席。"""
     names = {s["name"] for s in _sources()}
     for required in ("vLLM Blog", "vLLM Releases", "SGLang Releases", "PyTorch Blog",
                      "FlashAttention Releases", "NVIDIA Developer Blog", "Mistral News"):

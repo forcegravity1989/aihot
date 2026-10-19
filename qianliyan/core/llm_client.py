@@ -1,12 +1,3 @@
-"""core/llm_client.py —— 内网 LLM 网关客户端（Anthropic Messages 协议）。
-
-只负责「把 prompt 送出去、把文本/JSON 收回来」，不含任何业务语义。
-
-**Agent 层公约（spec §5）**：所有 ``pipeline/*_agent.py`` 与 ``auto_translate`` 在
-``is_available()`` 为假、或调用抛 ``LLMUnavailable`` / 任意异常时，一律走规则回退，
-**绝不向上抛**——LLM 是增强项而非依赖项。
-"""
-
 from __future__ import annotations
 
 import json
@@ -16,7 +7,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Sequence, Union
 
-try:  # requests 属核心依赖，缺失时降级为「不可用」而非 ImportError
+try:  # requests 缺失时降级为不可用而非 ImportError
     import requests
 except ImportError:  # pragma: no cover - 依赖缺失属部署问题
     requests = None  # type: ignore[assignment]
@@ -33,11 +24,10 @@ _FENCE_RE = re.compile(r"^\s*```(?:json|JSON)?\s*|\s*```\s*$")
 
 
 class LLMUnavailable(Exception):
-    """LLM 不可用（无 key / 离线 / 网络失败 / 响应无法解析）。调用方必须走回退。"""
+    """调用方必须走规则回退。"""
 
 
 def _strip_fences(text: str) -> str:
-    """剥掉 ```json ... ``` 围栏，并尽量截出首个 JSON 对象/数组。"""
     cleaned = (text or "").strip()
     if cleaned.startswith("```"):
         cleaned = _FENCE_RE.sub("", cleaned).strip()
@@ -55,8 +45,6 @@ def _strip_fences(text: str) -> str:
 
 
 class LLMClient:
-    """内网 LLM 网关的极简客户端。"""
-
     def __init__(
         self,
         base_url: str,
@@ -71,7 +59,6 @@ class LLMClient:
 
     @classmethod
     def from_env(cls) -> "LLMClient":
-        """从环境变量构造：``ANTHROPIC_BASE_URL`` / ``ANTHROPIC_API_KEY`` / ``QLY_HAIKU_MODEL``。"""
         return cls(
             base_url=os.environ.get("ANTHROPIC_BASE_URL") or DEFAULT_BASE_URL,
             api_key=os.environ.get("ANTHROPIC_API_KEY") or "",
@@ -80,16 +67,13 @@ class LLMClient:
         )
 
     def is_available(self) -> bool:
-        """有 api_key、装了 requests 且未开启 ``QLY_OFFLINE=1`` 时才算可用。"""
         if requests is None:
             return False
         if os.environ.get("QLY_OFFLINE") == "1":
             return False
         return bool(self.api_key)
 
-    # ---- 文本 ----------------------------------------------------------
     def complete(self, prompt: str, system: Optional[str] = None, max_tokens: int = 1024) -> str:
-        """单轮补全，返回纯文本；任何网络/HTTP/解析失败抛 ``LLMUnavailable``。"""
         if not self.is_available():
             raise LLMUnavailable("LLM 不可用：缺少 ANTHROPIC_API_KEY 或处于离线模式")
 
@@ -122,14 +106,12 @@ class LLMClient:
             raise LLMUnavailable("LLM 响应不是 JSON: {0}".format(exc))
         return _extract_text(data)
 
-    # ---- JSON ----------------------------------------------------------
     def complete_json(
         self,
         prompt: str,
         system: Optional[str] = None,
         max_tokens: int = 1024,
     ) -> Union[Dict[str, Any], List[Any]]:
-        """要求模型输出 JSON；解析失败重试 1 次，再失败抛 ``LLMUnavailable``。"""
         text = self.complete(prompt, system=system, max_tokens=max_tokens)
         try:
             return json.loads(_strip_fences(text))
@@ -149,7 +131,7 @@ class LLMClient:
         system: Optional[str] = None,
         max_workers: int = 4,
     ) -> List[Any]:
-        """并发跑一批 prompt，保序返回；单条失败该位置为 ``None``（永不抛）。"""
+        """单条失败该位置为 None，永不抛。"""
         items = list(prompts or [])
         if not items:
             return []
@@ -169,7 +151,6 @@ class LLMClient:
 
 
 def _extract_text(data: Any) -> str:
-    """从 Anthropic Messages 响应中抽取文本内容。"""
     if isinstance(data, dict):
         content = data.get("content")
         if isinstance(content, list):

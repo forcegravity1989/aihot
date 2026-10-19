@@ -1,20 +1,3 @@
-"""test_sync_mock.py —— 锁死 spec §10.1 / intent.md S1 S4 S5：`run_sync` 离线端到端编排。
-
-覆盖：
-
-* ``--mock`` 端到端产出五件套（items.jsonl / hotlist.md / channels/*.md + channels.json /
-  digest.html / sync_meta.json），heavy 徽标自然触发；
-* ``--eye`` 子集增量：第二次只跑一只眼时，其余眼的原始池数据原样保留
-  （``merge_pool_by_eyes`` 增量语义）；
-* 单眼故障注入（monkeypatch ``sync.EYES``）：sync 不中断，失败眼 ``ok=False``、
-  其余眼照常出数；
-* ``--strict`` 让进程退出码非 0，不带 ``--strict`` 时同样的失败不影响退出码；
-* ``--status`` 输出可读；
-* ``--quick`` 跳过 agent 五连标注、``--no-html`` 跳过 digest.html；
-* flash 徽标（24h 内 weight>=0.95）——mock fixture 是静态文件，日期在测试内动态改写
-  为「当前时间 - 2 小时」后重新触发。
-"""
-
 from __future__ import annotations
 
 from datetime import timedelta
@@ -29,9 +12,6 @@ FLASH_TARGET_TITLE = "Anthropic launches Claude Opus 6"
 FLASH_TARGET_SOURCE = "Anthropic News"
 
 
-# =========================================================================
-# 端到端五件套
-# =========================================================================
 def test_run_sync_mock_end_to_end_produces_five_artifacts(tmp_data_dir):
     meta = sync.run_sync(mock=True)
 
@@ -47,7 +27,6 @@ def test_run_sync_mock_end_to_end_produces_five_artifacts(tmp_data_dir):
     assert totals["raw"] >= totals["deduped"] > 0
     assert totals["heavy"] >= 1, "mock fixture 内建 4 源同题条目应触发 heavy"
 
-    # 五件套
     assert (tmp_data_dir / "items.jsonl").is_file()
     assert (tmp_data_dir / "hotlist.md").is_file()
     assert (tmp_data_dir / "channels.json").is_file()
@@ -73,7 +52,7 @@ def test_run_sync_mock_end_to_end_produces_five_artifacts(tmp_data_dir):
     assert "全局热榜" in hotlist_text
 
     digest_html = (tmp_data_dir / "digest.html").read_text(encoding="utf-8")
-    assert len(digest_html) > 100  # 只需非空、可读，不重复锁死 test_report.py 已覆盖的具体壳结构
+    assert len(digest_html) > 100  # 壳结构由 test_report.py 覆盖，这里只验非空
 
 
 def test_run_sync_mock_via_main_cli(tmp_data_dir, capsys):
@@ -84,9 +63,6 @@ def test_run_sync_mock_via_main_cli(tmp_data_dir, capsys):
     assert (tmp_data_dir / "sync_meta.json").is_file()
 
 
-# =========================================================================
-# --eye 子集增量
-# =========================================================================
 def test_eye_subset_incremental_merge(tmp_data_dir):
     full_meta = sync.run_sync(mock=True)
     assert set(full_meta["eyes"].keys()) == set(EYES.keys())
@@ -110,9 +86,6 @@ def test_eye_subset_incremental_merge(tmp_data_dir):
     assert kinds_in_items == set(EYES.keys()), "增量 sync 后统一池仍应覆盖全部五种 source_kind"
 
 
-# =========================================================================
-# 单眼故障注入（S1：单眼故障，其余眼照常）
-# =========================================================================
 def _canned_fetch(name):
     def _fetch(cfg=None, since=None):
         return [
@@ -152,7 +125,6 @@ def test_single_eye_failure_does_not_abort_sync(tmp_data_dir, monkeypatch):
         assert meta["eyes"][name]["ok"] is True
         assert meta["eyes"][name]["count"] == 1
 
-    # sync 整体仍然完成（不中断），五件套照常产出
     assert (tmp_data_dir / "items.jsonl").is_file()
     assert (tmp_data_dir / "sync_meta.json").is_file()
     items = storage.read_jsonl(tmp_data_dir / "items.jsonl")
@@ -162,14 +134,13 @@ def test_single_eye_failure_does_not_abort_sync(tmp_data_dir, monkeypatch):
 
 
 def test_failed_eye_keeps_old_pool_data(tmp_data_dir, monkeypatch):
-    """故障 ≠ 空结果：失败眼的旧池数据必须保留（spec §10.1.4）。"""
+    """故障 ≠ 空结果：失败眼的旧池数据必须保留。"""
     for name in EYES:
         monkeypatch.setitem(sync.EYES, name, _canned_fetch(name))
     sync.run_sync(mock=False)
     items = storage.read_jsonl(tmp_data_dir / "items.jsonl")
     assert "insights" in {item.get("source_kind") for item in items}
 
-    # 第二轮：insights 故障，其余照常 —— 第一轮的 insights 数据仍应在池中
     monkeypatch.setitem(sync.EYES, "insights", _boom_fetch)
     meta = sync.run_sync(mock=False)
     assert meta["eyes"]["insights"]["ok"] is False
@@ -178,9 +149,6 @@ def test_failed_eye_keeps_old_pool_data(tmp_data_dir, monkeypatch):
     assert "insights" in kinds, "失败眼的旧数据被错误地抹掉了"
 
 
-# =========================================================================
-# --strict 退出码
-# =========================================================================
 def test_strict_flag_makes_exit_code_nonzero_on_failure(tmp_data_dir, monkeypatch):
     for name in EYES:
         if name == "aihot":
@@ -195,9 +163,6 @@ def test_strict_flag_makes_exit_code_nonzero_on_failure(tmp_data_dir, monkeypatc
     assert rc_default == 0, "不带 --strict 时同样的单眼失败不应影响退出码"
 
 
-# =========================================================================
-# --status
-# =========================================================================
 def test_status_before_any_sync_is_readable_and_nonzero(tmp_data_dir, capsys):
     rc = sync.main(["--status"])
     assert rc == 1
@@ -207,7 +172,7 @@ def test_status_before_any_sync_is_readable_and_nonzero(tmp_data_dir, capsys):
 
 def test_status_after_sync_prints_readable_summary(tmp_data_dir, capsys):
     meta = sync.run_sync(mock=True)
-    capsys.readouterr()  # 清空 run_sync 阶段的输出（若有）
+    capsys.readouterr()
 
     rc = sync.main(["--status"])
     assert rc == 0
@@ -219,9 +184,6 @@ def test_status_after_sync_prints_readable_summary(tmp_data_dir, capsys):
     assert "totals" in captured.out
 
 
-# =========================================================================
-# --quick / --no-html
-# =========================================================================
 def test_quick_skips_agent_annotations_and_og_image(tmp_data_dir):
     sync.run_sync(mock=True, quick=True)
     items = storage.read_jsonl(tmp_data_dir / "items.jsonl")
@@ -232,7 +194,6 @@ def test_quick_skips_agent_annotations_and_og_image(tmp_data_dir):
         assert "cluster_key" not in extra
         assert "headline_fit" not in extra
         assert "story_key" not in extra
-    # channels/hotlist/digest 仍按 spec §10.1.7 正常产出（不受 --quick 影响）
     assert (tmp_data_dir / "digest.html").is_file()
     assert (tmp_data_dir / "hotlist.md").is_file()
     assert (tmp_data_dir / "channels.json").is_file()
@@ -241,14 +202,10 @@ def test_quick_skips_agent_annotations_and_og_image(tmp_data_dir):
 def test_no_html_skips_digest_rendering(tmp_data_dir):
     sync.run_sync(mock=True, no_html=True)
     assert not (tmp_data_dir / "digest.html").exists()
-    # 其余产出不受影响
     assert (tmp_data_dir / "items.jsonl").is_file()
     assert (tmp_data_dir / "hotlist.md").is_file()
 
 
-# =========================================================================
-# flash 徽标：静态 fixture 动态改写 date 后触发
-# =========================================================================
 def test_flash_badge_triggers_with_freshly_rewritten_date(tmp_data_dir, monkeypatch):
     original_rows = storage.read_jsonl(sync._mock_fixture_path())
     now = utils.now_utc()
@@ -260,8 +217,8 @@ def test_flash_badge_triggers_with_freshly_rewritten_date(tmp_data_dir, monkeypa
             target_sig = row.get("sig")
     assert target_sig, "fixture 中未找到用于 flash 测试的基准条目，请检查 mock_items.jsonl 是否改动"
 
-    # dedup_and_score 的合并 date 取组内「最早」可解析日期——必须把同 sig（同题多源）
-    # 的全部成员日期都改到 24h 内，只改最高权重那一条不够（早到的旧日期会拖累合并结果）。
+    # dedup_and_score 的合并 date 取组内最早的可解析日期：必须把同 sig 的全部成员都改到 24h 内，
+    # 只改最高权重那条不够（早到的旧日期会拖累合并结果）
     touched = 0
     for row in original_rows:
         if row.get("sig") == target_sig:

@@ -1,24 +1,3 @@
-"""eyes/builders.py —— 右眼 builders：真实仓库 ``zarazhangrui/follow-builders`` 的 X 动态。
-
-cfg 即 ``config/builders.yaml`` 全量（spec-v0.3 §2 新结构）::
-
-    repo: zarazhangrui/follow-builders
-    branch: main
-    feeds: [feed-x.json, feed-podcasts.json, feed-blogs.json]
-    default_weight: 0.8
-    allowlist: []          # 空 = 收录 feed 中出现的全部 builder
-    weight_overrides: {}   # {handle: weight}
-
-从 ``raw.githubusercontent.com/{repo}/{branch}/{feed}`` 逐个拉 JSON：``feed-x.json`` 是
-``{generatedAt, lookbackHours, x:[{source, name, handle, bio, tweets:[...]}], stats}``，每条
-tweet → 一个 item；``feed-podcasts.json``/``feed-blogs.json`` 为 ``{podcasts|blogs:[...]}``
-（当前空数组，解析必须容忍）。过滤：``x-follows.yaml`` 的 mute 名单剔除；``allowlist`` 非空则
-仅留白名单，否则默认全收。
-
-``fetch`` 是网络壳；``parse_feed_x`` / ``parse_feed_generic`` 是纯函数（不出网），单测直喂
-``tests/fixtures/real/builders_feed_x.json`` 等真实 fixture。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -35,9 +14,6 @@ RAW_URL_TMPL = "https://raw.githubusercontent.com/{repo}/{branch}/{data_path}"
 DEFAULT_FEEDS = ["feed-x.json", "feed-podcasts.json", "feed-blogs.json"]
 
 
-# =========================================================================
-# 公共小工具
-# =========================================================================
 def _first(entry: Dict[str, Any], *keys: str) -> Optional[Any]:
     for key in keys:
         value = entry.get(key)
@@ -47,12 +23,11 @@ def _first(entry: Dict[str, Any], *keys: str) -> Optional[Any]:
 
 
 def _norm_handle(handle: Any) -> str:
-    """handle 归一：去 @、去空白、casefold（仅用于匹配，不用于展示）。"""
+    """仅用于匹配，不用于展示。"""
     return str(handle or "").strip().lstrip("@").casefold()
 
 
 def _clean_handle(handle: Any) -> str:
-    """展示用 handle：去 @ 与首尾空白，保留大小写。"""
     return str(handle or "").strip().lstrip("@")
 
 
@@ -64,7 +39,7 @@ def _as_int(value: Any) -> int:
 
 
 def _muted_handles(cfg: Dict[str, Any]) -> Set[str]:
-    """mute 名单：优先用 ``cfg["x_follows"]``（供测试注入），否则读 ``config/x-follows.yaml``。"""
+    """cfg['x_follows'] 供测试注入，否则读 config/x-follows.yaml。"""
     follows = cfg.get("x_follows")
     if follows is None:
         follows = (paths.load_yaml_config("x-follows") or {}).get("follows") or []
@@ -78,7 +53,6 @@ def _muted_handles(cfg: Dict[str, Any]) -> Set[str]:
 
 
 def _allowlist(cfg: Dict[str, Any]) -> Optional[Set[str]]:
-    """allowlist：非空 → casefold 集合（仅收白名单）；空/缺失 → ``None``（全收）。"""
     raw = cfg.get("allowlist")
     if not raw:
         return None
@@ -102,14 +76,10 @@ def _weight_overrides(cfg: Dict[str, Any]) -> Dict[str, float]:
 
 
 def _single_line(text: str) -> str:
-    """去换行折叠空白，取前 ``TITLE_MAXLEN`` 字符作标题。"""
     collapsed = " ".join(str(text or "").split())
     return collapsed[:TITLE_MAXLEN]
 
 
-# =========================================================================
-# 纯函数：解析 feed-x.json
-# =========================================================================
 def _tweet_to_item(
     tweet: Dict[str, Any],
     display_handle: str,
@@ -154,11 +124,6 @@ def _tweet_to_item(
 
 
 def parse_feed_x(payload: Any, cfg: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    """解析 ``feed-x.json`` 信封（``{x:[{handle, name, bio, tweets:[...]}]}``）为 item 列表。
-
-    每条 tweet → 一个 item；allowlist（非空仅收白名单）与 mute 过滤在 builder 粒度生效。
-    纯函数，不出网。
-    """
     cfg = cfg or {}
     default_weight = float(cfg.get("default_weight", DEFAULT_WEIGHT))
     allowed = _allowlist(cfg)
@@ -203,11 +168,6 @@ def parse_feed_generic(
     kind: str,
     cfg: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    """解析 podcasts/blogs 信封（``{podcasts|blogs:[...]}``）为 item 列表；空数组容忍返回 []。
-
-    ``kind`` ∈ {"podcasts", "blogs"}；当前 fixture 为空，函数对空/缺失键一律容忍。
-    纯函数，不出网。
-    """
     cfg = cfg or {}
     default_weight = float(cfg.get("default_weight", DEFAULT_WEIGHT))
 
@@ -245,9 +205,6 @@ def parse_feed_generic(
     return items
 
 
-# =========================================================================
-# 已弃用：v0.2 扁平白名单解析壳（无下游；仅为向后兼容保留，勿新用）
-# =========================================================================
 def _extract_list(payload: Any) -> List[Any]:
     if isinstance(payload, list):
         return payload
@@ -271,10 +228,6 @@ def _builder_index(cfg: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
 
 
 def parse_payload(payload: Any, cfg: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    """[DEPRECATED] v0.2 扁平快照解析壳（``{tweets:[{handle,text,url}]}`` + ``builders`` 白名单）。
-
-    已被真实仓库的 ``parse_feed_x`` 取代，无下游调用；仅为向后兼容旧单测保留。
-    """
     cfg = cfg or {}
     default_weight = float(cfg.get("default_weight", DEFAULT_WEIGHT))
     allowed = _builder_index(cfg)
@@ -311,24 +264,16 @@ def parse_payload(payload: Any, cfg: Optional[Dict[str, Any]] = None) -> List[Di
     return items
 
 
-# =========================================================================
-# 网络壳
-# =========================================================================
 def _dispatch_feed(feed: str, payload: Any, cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     name = str(feed).lower()
     if "podcast" in name:
         return parse_feed_generic(payload, "podcasts", cfg)
     if "blog" in name:
         return parse_feed_generic(payload, "blogs", cfg)
-    # 缺省及 feed-x.json 走 X 解析
     return parse_feed_x(payload, cfg)
 
 
 def fetch(cfg: Optional[Dict[str, Any]] = None, since: Any = None) -> List[Dict[str, Any]]:
-    """逐 feed 从 raw.githubusercontent 拉 ``zarazhangrui/follow-builders`` JSON 并解析。
-
-    单 feed 拉取/解析失败记 warning 继续（podcasts/blogs 空数组自然产 0 条）。
-    """
     cfg = cfg or {}
     repo = cfg.get("repo")
     if not repo:
@@ -344,7 +289,7 @@ def fetch(cfg: Optional[Dict[str, Any]] = None, since: Any = None) -> List[Dict[
         url = RAW_URL_TMPL.format(repo=repo, branch=branch, data_path=feed)
         try:
             payload = http.get_json(url)
-        except Exception as exc:  # 单 feed 失败不外溢
+        except Exception as exc:
             logger.warning("builders feed 拉取失败，跳过 %s: %s", url, exc)
             continue
         try:

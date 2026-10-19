@@ -1,12 +1,3 @@
-"""cli/health_check.py —— 信源连通性探测（spec §10.6）。
-
-逐信源 GET 探测（10s 超时，2xx/3xx 判定为 OK）：远眼各 url、aihot base_url、
-builders raw url、insights raw url；``company`` 默认跳过，``--include-internal``
-时才测 CDP 连通性。``QLY_OFFLINE=1`` 时全部 SKIP。
-
-退出码 = 失败信源数（SKIP 不计入失败）。
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -33,17 +24,8 @@ def _is_offline() -> bool:
     return os.environ.get("QLY_OFFLINE") == "1"
 
 
-# =========================================================================
-# 探测目标收集
-# =========================================================================
 def _local_targets(sources_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
-    """目录源的探测目标。
-
-    **不能只看 ``url`` 字段**：YouTube 源用 ``channel_id`` / ``playlist_id``、
-    github-trending 用 ``lang`` + ``since``，它们都没有 ``url``。早先这里 ``if not url:
-    continue`` 直接跳过，于是 9 个源（4 个 YouTube 频道 + 3 个大会播放列表 + 2 个
-    trending）**从来没被探测过**——和 aihot 那个假 404 是同一类毛病：探测没覆盖真正在抓的东西。
-    """
+    """YouTube 源用 channel_id / playlist_id、trending 用 lang + since，都没有 url 字段，不能只看 url。"""
     out: List[Tuple[str, str, str]] = []
     for src in sources_cfg.get("sources") or []:
         if not isinstance(src, dict):
@@ -69,13 +51,7 @@ def _local_targets(sources_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
 
 
 def _aihot_target(sources_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
-    """aihot 的探测目标 = 配置里**实际在抓的那些 feed**。
-
-    这里曾经写死探老的 REST 接口 ``/api/news?category=llm``——而 aihot 早已迁到 RSS
-    出口（``feeds`` / ``category_feeds``），配置里根本没有 ``endpoint`` 字段，于是探测
-    一直落到默认值上、天天返回 404，把好端端的主信源报成挂了。健康探测**必须探真正
-    在用的地址**，否则它每天喊狼来了，真挂的那天没人信。
-    """
+    """必须探配置里实际在抓的 feed，否则天天误报主信源挂了。"""
     cfg = sources_cfg.get("aihot") or {}
     base_url = str(cfg.get("base_url") or "https://aihot.news").rstrip("/")
 
@@ -88,7 +64,7 @@ def _aihot_target(sources_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
             kind = str(feed.get("kind") or "feed")
             targets.append(("AIHot · {0}".format(kind), "rss", base_url + path))
 
-    # 分类 feed 只探第一个——四个是同一套出口，全探纯属拖慢探测
+    # 分类 feed 是同一套出口，只探第一个
     category_cfg = cfg.get("category_feeds") or {}
     slugs = [str(x) for x in (category_cfg.get("slugs") or []) if str(x).strip()]
     if slugs:
@@ -97,7 +73,7 @@ def _aihot_target(sources_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
             "{0}/feed/category/{1}.xml".format(base_url, slugs[0]),
         ))
 
-    if not targets:  # 配置缺 feeds 时至少探站点本身，别静默返回空
+    if not targets:
         targets.append(("AIHot", "rss", base_url))
     return targets
 
@@ -123,7 +99,6 @@ def _insights_target(sources_cfg: Dict[str, Any]) -> List[Tuple[str, str, str]]:
 
 
 def collect_targets() -> List[Tuple[str, str, str]]:
-    """收集所有要探测的 (name, backend, url)（不含 company —— 单独处理）。"""
     sources_cfg = paths.load_yaml_config("sources")
     builders_cfg = paths.load_yaml_config("builders")
 
@@ -136,15 +111,7 @@ def collect_targets() -> List[Tuple[str, str, str]]:
 
 
 def egress_domains() -> List[str]:
-    """千里眼出网会访问的**公网域名**清单，供云端环境的网络白名单使用。
-
-    和 :func:`collect_targets` 同源——探测哪些地址就放行哪些域名，两者不会漂。
-    云端 routine 的环境默认是 Trusted 级(只放行包管理器/GitHub/云 SDK)，
-    aihot、YouTube、各家官方 blog 全在墙外；要让云端够得着，得把这份清单填进
-    环境的 Custom 允许域名里(claude.ai/code 消息框上方的云图标 → 环境设置)。
-
-    内网域名(``*.internal``)与本机端口不列入：云端本来也够不到，列了也是空占位。
-    """
+    """供云端环境网络白名单用；与 collect_targets 同源，内网域名与本机端口不列入。"""
     seen: List[str] = []
     for _name, _backend, url in collect_targets():
         match = re.match(r"https?://([^/:\s]+)", str(url))
@@ -158,9 +125,6 @@ def egress_domains() -> List[str]:
     return sorted(seen)
 
 
-# =========================================================================
-# 探测
-# =========================================================================
 def _probe_url(name: str, backend: str, url: str) -> Dict[str, Any]:
     if _is_offline():
         return {
@@ -216,7 +180,6 @@ def _probe_company() -> Dict[str, Any]:
 
 
 def run_health_check(include_internal: bool = False) -> List[Dict[str, Any]]:
-    """跑一轮全量探测，返回逐信源结果列表。"""
     results = [_probe_url(name, backend, url) for name, backend, url in collect_targets()]
     if include_internal:
         results.append(_probe_company())
@@ -228,9 +191,6 @@ def run_health_check(include_internal: bool = False) -> List[Dict[str, Any]]:
     return results
 
 
-# =========================================================================
-# 输出
-# =========================================================================
 def _print_table(results: Sequence[Dict[str, Any]]) -> None:
     name_w = max([len("信源")] + [len(str(r["name"])) for r in results])
     backend_w = max([len("后端")] + [len(str(r["backend"])) for r in results])
@@ -252,9 +212,6 @@ def _print_table(results: Sequence[Dict[str, Any]]) -> None:
         )
 
 
-# =========================================================================
-# CLI
-# =========================================================================
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m qianliyan.cli.health_check", description="千里眼信源连通性探测",

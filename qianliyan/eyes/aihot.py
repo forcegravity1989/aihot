@@ -1,28 +1,3 @@
-"""eyes/aihot.py —— 左眼 aihot：RSS 抓取「AIHOT · 卡兹克」精选/全量/分类 feed。
-
-站点 ``aihot.news``（2026-09-30 起的新域名；旧域名 ``aihot.virxact.com`` 10 月 31 日后失效）
-是 Next.js SSR + 反爬 JS 挑战，但暴露干净的 RSS 出口，走 RSS 即可绕过反爬。cfg 即 ``config/sources.yaml`` 的 ``aihot:`` 段（spec-v0.3 §1 新结构）::
-
-    aihot:
-      base_url: https://aihot.news
-      source_name: "AIHOT · 卡兹克"
-      feeds:          # 通用 feed：{path, kind, weight}
-        - {path: /feed.xml,     kind: curated, weight: 0.85}
-        - {path: /feed/all.xml, kind: all,     weight: 0.70}
-      category_feeds: # 分类 feed slug（只填真实 200 的四个）
-        slugs: [ai-models, ai-products, industry, paper]
-        weight: 0.75
-      category_map:   # 中文 category → slug/tags
-        "AI 模型": {slug: models, tags: [models]}
-        ...
-
-解析要点（spec-v0.3 §0.1）：canonical ``url`` = description 里「阅读原文」锚点 href（抽不到才
-回退 ``<link>``）；``summary`` = 首个 ``<p>`` 文本；``extra`` 存 aihot_id/aihot_url/category/
-category_slug/feed_kind，并把描述内嵌 ``<img>`` 收进 ``extra.images``；aihot 内部按 url/guid 去重。
-
-``fetch`` 是网络壳；``parse_feed`` 是纯函数（不出网），单测直喂 ``tests/fixtures/real/*.xml``。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -41,7 +16,6 @@ DEFAULT_BASE_URL = "https://aihot.news"
 SOURCE_NAME = "AIHOT · 卡兹克"
 DEFAULT_WEIGHT = 0.75
 
-# fetch 缺省 feeds（cfg 未配时用）——对应 spec-v0.3 §0.1 表格。
 DEFAULT_FEEDS: List[Dict[str, Any]] = [
     {"path": "/feed.xml", "kind": "curated", "weight": 0.85},
     {"path": "/feed/all.xml", "kind": "all", "weight": 0.70},
@@ -50,7 +24,6 @@ DEFAULT_CATEGORY_SLUGS = ["ai-models", "ai-products", "industry", "paper"]
 DEFAULT_CATEGORY_WEIGHT = 0.75
 CATEGORY_FEED_TMPL = "/feed/category/{slug}.xml"
 
-# 中文 category 原值 → {slug, tags}。cfg 若提供 category_map 以其为准。
 DEFAULT_CATEGORY_MAP: Dict[str, Dict[str, Any]] = {
     "AI 模型": {"slug": "models", "tags": ["models"]},
     "AI 产品": {"slug": "products", "tags": ["products"]},
@@ -73,9 +46,6 @@ _IMG_SRC_RE = re.compile(
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
-# =========================================================================
-# XML / HTML 小工具
-# =========================================================================
 def _local_tag(el: ET.Element) -> str:
     tag = el.tag
     if isinstance(tag, str) and "}" in tag:
@@ -90,14 +60,13 @@ def _text(el: Optional[ET.Element]) -> str:
 
 
 def _strip_tags(html: str) -> str:
-    """去 HTML 标签 + 解实体 + 折叠空白。"""
     text = _TAG_RE.sub("", html or "")
     text = unescape(text)
     return re.sub(r"\s+", " ", text).strip()
 
 
 def _extract_original_url(desc_html: str) -> str:
-    """抽「阅读原文」锚点 href（真实原文 URL）；抽不到返回空串。"""
+    """「阅读原文」锚点才是真实原文 URL；抽不到返回空串。"""
     if not desc_html:
         return ""
     match = _READ_ORIGINAL_RE.search(desc_html)
@@ -105,7 +74,6 @@ def _extract_original_url(desc_html: str) -> str:
 
 
 def _first_paragraph(desc_html: str) -> str:
-    """description 首个 ``<p>`` 的纯文本摘要；无 ``<p>`` 时退化为整段去标签。"""
     if not desc_html:
         return ""
     match = _FIRST_P_RE.search(desc_html)
@@ -115,7 +83,6 @@ def _first_paragraph(desc_html: str) -> str:
 
 
 def _collect_images(desc_html: str) -> List[str]:
-    """收集 description 内嵌 ``<img src>``（供深读用），保序去重。"""
     if not desc_html:
         return []
     out: List[str] = []
@@ -136,20 +103,12 @@ def _resolve_category_map(cfg: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return DEFAULT_CATEGORY_MAP
 
 
-# =========================================================================
-# 纯函数：解析单个 RSS feed
-# =========================================================================
 def parse_feed(
     xml_text: str,
     kind: str = "feed",
     weight: Any = DEFAULT_WEIGHT,
     cfg: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    """解析一份 AIHOT RSS feed 文本为标准 item 列表；纯函数，不出网。
-
-    ``kind`` 标记 feed 来源（curated/all/category:xxx），落入 ``extra.feed_kind``；
-    ``weight`` 为该 feed 的权重。解析失败（畸形 XML/空文本）返回空列表，不抛异常。
-    """
     cfg = cfg or {}
     category_map = _resolve_category_map(cfg)
     source_name = str(cfg.get("source_name") or SOURCE_NAME)
@@ -228,7 +187,7 @@ def parse_feed(
 
 
 def _dedup(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """aihot 内部去重：按 canonical url 或 aihot guid，先到者胜（高权重 feed 在前）。"""
+    """先到者胜（高权重 feed 在前）。"""
     seen_urls = set()
     seen_guids = set()
     out: List[Dict[str, Any]] = []
@@ -248,7 +207,6 @@ def _dedup(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _feed_targets(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """把 cfg 展开为 [{path, kind, weight}] 抓取目标列表（通用 feed + 分类 feed）。"""
     targets: List[Dict[str, Any]] = []
     for feed in cfg.get("feeds") or DEFAULT_FEEDS:
         if not isinstance(feed, dict):
@@ -278,9 +236,6 @@ def _feed_targets(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     return targets
 
 
-# =========================================================================
-# 已弃用：旧 REST 解析壳（v0.2，无下游；仅为向后兼容保留，勿新用）
-# =========================================================================
 def _extract_list(payload: Any) -> List[Any]:
     if isinstance(payload, list):
         return payload
@@ -305,10 +260,6 @@ def parse_payload(
     cfg: Optional[Dict[str, Any]] = None,
     category: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """[DEPRECATED] v0.2 REST 响应解析壳，已被 RSS 的 ``parse_feed`` 取代，无下游调用。
-
-    仅为向后兼容旧单测保留；``backend`` 仍为 ``rest``。新代码一律走 ``parse_feed``/``fetch``。
-    """
     cfg = cfg or {}
     weight = float(cfg.get("weight", DEFAULT_WEIGHT))
     items: List[Dict[str, Any]] = []
@@ -338,14 +289,7 @@ def parse_payload(
     return items
 
 
-# =========================================================================
-# 网络壳
-# =========================================================================
 def fetch(cfg: Optional[Dict[str, Any]] = None, since: Any = None) -> List[Dict[str, Any]]:
-    """逐 feed 拉取 AIHOT RSS 并解析、汇总、去重。
-
-    任一 feed 拉取/解析失败记 warning 继续，不因单 feed 拖垮整眼（spec-v0.3 §1）。
-    """
     cfg = cfg or {}
     base_url = str(cfg.get("base_url") or DEFAULT_BASE_URL).rstrip("/")
 
@@ -355,12 +299,12 @@ def fetch(cfg: Optional[Dict[str, Any]] = None, since: Any = None) -> List[Dict[
         try:
             resp = http.get(url)
             xml_text = getattr(resp, "text", "") or ""
-        except Exception as exc:  # 单 feed 失败不外溢
+        except Exception as exc:
             logger.warning("aihot feed 拉取失败，跳过 %s: %s", url, exc)
             continue
         try:
             collected.extend(parse_feed(xml_text, target["kind"], target["weight"], cfg))
-        except Exception as exc:  # 解析异常同样兜底
+        except Exception as exc:
             logger.warning("aihot feed 解析失败，跳过 %s: %s", url, exc)
             continue
     return _dedup(collected)

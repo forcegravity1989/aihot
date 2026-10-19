@@ -6,8 +6,6 @@
 <title>{{ title }}</title>
 </head>
 <body style="margin:0;padding:0;background:#faf9f5;">
-<!-- 公众号深度解读（每天第二篇，正文类型）：和日报公众号稿同一套 token（ivory #faf9f5 / 卡片 #fefdfa / 赤陶 #d97757）。
-     公众号只保留行内样式：全部 style=""，不用 flex / grid / position / 伪元素，不用斜体；外链不可点，原文地址写成纯文本。 -->
 <section style="background:#faf9f5;padding:18px 16px 28px;color:#1f1e1d;font-family:-apple-system,BlinkMacSystemFont,PingFang SC,Hiragino Sans GB,Microsoft YaHei,sans-serif;font-size:16px;line-height:1.85;letter-spacing:0.02em;">
 
   <section style="padding:0 2px 14px;border-bottom:1px solid #d7d2ca;">
@@ -15,12 +13,10 @@
     <p style="margin:8px 0 0;font-size:12.5px;line-height:1.6;color:#6b6760;">解读：{{ source_title }} · 来源 {{ source }} · 读完约 {{ minutes }} 分钟</p>
   </section>
 
-  <!-- 导语：先给结论 -->
   <section style="margin-top:20px;padding:14px 16px;border-left:3px solid #d97757;background:#fefdfa;border-radius:0 10px 10px 0;">
     <p style="margin:0;font-size:16px;line-height:1.85;font-weight:600;color:#1f1e1d;">{{ lede }}</p>
   </section>
 
-  <!-- 关键数字：每个都和原文逐字核对过 -->
   <section style="margin-top:18px;">
     <p style="margin:0;font-size:12px;font-weight:700;line-height:1.6;color:#af5233;letter-spacing:0.08em;">关键数字 · 均与原文逐字核对</p>
     <p style="margin:6px 0 0;line-height:2.2;">{% for n in numbers %}<span style="display:inline-block;margin:0 6px 6px 0;padding:2px 10px;border:1px solid #ebd5c8;border-radius:999px;background:#fefdfa;color:#af5233;font-size:14px;font-weight:700;line-height:1.7;letter-spacing:0;">{{ n }}</span>{% endfor %}</p>

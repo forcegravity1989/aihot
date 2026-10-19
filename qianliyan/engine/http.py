@@ -1,16 +1,10 @@
-"""engine/http.py —— 全项目唯一出网口（``engine/cdp.py`` 除外）。
-
-统一 Chrome UA、显式超时；``QLY_OFFLINE=1`` 时任何请求一律快速抛 ``OfflineError``，
-不做真实连接尝试——离线/测试环境下不许挂起。
-"""
-
 from __future__ import annotations
 
 import logging
 import os
 from typing import Any, Dict, Optional
 
-try:  # requests 属核心依赖，缺失时降级为清晰报错而非 ImportError 拖垮 import
+try:  # requests 缺失时降级为清晰报错而非 ImportError 拖垮 import
     import requests
 except ImportError:  # pragma: no cover - 依赖缺失属部署问题
     requests = None  # type: ignore[assignment]
@@ -22,14 +16,12 @@ BROWSER_UA = (
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
 DEFAULT_TIMEOUT = 15
-#: §19.4 量级保护默认上限（5MB）——只有显式传入 ``max_bytes`` 的调用才启用流式截断，
-#: 保证既有 ``get``/``get_json`` 调用（默认 ``max_bytes=None``）与既有 test_engines 行为不变。
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 _STREAM_CHUNK = 65536
 
 
 class OfflineError(RuntimeError):
-    """``QLY_OFFLINE=1`` 时任何 ``engine.http`` 出网尝试均抛出此异常。"""
+    pass
 
 
 def _check_offline() -> None:
@@ -45,11 +37,7 @@ def _headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
 
 
 def _read_capped(resp: Any, max_bytes: int, url: str) -> None:
-    """流式读取响应体至多 ``max_bytes`` 字节，超限截断并 warning，回写到 ``resp._content``。
-
-    §19.4 量级保护：防止整取巨型文件（如 insights 的 31MB/75MB json）。响应不支持
-    ``iter_content`` 时静默跳过（保持原响应），失败绝不外溢。
-    """
+    """防整取巨型文件（如 insights 的 31MB/75MB json）；响应不支持 iter_content 时静默跳过。"""
     iter_content = getattr(resp, "iter_content", None)
     if not callable(iter_content):
         return
@@ -86,12 +74,7 @@ def get(
     headers: Optional[Dict[str, str]] = None,
     max_bytes: Optional[int] = None,
 ) -> Any:
-    """GET 请求，统一 Chrome UA 与显式超时；返回原始 ``requests.Response``（不自动 raise_for_status，
-    调用方按需检查 ``status_code``，供 health_check 之类只想探测连通性的场景使用）。
-
-    ``max_bytes`` 为 ``None``（默认）时行为与既有完全一致（一次性读取，不流式）；
-    传入正整数时改为流式读取并在超限时截断（§19.4 量级保护）。
-    """
+    """不自动 raise_for_status：health_check 之类只探连通性。"""
     _check_offline()
     if requests is None:  # pragma: no cover - 依赖缺失属部署问题
         raise RuntimeError("缺少 requests 依赖（核心依赖），请 pip install requests")
@@ -109,10 +92,7 @@ def get_json(
     headers: Optional[Dict[str, str]] = None,
     max_bytes: Optional[int] = None,
 ) -> Any:
-    """GET 并解析 JSON；HTTP/JSON 错误原样向上抛，由调用方（各眼 fetch）决定容错策略。
-
-    ``max_bytes`` 语义同 :func:`get`（默认 ``None`` 不改变既有行为）。
-    """
+    """HTTP/JSON 错误原样上抛，由调用方决定容错。"""
     resp = get(url, timeout=timeout, headers=headers, max_bytes=max_bytes)
     return resp.json()
 
@@ -123,10 +103,6 @@ def get_text(
     headers: Optional[Dict[str, str]] = None,
     max_bytes: Optional[int] = DEFAULT_MAX_BYTES,
 ) -> str:
-    """GET 并返回文本；默认启用 §19.4 量级保护（``max_bytes=DEFAULT_MAX_BYTES``）。
-
-    供变更情报眼抓取 CHANGELOG.md / daily-insight.md 等文本文件使用。
-    """
     resp = get(url, timeout=timeout, headers=headers, max_bytes=max_bytes)
     text = getattr(resp, "text", None)
     if text is not None:

@@ -1,30 +1,3 @@
-"""engine/youtube_transcript.py —— YouTube 字幕/转写引擎（spec-v0.3 §18）。
-
-现实（本机 curl 实测已核）：从数据中心 IP 纯 ``requests`` 抓字幕基本拿不到——WEB client
-返回 UNPLAYABLE、ANDROID/IOS 公开 key 失效、watch 页 1MB+ 常超时。baoyu-skills 的
-``youtube/transcript.ts`` 之所以稳，正因它是**浏览器方案**：在 watch 页内读
-``window.ytInitialPlayerResponse`` + 页面自带 ``ytcfg.data_.INNERTUBE_API_KEY``，用**页面
-自身会话**（``credentials:'include'``）以 ``clientName:"ANDROID"`` POST ``/youtubei/v1/player``
-取 ``captions.playerCaptionsTracklistRenderer.captionTracks``（优先非 asr），再 fetch
-``track.baseUrl`` 拿字幕 XML 解析。
-
-因此本模块设计为**可插拔提供方 + 优雅降级**（与全系统「可选增强、失败有回退」一致）：
-
-* :func:`parse_timedtext` / :func:`transcript_text` —— **纯函数**，离线单测（对真实样本
-  ``timedtext_sample.json3.json`` / ``timedtext_sample.srv.xml``）。
-* :func:`build_baoyu_page_script` —— 生成可在浏览器 ``evaluate`` 的 JS（复刻 baoyu），供
-  provider 1（web-access CDP）注入。
-* :func:`get_transcript` —— 多级提供方，任一成功即返回纯文本；全失败 / ``QLY_OFFLINE=1``
-  返回 ``None``，**绝不抛异常、离线绝不出网**。
-
-提供方顺序（spec-v0.3 §18.4）：
-  1. web-access CDP（首选）：经 :mod:`qianliyan.engine.cdp` 连常驻 Chrome → goto watch 页
-     → evaluate baoyu 脚本 → 解析。playwright/CDP 不可用则跳过。
-  2. 配置代理 ``QLY_TRANSCRIPT_PROXY``（pod2txt / 自托管 youtube-transcript-api）。
-  3. 直连 best-effort（innertube player → captionTracks → timedtext，住宅 IP 下可成）。
-  4. 都失败 → ``None``。
-"""
-
 from __future__ import annotations
 
 import json
@@ -43,10 +16,9 @@ __all__ = [
     "get_transcript",
 ]
 
-#: 默认字幕语言优先级（英文优先，兼顾简繁）。
 DEFAULT_LANG_PREF: Tuple[str, ...] = ("en", "zh-Hans", "zh", "zh-Hant")
 
-#: innertube ANDROID client 公开 key（直连 best-effort 用；失效属预期，回退不阻塞）。
+# 失效属预期，回退不阻塞
 _INNERTUBE_KEY = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w"
 _INNERTUBE_CLIENT = {"clientName": "ANDROID", "clientVersion": "20.10.38", "hl": "en"}
 
@@ -57,20 +29,15 @@ _SRV_P_RE = re.compile(r"<p\b([^>]*)>([\s\S]*?)</p>", re.IGNORECASE)
 
 _CDP_NAV_TIMEOUT_MS = 20000
 
-# 视频 id 注入占位符（避免 str.format 与 JS 花括号打架）。
+# 避免 str.format 与 JS 花括号打架
 _VIDEO_ID_PLACEHOLDER = "__QLY_VIDEO_ID__"
 
 
-# =========================================================================
-# 纯函数：字幕解析 + 文本拼接
-# =========================================================================
 def _clean_xml_text(raw: str) -> str:
-    """srv/xml 段内文本清洗：剥除内嵌标签（srv3 的 ``<s>`` 词级标签）+ 解 HTML 实体。"""
     return unescape(_TAG_RE.sub("", raw or "")).strip()
 
 
 def _parse_json3(text: str) -> List[Dict[str, Any]]:
-    """json3：``events[].segs[].utf8`` 拼接，跳过拼接后为纯空白（如单独 ``\\n``）的段。"""
     data = json.loads(text)
     events = data.get("events") if isinstance(data, dict) else None
     out: List[Dict[str, Any]] = []
@@ -99,7 +66,7 @@ def _attr_float(attrs: str, name: str) -> float:
 
 
 def _parse_srv(text: str) -> List[Dict[str, Any]]:
-    """srv/xml：抽 ``<text start dur>`` 段（秒），无则回退 ``<p t d>`` 段（毫秒）。"""
+    """<text start dur> 段（秒），无则回退 <p t d> 段（毫秒）。"""
     out: List[Dict[str, Any]] = []
     for attrs, body in _SRV_TEXT_RE.findall(text):
         cleaned = _clean_xml_text(body)
@@ -132,11 +99,6 @@ def _to_float(value: Any) -> float:
 
 
 def parse_timedtext(text: str, fmt: str = "auto") -> List[Dict[str, Any]]:
-    """把 timedtext 解析为 ``[{start(float 秒), dur(float 秒), text(str)}]``。
-
-    ``fmt`` ∈ ``{"auto", "json3", "srv"/"xml"}``；``auto`` 按内容嗅探（``{``/``[`` → json3，
-    否则 srv/xml）。纯函数、不出网；任何解析异常一律回退空列表（绝不抛）。
-    """
     if not text or not str(text).strip():
         return []
     raw = str(text)
@@ -161,7 +123,6 @@ def parse_timedtext(text: str, fmt: str = "auto") -> List[Dict[str, Any]]:
 
 
 def transcript_text(segments: Sequence[Dict[str, Any]]) -> str:
-    """段落列表拼接为纯文本：跳空段、段内折叠空白、以单空格连接。"""
     parts: List[str] = []
     for seg in segments or []:
         value = seg.get("text") if isinstance(seg, dict) else seg
@@ -171,12 +132,7 @@ def transcript_text(segments: Sequence[Dict[str, Any]]) -> str:
     return _WS_RE.sub(" ", " ".join(parts)).strip()
 
 
-# =========================================================================
-# baoyu 页内脚本（供 provider 1 的 CDP evaluate）
-# =========================================================================
-#: 复刻 baoyu-skills 的浏览器取字幕流程（页内 evaluate）。以异步 IIFE 返回 Promise，
-#: playwright 的 ``page.evaluate`` 会自动 await；产出 ``{segments:[{start,dur,text}]}`` 或
-#: ``{error}``。视频 id 由 :func:`build_baoyu_page_script` 注入 ``_VIDEO_ID_PLACEHOLDER``。
+# 复刻 baoyu-skills 的页内取字幕：数据中心 IP 纯 requests 拿不到字幕，必须借页面自身会话
 _BAOYU_JS_TEMPLATE = r"""(async function () {
   "use strict";
   function decodeEntities(s) {
@@ -271,21 +227,16 @@ _BAOYU_JS_TEMPLATE = r"""(async function () {
 
 
 def build_baoyu_page_script(video_id: str) -> str:
-    """返回可在浏览器 ``evaluate`` 的 JS 字符串（复刻 baoyu 取字幕流程），注入 ``video_id``。"""
     return _BAOYU_JS_TEMPLATE.replace(
         _VIDEO_ID_PLACEHOLDER, json.dumps(str(video_id or ""))
     )
 
 
-# =========================================================================
-# 提供方链
-# =========================================================================
 def _is_offline() -> bool:
     return os.environ.get("QLY_OFFLINE") == "1"
 
 
 def _segments_from_result(result: Any) -> List[Dict[str, Any]]:
-    """CDP evaluate 返回的 ``{segments:[...]}`` 归一为标准段列表。"""
     if not isinstance(result, dict):
         return []
     segs = result.get("segments")
@@ -307,10 +258,6 @@ def _segments_from_result(result: Any) -> List[Dict[str, Any]]:
 
 
 def _via_cdp(video_id: str) -> Optional[str]:
-    """provider 1：经 web-access / 常驻 Chrome 的 CDP 打开 watch 页并注入 baoyu 脚本取字幕。
-
-    ``engine.cdp`` 不可用（缺 playwright / 连不上）或任何异常 → 返回 ``None`` 跳过下一提供方。
-    """
     if _is_offline():
         return None
     try:
@@ -356,13 +303,11 @@ def _via_cdp(video_id: str) -> Optional[str]:
 
 
 def _proxy_urls(proxy: str, video_id: str) -> List[str]:
-    """由代理基址拼候选 URL：``{proxy}?v={id}`` 与 ``{proxy}/{id}``。"""
     proxy = proxy.strip()
     urls: List[str] = []
     sep = "&" if "?" in proxy else "?"
     urls.append("{0}{1}v={2}".format(proxy, sep, video_id))
     urls.append("{0}/{1}".format(proxy.rstrip("/"), video_id))
-    # 去重保序
     seen = set()
     out = []
     for u in urls:
@@ -373,7 +318,6 @@ def _proxy_urls(proxy: str, video_id: str) -> List[str]:
 
 
 def _text_from_body(body: str) -> Optional[str]:
-    """代理响应体 → 纯文本：json3/srv 走 parse，纯文本直接折叠返回。"""
     if not body or not body.strip():
         return None
     head = body.lstrip()[:1]
@@ -387,7 +331,6 @@ def _text_from_body(body: str) -> Optional[str]:
 
 
 def _via_proxy(video_id: str) -> Optional[str]:
-    """provider 2：配置了 ``QLY_TRANSCRIPT_PROXY`` 时经代理取字幕（json3/srv/纯文本）。"""
     if _is_offline():
         return None
     proxy = os.environ.get("QLY_TRANSCRIPT_PROXY")
@@ -414,11 +357,7 @@ def _via_proxy(video_id: str) -> Optional[str]:
 
 
 def _via_direct(video_id: str, lang_pref: Sequence[str]) -> Optional[str]:
-    """provider 3：直连 best-effort——innertube player→captionTracks→timedtext&fmt=json3。
-
-    数据中心 IP 下大概率失败（公开 key 失效 / UNPLAYABLE），住宅 IP 或 YouTube 放松时可成；
-    任何异常一律 ``None``，交回 :func:`get_transcript` 收敛为 ``None``（不阻塞深读回退）。
-    """
+    """数据中心 IP 下大概率失败（公开 key 失效 / UNPLAYABLE），住宅 IP 下可成。"""
     if _is_offline():
         return None
     try:
@@ -476,7 +415,6 @@ def _via_direct(video_id: str, lang_pref: Sequence[str]) -> Optional[str]:
 
 
 def _pick_track(tracks: Sequence[Dict[str, Any]], lang_pref: Sequence[str]) -> Optional[Dict[str, Any]]:
-    """按语言偏好 + 「非 asr 优先」挑一条字幕轨。"""
     def _lang(t: Dict[str, Any]) -> str:
         return str(t.get("languageCode") or "").lower()
 
@@ -498,11 +436,7 @@ def get_transcript(
     video_id: str,
     lang_pref: Sequence[str] = DEFAULT_LANG_PREF,
 ) -> Optional[str]:
-    """多级提供方取 YouTube 字幕纯文本；任一成功即返回，全失败/离线返回 ``None``。
-
-    提供方顺序：① web-access CDP（首选）② ``QLY_TRANSCRIPT_PROXY`` 代理 ③ 直连 best-effort。
-    ``QLY_OFFLINE=1`` 直接 ``None``（不出网）。**本函数绝不抛异常**。
-    """
+    """依次 CDP → QLY_TRANSCRIPT_PROXY 代理 → 直连；全失败/离线返回 None，绝不抛。"""
     if _is_offline():
         return None
     vid = str(video_id or "").strip()

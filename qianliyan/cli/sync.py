@@ -1,15 +1,3 @@
-"""cli/sync.py —— 主编排器（spec §10.1）。
-
-职责：确定要跑的眼 → 并行抓取并逐眼记账 → 写抓取快照 → 按眼增量合并原始池 →
-去重打分并盖章 → （非 quick）og_image 补全 + 翻译/路由/三个 agent 标注 →
-频道路由与写盘 → 写全局热榜 → 渲染 HTML 简报 → 写 ``sync_meta.json`` →
-（可选）data 目录 git 快照。
-
-``--mock``：跳过真实抓取，从 ``tests/fixtures/mock_items.jsonl`` 读入并按眼过滤
-（S5 离线端到端），同时强制 ``QLY_OFFLINE=1``。真实抓取路径统一经 ``eyes.EYES``
-分发，单眼异常在本模块记账、不外溢（S1）。
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -38,17 +26,13 @@ from ..pipeline import (
 
 logger = logging.getLogger("qianliyan.cli.sync")
 
-#: mock fixture 相对仓库根的路径（repo 根定位统一走 ``core.paths.repo_root()``）
 MOCK_FIXTURE_RELPATH = ("tests", "fixtures", "mock_items.jsonl")
 HOTLIST_LIMIT = 50
 HOTLIST_TITLE = "🔥 全局热榜 Top 50"
 
 
-# =========================================================================
-# 小工具
-# =========================================================================
 def _mock_fixture_path() -> Path:
-    """mock 数据文件路径（测试可 monkeypatch 本函数以注入改写过 date 的临时副本）。"""
+    """测试会 monkeypatch 本函数注入临时副本。"""
     return paths.repo_root().joinpath(*MOCK_FIXTURE_RELPATH)
 
 
@@ -57,7 +41,6 @@ def _new_run_id(now: datetime) -> str:
 
 
 def _eye_cfg(name: str) -> Dict[str, Any]:
-    """按 Wave1/2 约定的 cfg 语义为每眼组装配置（各眼 cfg 语义不互通，逐一处理）。"""
     if name == "aihot":
         sources_cfg = paths.load_yaml_config("sources")
         return dict(sources_cfg.get("aihot") or {})
@@ -74,7 +57,6 @@ def _eye_cfg(name: str) -> Dict[str, Any]:
 
 
 def _load_mock_pool(eye_names: Sequence[str]) -> Dict[str, List[Dict[str, Any]]]:
-    """读 mock fixture，按 ``source_kind`` 分桶，只保留本次要跑的眼。"""
     rows = storage.read_jsonl(_mock_fixture_path())
     pool: Dict[str, List[Dict[str, Any]]] = {name: [] for name in eye_names}
     for row in rows:
@@ -89,7 +71,7 @@ def _fetch_one(
     mock_pool: Optional[Dict[str, List[Dict[str, Any]]]],
     since: Any,
 ) -> "tuple[List[Dict[str, Any]], Dict[str, Any]]":
-    """单眼抓取 + 记账；异常在此吞掉（sync 统一记账，单眼故障不外溢，S1）。"""
+    """异常在此吞掉：单眼故障不外溢。"""
     started = time.perf_counter()
     try:
         if mock_pool is not None:
@@ -116,11 +98,6 @@ def _fetch_one(
 
 
 def _change_eye_cfg(name: str, mock: bool) -> Dict[str, Any]:
-    """变更情报眼的 cfg。
-
-    ``--mock``：指向仓库内已入库的真实 fixture（离线安全、确定性），使其在离线端到端里也有数；
-    真实同步：返回空 cfg，各眼用模块默认 raw 端点（离线时自然抓取失败，由上层记 ok=False）。
-    """
     if not mock:
         return {}
     real_dir = paths.repo_root() / "tests" / "fixtures" / "real"
@@ -140,7 +117,6 @@ def _fetch_change_one(
     mock: bool,
     since: Any,
 ) -> "tuple[List[Dict[str, Any]], Dict[str, Any]]":
-    """单个变更情报眼抓取 + 记账；异常在此吞掉（离线失败记 ok=False，不外溢，§19.4）。"""
     started = time.perf_counter()
     try:
         items = list(fn(_change_eye_cfg(name, mock), since=since) or [])
@@ -182,25 +158,14 @@ def _git_snapshot(run_id: str) -> None:
             ["git", "commit", "-m", "sync {0}".format(run_id)], cwd=str(data_dir),
             capture_output=True, timeout=30, check=False,
         )
-    except Exception as exc:  # noqa: BLE001 - 静默失败（spec §10.1.8）
+    except Exception as exc:  # noqa: BLE001 - 静默失败
         logger.debug("data 目录 git 快照跳过: %s", exc)
 
 
-# =========================================================================
-# 主编排
-# =========================================================================
 def _carry_first_seen_dates(
     new_items: Sequence[Dict[str, Any]], old_items: Sequence[Dict[str, Any]], now: datetime,
 ) -> int:
-    """源没给日期的条目，沿用池子里上一次见到它时的日期（首见时间），返回沿用了几条。
-
-    这类条目的 date 是 ``schema._norm_date`` 补的「抓取时刻」。不沿用的话每轮都被重补成
-    now：8 月的旧文、上百个老版本的提示词变更，永远是「0 小时前」，按新鲜度霸占候选池前排。
-    首见时间不是发布时间，但它只会往过去走——一篇文章第一次被看到之后，不会再变新。
-
-    有的抓取路径给的是空串日期（不是 None），池子里存的也是空串，要到打分时才被当成 now——
-    这种第一次见到时就地盖上本轮时间，下一轮才有「首见」可沿用。
-    """
+    """源没给日期的条目沿用首见日期，否则每轮被补成 now，旧文永远霸占新鲜度前排；返回沿用条数。"""
     first_seen: Dict[str, str] = {}
     for old in old_items or []:
         date = old.get("date")
@@ -232,7 +197,6 @@ def run_sync(
     strict: bool = False,
     mock: bool = False,
 ) -> Dict[str, Any]:
-    """跑一轮完整同步，返回本轮 ``sync_meta``（同时写盘 ``sync_meta.json``）。"""
     if mock:
         os.environ["QLY_OFFLINE"] = "1"
 
@@ -255,9 +219,7 @@ def run_sync(
         new_items.extend(items)
         _write_snapshot(date_str, name, items)
 
-    # 变更情报源（Wave H1，spec-v0.3 §19）：仅在全量同步（未指定 --eye 子集）时额外拉取，
-    # 其 item source_kind=local，折入原始池的 local 桶；单列 change_meta，不污染 meta["eyes"]
-    # （核心眼注册表锁死为五只，见 eyes/__init__.py）。
+    # 变更情报源只在全量同步时拉，折入 local 桶，单列 change_meta 不污染 meta['eyes']
     change_meta: "Dict[str, Dict[str, Any]]" = {}
     if eyes is None:
         for name, fn in CHANGE_EYES.items():
@@ -272,7 +234,7 @@ def run_sync(
     if carried:
         logger.info("无日期条目沿用首见时间 %d 条", carried)
     max_age_days = os.environ.get("QLY_POOL_MAX_AGE_DAYS")
-    # 只有抓取成功的眼才以本次快照为准；失败眼保留旧池数据（故障 ≠ 空结果，S1）
+    # 失败眼保留旧池数据：故障 ≠ 空结果
     ran_ok_kinds = [name for name in eye_names if eyes_meta.get(name, {}).get("ok")]
     merged_raw = storage.merge_pool_by_eyes(old_raw, new_items, ran_ok_kinds, max_age_days, now)
     storage.write_jsonl(raw_pool_path, merged_raw)
@@ -301,9 +263,7 @@ def run_sync(
             except Exception as exc:  # noqa: BLE001
                 logger.warning("%s 意外失败（已忽略）: %s", annotate.__module__, exc)
 
-    # 读者画像 + 个性化打分 + 人物画像（spec-v0.3 §7）。
-    # --quick 也执行：其内部 LLM 增强可选，但 personal_score / persona 结构字段必须落。
-    # personalize 原地写 extra.personal_score；build_personas 回退不阻塞、绝不向上抛。
+    # --quick 也执行：personal_score / persona 字段必须落
     personas: List[Dict[str, Any]] = []
     try:
         reader_profile = profile.load_reader_profile()
@@ -317,9 +277,7 @@ def run_sync(
         logger.warning("人物画像构建/写盘意外失败（已忽略）: %s", exc)
         personas = []
 
-    # 变更情报加工（spec-v0.3 §19）：绑定版本变更卡 + 叙事↔实证映射（原地写 extra.corroboration）
-    # + 业界资产演进。挂载点：write_personas 之后、items.jsonl 落盘之前，使 corroboration 随 item 落盘。
-    # --quick 跳过 LLM（传 llm=None，纯 regex 回退）；结构字段照落。全程绝不外溢。
+    # 须在 items.jsonl 落盘前执行，corroboration 才能随 item 落盘
     change_cards: List[Dict[str, Any]] = []
     industry: List[Dict[str, Any]] = []
     try:
@@ -330,8 +288,7 @@ def run_sync(
     except Exception as exc:  # noqa: BLE001 - 变更情报加工失败不拖垮主链路
         logger.warning("change_intel 加工意外失败（已忽略）: %s", exc)
 
-    # items.jsonl 在全部富化（og_image/翻译/agent 标注/个性化/变更情报）之后落盘，
-    # 使 API /items?sort=personal 与 /profile 能读到 personal_score（spec-v0.3 §8）。
+    # 须在全部富化之后落盘，API 的 sort=personal 与 /profile 才读得到 personal_score
     storage.write_jsonl(paths.data_path("items.jsonl"), deduped)
 
     routed = channels.run_all(deduped)
@@ -385,9 +342,6 @@ def run_sync(
     return meta
 
 
-# =========================================================================
-# CLI
-# =========================================================================
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m qianliyan.cli.sync", description="千里眼主编排器",

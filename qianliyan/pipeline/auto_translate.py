@@ -1,14 +1,3 @@
-"""pipeline/auto_translate.py —— 英→中标题/摘要翻译（spec §9.5）。
-
-原地为 item 写 ``extra.title_zh`` / ``extra.summary_zh``，并把结果缓存到
-``$QLY_DATA_DIR/translations.json``（``{sig: {title_zh, summary_zh}}``）避免重复调用。
-
-**回退公约（spec §5）**：
-  * 标题 CJK 占比 > 0.3 视为已是中文 —— 直接跳过，不浪费额度；
-  * 命中缓存 —— 直接回填；
-  * LLM 不可用或任何异常 —— **不译**，渲染层自然落回英文原文，**绝不向上抛**。
-"""
-
 from __future__ import annotations
 
 import json
@@ -44,7 +33,6 @@ def _is_cjk(char: str) -> bool:
 
 
 def cjk_ratio(text: Any) -> float:
-    """CJK 字符占非空白字符的比例（空文本返回 0.0）。"""
     chars = [c for c in str(text or "") if not c.isspace()]
     if not chars:
         return 0.0
@@ -52,7 +40,6 @@ def cjk_ratio(text: Any) -> float:
 
 
 def is_chinese(text: Any) -> bool:
-    """CJK 占比 > 0.3 即视为中文，无需翻译。"""
     return cjk_ratio(text) > CJK_RATIO_THRESHOLD
 
 
@@ -101,7 +88,6 @@ def _build_prompt(batch: Sequence[Dict[str, Any]]) -> str:
 
 
 def _parse_reply(reply: Any, batch_size: int) -> Dict[int, Dict[str, str]]:
-    """把模型回复归一为 ``{下标: {title_zh, summary_zh}}``（脏数据一律丢弃）。"""
     rows: List[Any]
     if isinstance(reply, list):
         rows = reply
@@ -129,7 +115,7 @@ def _parse_reply(reply: Any, batch_size: int) -> Dict[int, Dict[str, str]]:
 
 
 def translate(items: Sequence[Dict[str, Any]], cache_path: Any = None) -> None:
-    """原地翻译（spec §9.5）：命中缓存直接回填，缺失部分批量调 LLM；任何失败静默回退。"""
+    """任何失败静默回退：不译则渲染层落回英文原文。"""
     rows = [it for it in (items or []) if isinstance(it, dict)]
     if not rows:
         return

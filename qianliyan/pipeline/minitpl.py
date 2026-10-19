@@ -1,21 +1,3 @@
-"""pipeline/minitpl.py —— 极简模板引擎（spec §9.1，**不依赖 jinja2**）。
-
-支持且仅支持三种语法：
-
-* ``{{ path }}``          —— 点路径取值，缺失渲染空串，默认 HTML 转义；
-* ``{{ path|safe }}``     —— 同上但不转义（内联 JSON / 预渲染 HTML 片段用）；
-* ``{% for x in path %} … {% endfor %}``  —— 循环，循环变量注入子作用域，可嵌套；
-* ``{% if path %}`` / ``{% if not path %}`` … ``{% endif %}`` —— truthiness 判断，可嵌套。
-
-实现铁律：模板先**编译为节点树**再渲染，**不使用 eval/exec**——模板内容永远只当数据看，
-杜绝模板注入。任何语法错误抛 ``TemplateError``。
-
-取值语义：
-  * 路径按 ``.`` 逐级下钻：dict 走 ``get``、list/tuple 走数字下标、其余走 ``getattr``；
-  * 任一级缺失即返回 ``None``，渲染为空串；
-  * 渲染时 ``None`` → 空串，其余一律 ``str(value)``。
-"""
-
 from __future__ import annotations
 
 import html
@@ -27,7 +9,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["TemplateError", "Template", "compile_template", "render"]
 
-# {{ ... }} 与 {% ... %} 两类标记；非贪婪 + DOTALL 允许标记内换行
 _TOKEN_RE = re.compile(r"\{\{(.*?)\}\}|\{%(.*?)%\}", re.DOTALL)
 _PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*$")
 _NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -39,15 +20,10 @@ _MISSING = object()
 
 
 class TemplateError(ValueError):
-    """模板语法错误（未闭合的块、未知标签、非法路径、未知过滤器）。"""
+    pass
 
 
-# =========================================================================
-# 节点
-# =========================================================================
 class _TextNode(object):
-    """字面文本。"""
-
     __slots__ = ("text",)
 
     def __init__(self, text: str) -> None:
@@ -58,8 +34,6 @@ class _TextNode(object):
 
 
 class _VarNode(object):
-    """``{{ path }}`` / ``{{ path|safe }}``。"""
-
     __slots__ = ("path", "safe")
 
     def __init__(self, path: str, safe: bool) -> None:
@@ -72,8 +46,6 @@ class _VarNode(object):
 
 
 class _ForNode(object):
-    """``{% for x in path %} … {% endfor %}``。"""
-
     __slots__ = ("var", "path", "body")
 
     def __init__(self, var: str, path: str, body: Sequence[Any]) -> None:
@@ -92,8 +64,6 @@ class _ForNode(object):
 
 
 class _IfNode(object):
-    """``{% if path %}`` / ``{% if not path %}`` … ``{% endif %}``。"""
-
     __slots__ = ("path", "negate", "body")
 
     def __init__(self, path: str, negate: bool, body: Sequence[Any]) -> None:
@@ -108,12 +78,7 @@ class _IfNode(object):
                 node.render(ctx, out)
 
 
-# =========================================================================
-# 上下文（作用域栈）
-# =========================================================================
 class _Context(object):
-    """渲染上下文：外层 context 打底，循环变量压入子作用域，内层优先。"""
-
     __slots__ = ("_scopes",)
 
     def __init__(self, base: Optional[Dict[str, Any]] = None) -> None:
@@ -142,7 +107,6 @@ class _Context(object):
 
 
 def _lookup(obj: Any, key: str) -> Any:
-    """单级取值：dict → get，序列 → 数字下标，其余 → getattr。"""
     if obj is None:
         return None
     if isinstance(obj, dict):
@@ -157,14 +121,12 @@ def _lookup(obj: Any, key: str) -> Any:
 
 
 def _stringify(value: Any) -> str:
-    """渲染取值：``None`` → 空串，其余 ``str()``。"""
     if value is None:
         return ""
     return value if isinstance(value, str) else str(value)
 
 
 def _iterate(value: Any) -> List[Any]:
-    """循环取值：``None`` / 字符串 / 不可迭代 → 空；dict → ``items()`` 元组列表。"""
     if value is None:
         return []
     if isinstance(value, (str, bytes)):
@@ -178,9 +140,6 @@ def _iterate(value: Any) -> List[Any]:
         return []
 
 
-# =========================================================================
-# 编译
-# =========================================================================
 def _tokenize(text: str) -> List[Tuple[str, str]]:
     tokens: List[Tuple[str, str]] = []
     pos = 0
@@ -215,7 +174,7 @@ def _parse_var(expr: str) -> Tuple[str, bool]:
 
 
 def _parse(tokens: Sequence[Tuple[str, str]], index: int, stop: Sequence[str]) -> Tuple[List[Any], int]:
-    """从 ``index`` 起解析节点，遇到 ``stop`` 中的标签则返回（**不消费**该标签）。"""
+    """遇到 stop 中的标签即返回，不消费该标签。"""
     nodes: List[Any] = []
     while index < len(tokens):
         kind, value = tokens[index]
@@ -245,7 +204,7 @@ def _parse(tokens: Sequence[Tuple[str, str]], index: int, stop: Sequence[str]) -
             if index >= len(tokens):
                 raise TemplateError("{% for %} 未闭合（缺少 {% endfor %}）")
             nodes.append(_ForNode(var, path, body))
-            index += 1  # 消费 endfor
+            index += 1
             continue
 
         if head == "if":
@@ -258,7 +217,7 @@ def _parse(tokens: Sequence[Tuple[str, str]], index: int, stop: Sequence[str]) -
             if index >= len(tokens):
                 raise TemplateError("{% if %} 未闭合（缺少 {% endif %}）")
             nodes.append(_IfNode(path, negate, body))
-            index += 1  # 消费 endif
+            index += 1
             continue
 
         raise TemplateError("未知模板标签 {0!r}（仅支持 for/endfor/if/endif）".format(value))
@@ -269,15 +228,12 @@ def _parse(tokens: Sequence[Tuple[str, str]], index: int, stop: Sequence[str]) -
 
 
 class Template(object):
-    """编译后的模板：节点树 + ``render(context)``。"""
-
     __slots__ = ("nodes",)
 
     def __init__(self, nodes: Sequence[Any]) -> None:
         self.nodes = list(nodes)
 
     def render(self, context: Optional[Dict[str, Any]] = None) -> str:
-        """用给定上下文渲染为字符串。"""
         ctx = _Context(context)
         out: List[str] = []
         for node in self.nodes:
@@ -286,11 +242,9 @@ class Template(object):
 
 
 def compile_template(template_text: str) -> Template:
-    """把模板文本编译为节点树（可复用渲染多次）。"""
     nodes, _ = _parse(_tokenize(template_text or ""), 0, ())
     return Template(nodes)
 
 
 def render(template_text: str, context: Optional[Dict[str, Any]] = None) -> str:
-    """一次性编译并渲染模板文本（spec §9.1 对外接口）。"""
     return compile_template(template_text).render(context or {})

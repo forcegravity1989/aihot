@@ -1,19 +1,3 @@
-"""cli/deliver.py —— 四通道分发（spec §10.2）。
-
-```
-python -m qianliyan.cli.deliver --channel in-chat|html|welink|email [--topic <频道名>] [--open]
-```
-
-四个通道职责各异（spec §10.2 + intent.md 非目标）：
-
-* ``in-chat``：读 ``channels/<topic>.md``（缺省 ``hotlist.md``）打印到 stdout，头部附
-  intent.md「设计哲学四条铁律」提醒，供 Agent 转述时遵循。
-* ``html``：确认 ``digest.html`` 存在并打印路径；``--open`` 时用 ``webbrowser.open()``。
-* ``welink``：**不直连 API**——打印结构化 instruction 块（目标群 / 当日精选条目 / 每条 URL），
-  供 Agent 接力 welink-controller skill。
-* ``email``：stub——打印"请使用 send-email skill"与建议正文，退出码 0。
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -26,7 +10,6 @@ from ..core import paths, storage
 
 logger = logging.getLogger("qianliyan.cli.deliver")
 
-#: intent.md「设计哲学四条铁律」——Agent 转述必须遵循
 IRON_LAWS = (
     "1. 以本地数据为准，不凭记忆——一切转述都必须来自落盘的数据底座。",
     "2. 每条必带 URL——可溯源是底线。",
@@ -52,7 +35,6 @@ def _channel_path(topic: Optional[str]) -> Path:
 
 
 def _load_topic_items(topic: Optional[str]) -> List[Dict[str, Any]]:
-    """从数据契约（items.jsonl + channels.json）取某频道（或全局热榜）的条目列表。"""
     items = storage.read_jsonl(paths.data_path("items.jsonl"))
     if not topic:
         ranked = sorted(items, key=lambda it: it.get("hotness") or 0.0, reverse=True)
@@ -74,9 +56,6 @@ def _title_of(item: Dict[str, Any]) -> str:
     return str(item.get("title") or "")
 
 
-# =========================================================================
-# 四通道
-# =========================================================================
 def _deliver_in_chat(topic: Optional[str]) -> int:
     path = _channel_path(topic)
     if not path.is_file():
@@ -134,9 +113,6 @@ def _deliver_email(topic: Optional[str]) -> int:
     return 0
 
 
-# =========================================================================
-# CLI
-# =========================================================================
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m qianliyan.cli.deliver", description="千里眼四通道分发",

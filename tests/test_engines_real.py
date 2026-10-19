@@ -1,11 +1,3 @@
-"""test_engines_real.py —— spec-v0.3 §17：engine 新后端对真实 fixtures 的解析（全离线）。
-
-覆盖：youtube.parse/feed_url（youtube_anthropic.xml）、github_trending.parse/fetch
-（github_trending.html）、html_page.extract_articles/fetch_articles（anthropic_news.html）、
-remote_sync.detect_backend 新分支 + fetch_source 对新 backend 的分发。真实网络一律
-monkeypatch 掉，物理层 socket 封锁（conftest）兜底。
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,9 +20,6 @@ class _FakeResponse:
         self.status_code = status_code
 
 
-# =========================================================================
-# engine.youtube
-# =========================================================================
 def test_youtube_feed_url_channel_and_playlist():
     assert youtube.feed_url({"channel_id": "UCabc"}) == (
         "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc"
@@ -38,7 +27,6 @@ def test_youtube_feed_url_channel_and_playlist():
     assert youtube.feed_url({"playlist_id": "PLxyz"}) == (
         "https://www.youtube.com/feeds/videos.xml?playlist_id=PLxyz"
     )
-    # playlist 优先于 channel
     assert "playlist_id=PL1" in youtube.feed_url({"channel_id": "UC1", "playlist_id": "PL1"})
 
 
@@ -63,11 +51,8 @@ def test_youtube_parse_real_feed_video_fields():
     assert first["extra"]["platform"] == "youtube"
     assert first["extra"]["channel"] == "Anthropic"
     assert first["extra"]["format"] == "video"
-    # media:description 进 summary
     assert "Iceland" in first["summary"]
-    # published 落 date（ISO 归一后仍保留年月日）
     assert first["date"].startswith("2026-08-10")
-    # item 标准字段
     assert first["source"] == "Anthropic YouTube"
     assert first["source_kind"] == "local"
     assert first["backend"] == "rss"
@@ -76,10 +61,8 @@ def test_youtube_parse_real_feed_video_fields():
 
 
 def test_youtube_parse_format_and_source_fallback_from_cfg():
-    # format 取源配置（会议 playlist → talk）
     talks = youtube.parse(_read("youtube_anthropic.xml"), {"format": "talk"})
     assert all(i["extra"]["format"] == "talk" for i in talks)
-    # 无 name 时回退频道名
     assert talks[0]["source"] == "Anthropic"
 
 
@@ -94,11 +77,7 @@ def test_youtube_fetch_is_feed_url_get_parse(monkeypatch):
     assert len(items) == 15
 
 
-# =========================================================================
-# engine.youtube · CDP 首选路径（feeds/videos.xml 已实测失效，2026-08-28）
-# =========================================================================
 def test_youtube_page_url_supports_handle_directly():
-    """CDP 路径（不同于 feed_url）可以直接用 handle，不需要先在线解析 channel_id。"""
     assert youtube.page_url({"handle": "@claude"}) == "https://www.youtube.com/@claude/videos"
     assert youtube.page_url({"channel_id": "UCabc"}) == "https://www.youtube.com/channel/UCabc/videos"
     assert youtube.page_url({"playlist_id": "PLxyz"}) == "https://www.youtube.com/playlist?list=PLxyz"
@@ -108,7 +87,7 @@ def test_youtube_page_url_supports_handle_directly():
     "text,expected_days_ago",
     [
         ("2天前", 2),
-        ("直播时间：3个月前", 90),   # 前缀不影响解析，只搜数字+单位+"前"
+        ("直播时间：3个月前", 90),
         ("1年前", 365),
         ("3周前", 21),
         ("2 days ago", 2),
@@ -129,14 +108,14 @@ def test_relative_to_date_just_now_and_unparseable():
 
 
 def test_items_from_cdp_videos_real_shape():
-    """喂 2026-08-28 对 @claude/videos 真实抓取脚本返回的原始结构（回归用例）。"""
+    """回归：2026-08-28 对 @claude/videos 真实抓取脚本返回的原始结构。"""
     raw = [
         {"videoId": "x80HVKbZrno", "title": "Claude for Word: Turn a draft into a finished document",
          "meta": ["1万次观看", "2天前"]},
         {"videoId": "GMIWm5y90xA", "title": "Code with Claude 2026: Opening Keynote",
          "meta": ["Claude", "24万次观看", "直播时间：3个月前"]},
         {"videoId": "", "title": "no id, must be skipped", "meta": []},
-        {"videoId": "abc123", "title": "", "meta": []},   # 空标题也跳过
+        {"videoId": "abc123", "title": "", "meta": []},
     ]
     items = youtube._items_from_cdp_videos(raw, {"name": "Claude YouTube", "weight": 0.92, "format": "talk"})
     assert len(items) == 2
@@ -171,8 +150,7 @@ def test_fetch_via_cdp_raises_when_no_videos_extracted(monkeypatch):
         def connect():
             return (type("Ctx", (), {"stop": lambda self: None})(), _FakeBrowser())
 
-    # `from . import cdp` 里的 cdp 已经是包 qianliyan.engine 的真实属性（被别的模块提前
-    # import 过），打 sys.modules 补丁打不中——要打包属性本身，getattr 才能拿到假模块。
+    # cdp 已是包 qianliyan.engine 的真实属性（被别的模块提前 import 过），打 sys.modules 补丁打不中，要打包属性本身
     import qianliyan.engine as engine_pkg
     monkeypatch.setattr(engine_pkg, "cdp", _FakeCdpModule)
     with pytest.raises(RuntimeError):
@@ -180,7 +158,6 @@ def test_fetch_via_cdp_raises_when_no_videos_extracted(monkeypatch):
 
 
 def test_fetch_falls_back_to_feed_when_cdp_fails(monkeypatch):
-    """CDP 抛异常（无 playwright/连不上/抽不到视频）时 fetch() 要回退 feed 路径，不能整体失败。"""
     def _boom(cfg=None):
         raise RuntimeError("CDP 不可用（模拟）")
 
@@ -190,9 +167,6 @@ def test_fetch_falls_back_to_feed_when_cdp_fails(monkeypatch):
     assert len(items) == 15
 
 
-# =========================================================================
-# engine.github_trending
-# =========================================================================
 def test_github_trending_parse_real_html():
     items = github_trending.parse(_read("github_trending.html"), since="daily")
     assert len(items) >= 10
@@ -217,7 +191,7 @@ def test_github_trending_all_rows_have_owner_repo_url():
     items = github_trending.parse(_read("github_trending.html"), since="weekly")
     for it in items:
         assert it["url"].startswith("https://github.com/")
-        assert it["title"].count("/") == 1  # owner/repo
+        assert it["title"].count("/") == 1
         assert it["extra"]["since"] == "weekly"
 
 
@@ -239,9 +213,6 @@ def test_github_trending_fetch_is_get_plus_parse(monkeypatch):
     assert "since=daily" in captured["url"]
 
 
-# =========================================================================
-# engine.html_page.extract_articles / fetch_articles
-# =========================================================================
 def test_extract_articles_anthropic_news():
     articles = html_page.extract_articles(
         _read("anthropic_news.html"),
@@ -250,18 +221,15 @@ def test_extract_articles_anthropic_news():
     )
     assert len(articles) >= 10
     urls = [a["url"] for a in articles]
-    # 每条 path 匹配 pattern、绝对化、去重
     assert len(urls) == len(set(urls))
     assert "https://www.anthropic.com/news/claude-opus-5" in urls
     for a in articles:
         assert a["url"].startswith("https://www.anthropic.com/news/")
         assert a["extra"]["format"] == "blog"
         assert a["title"]
-    # 标题优先取锚点内标题
     opus = next(a for a in articles if a["url"].endswith("/news/claude-opus-5"))
     assert opus["title"] == "Introducing Claude Opus 5"
-    # 卡片式列表项：<time>日期</time> 与标题同锚点，日期要被摘成 date 字段，
-    # 不能粘在标题最前面（bug：真实抓取里 hotness 因此集体误判成"现在"）
+    # 日期要被摘成 date 字段，不能粘在标题最前面（bug：hotness 因此集体误判成"现在"）
     open_weights = next(a for a in articles if a["url"].endswith("/news/position-open-weights-models"))
     assert open_weights["date"] == "Jul 27, 2026"
     assert not open_weights["title"].startswith("Jul")
@@ -269,7 +237,6 @@ def test_extract_articles_anthropic_news():
 
 
 def test_extract_articles_strips_leading_date_segment_from_title():
-    """卡片把 <time> 与标题塞进同一个 <a> 时，日期节点要被摘出去，不进标题（回归用例）。"""
     html = (
         '<a href="/news/real-post">'
         '<time>Jul 27, 2026</time><span>Announcements</span> '
@@ -283,10 +250,7 @@ def test_extract_articles_strips_leading_date_segment_from_title():
 
 
 def test_extract_articles_falls_back_to_sibling_heading_for_cta_only_anchor():
-    """整卡可点击站点（Webflow 常见模式）：真标题/日期是锚点外的兄弟元素，锚点自身
-    只有一句"Read more" CTA——要回退用锚点之前最近出现的标题/日期（回归用例，
-    对应真实 claude.com/blog 的抓取质量问题）。
-    """
+    """整卡可点击站点：锚点只有 "Read more" CTA 时，回退取锚点之前最近的标题/日期（claude.com/blog 抓取质量问题）。"""
     html = (
         '<div class="card">'
         '<h2>Claude in Chrome is generally available</h2>'
@@ -341,15 +305,11 @@ def test_fetch_articles_is_get_plus_extract(monkeypatch):
     assert any(a["url"].endswith("/news/claude-opus-5") for a in articles)
 
 
-# =========================================================================
-# engine.remote_sync —— detect_backend 新分支 + fetch_source 分发
-# =========================================================================
 @pytest.mark.parametrize("url,declared,expected", [
     ("", "youtube", "youtube"),
     ("", "youtube-playlist", "youtube-playlist"),
     ("", "github-trending", "github-trending"),
     ("https://www.anthropic.com/news", "scrape", "scrape"),
-    # 未声明 type 时的 youtube host 启发式
     ("https://www.youtube.com/feeds/videos.xml?channel_id=UCabc", None, "youtube"),
     ("https://www.youtube.com/feeds/videos.xml?playlist_id=PLabc", None, "youtube"),
 ])
@@ -358,7 +318,6 @@ def test_detect_backend_new_branches(url, declared, expected):
 
 
 def test_detect_backend_existing_branches_unchanged():
-    # 回归：既有分支不受影响
     assert remote_sync.detect_backend("https://example.com/feed.xml", None) == "rss"
     assert remote_sync.detect_backend("https://github.com/anthropics/claude-code", None) == "git"
     assert remote_sync.detect_backend("http://export.arxiv.org/api/query?x=1", None) == "arxiv"
@@ -403,15 +362,8 @@ def test_fetch_source_dispatches_scrape(monkeypatch):
     assert entries[0]["extra"]["format"] == "blog"
 
 
-# =========================================================================
-# engine.rss —— changelog 类 feed：<title> 只有日期
-# =========================================================================
 def test_rss_changelog_feed_with_date_only_titles_gets_readable_titles():
-    """Z.ai 官方 release notes（Mintlify changelog）的 <title> 只是「2026-08-26」。
-
-    原样进日报就是一行日期，读者和编辑都看不出发生了什么；要用正文第一句补出标题，
-    正文只在 content:encoded 里，description 为空时摘要也要从那里来。
-    """
+    """Mintlify changelog 的 <title> 只是日期：要用 content:encoded 正文第一句补标题，摘要也从那里来。"""
     items = rss.parse(_read("zai_release_notes.xml"))
     assert len(items) == 3
     for item in items:

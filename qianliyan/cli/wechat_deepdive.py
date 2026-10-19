@@ -1,16 +1,3 @@
-"""cli/wechat_deepdive.py —— 公众号每天第二篇：一篇原文的**深度解读**（正文类型）。
-
-贴图（N 秒读完）给广度，这一篇给深度：从当期头条 / 深读里挑一篇原料最厚的原文，编辑读全文写解读，
-代码只做三件事——出写作简报、校验编辑交回的 JSON（关键数字必须逐字出自原文）、渲染成公众号正文 HTML
-（行内样式，同首页 token）并出「深度解读」封面。
-
-  python -m qianliyan.cli.wechat_deepdive --prompt [--sig SIG] [--date D]   打印写作简报
-  python -m qianliyan.cli.wechat_deepdive --apply FILE [--date D]           校验并渲染
-
-产物都在 ``archive/<日>/``：deepdive-prompt.md、deepdive.json、deepdive.html、deepdive.md、cover-deep.html/.png。
-``qly-publish.sh deepdive-prompt / deepdive / wechat-deep`` 是给定时任务的固定入口。
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -32,18 +19,14 @@ COVER_HTML_NAME = "cover-deep.html"
 COVER_PNG_NAME = "cover-deep.png"
 COVER_KIND = "深度解读"
 
-TITLE_MAX = 64          # 公众号文章标题上限
-SUMMARY_MAX = 120       # 摘要上限
-BODY_MIN, BODY_MAX = 1500, 6000   # 解读正文字数（导语 + 各节 + 局限 + 意味着什么）
+TITLE_MAX = 64
+SUMMARY_MAX = 120
+BODY_MIN, BODY_MAX = 1500, 6000
 SECTIONS_MIN, SECTIONS_MAX = 3, 6
-SOURCE_MIN = 3000       # 原文少于这么多字的条目不配做深度解读（同深读准入门槛）
+SOURCE_MIN = 3000  # 同深读准入门槛
 
 
-# =========================================================================
-# 挑哪一篇
-# =========================================================================
 def _figures(entry: Dict[str, Any]) -> List[Dict[str, str]]:
-    """可放进解读的图：原文信息图与示意图（og 封面、装饰图不要），带本地绝对路径给编辑亲眼看。"""
     out = []
     for fig in daily._figure_views(entry, daily.MEDIA_BASE_ARCHIVE):
         name = fig["src"][len(daily.MEDIA_BASE_ARCHIVE):]
@@ -52,7 +35,6 @@ def _figures(entry: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def candidates(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """头条 / 深读里原文 ≥ SOURCE_MIN 字的条目，按「有原文信息图 → 头条 → 原文更长」排。"""
     pool = [e for e in items if e.get("depth") in ("lead", "deep") and daily._source_chars(e) >= SOURCE_MIN]
 
     def key(e: Dict[str, Any]) -> Tuple[int, int, int]:
@@ -69,9 +51,6 @@ def _load(date_str: str) -> Dict[str, Any]:
     return final
 
 
-# =========================================================================
-# 写作简报
-# =========================================================================
 _GUIDE = """# 千里眼 · 深度解读写作简报（{date}）
 
 贴图那篇给读者「今天发生了什么」，这一篇给「这一件事到底是怎么回事」。只解读下面这一篇原文。
@@ -170,15 +149,12 @@ def cmd_prompt(date_str: str, sig: Optional[str] = None) -> int:
     return 0
 
 
-# =========================================================================
-# 校验 + 渲染
-# =========================================================================
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
 def validate(doc: Dict[str, Any], entry: Dict[str, Any]) -> Tuple[List[str], List[str]]:
-    """返回 (错误, 提醒)。错误必须改；提醒是正文里出现、原文里找不到的数字，请编辑自查。"""
+    """返回 (错误, 提醒)；提醒是正文里出现、原文里找不到的数字，请编辑自查。"""
     errors: List[str] = []
     title = str(doc.get("title") or "").strip()
     summary = str(doc.get("summary") or "").strip()
@@ -212,8 +188,7 @@ def validate(doc: Dict[str, Any], entry: Dict[str, Any]) -> Tuple[List[str], Lis
     chars = len(_body_text(doc))
     if not BODY_MIN <= chars <= BODY_MAX:
         errors.append("正文 {0} 字，要 {1}～{2}".format(chars, BODY_MIN, BODY_MAX))
-    # 和日报提炼同一套核对口径（_source_corpus：去标签、去千分位逗号、小写）
-    # 原文图注也是原文（图上的数常在图注里写明），一并算进核对范围
+    # 原文图注也算原文：图上的数常写在图注里
     captions = " ".join(f["caption"] for f in figs).replace(",", "").lower()
     corpus = _norm(daily._source_corpus(entry) + " " + captions)
     numbers = [str(n).strip() for n in doc.get("numbers") or [] if str(n).strip()]

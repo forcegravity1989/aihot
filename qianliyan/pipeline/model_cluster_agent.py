@@ -1,12 +1,3 @@
-"""pipeline/model_cluster_agent.py —— 模型族聚类标注（spec §9.5）。
-
-原地为 item 写 ``extra.cluster_key``（如 ``claude`` / ``gpt`` / ``qwen``），
-让「同一模型族的多条动态」在渲染与选稿阶段可以收拢。
-
-**回退公约（spec §5）**：LLM 不可用或任何异常 → 走正则族名匹配，**取标题中最先出现的
-已知族名**；一条都没命中则写空串（键始终存在，下游可无条件读）。绝不向上抛。
-"""
-
 from __future__ import annotations
 
 import json
@@ -22,7 +13,7 @@ __all__ = ["MODEL_FAMILIES", "BATCH_SIZE", "fallback_cluster_key", "annotate"]
 
 BATCH_SIZE = 20
 
-#: 已知模型族 → 匹配正则（顺序即同位置命中时的优先级）
+# 顺序即同位置命中时的优先级
 MODEL_FAMILIES: Tuple[Tuple[str, str], ...] = (
     ("claude", r"claude"),
     ("gpt", r"\bgpt[-\s]?\d*\w*|\bchatgpt\b"),
@@ -60,7 +51,6 @@ def _text_of(item: Dict[str, Any]) -> str:
 
 
 def fallback_cluster_key(item: Dict[str, Any]) -> str:
-    """规则回退：取标题中**最先出现**的已知族名；无命中返回空串。"""
     text = _text_of(item)
     if not text.strip():
         return ""
@@ -120,12 +110,10 @@ def _parse_reply(reply: Any, batch_size: int) -> Dict[int, str]:
 
 
 def annotate(items: Sequence[Dict[str, Any]]) -> None:
-    """原地写 ``extra.cluster_key``；LLM 结果为空时逐条落回规则值。"""
     rows = [it for it in (items or []) if isinstance(it, dict)]
     if not rows:
         return
 
-    # 先无条件铺一层规则值 —— 任何后续失败都已经有兜底
     for item in rows:
         _set_key(item, fallback_cluster_key(item))
 

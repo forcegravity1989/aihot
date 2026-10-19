@@ -1,9 +1,3 @@
-"""engine/html_page.py —— 通用网页链接抽取（无 CSS 选择器，仅 ``<a>`` 标签启发式）。
-
-用于没有 RSS/API 的普通官网页面（如 Anthropic News），以及内眼 CDP 失败后的代理兜底路径。
-``extract_links`` 是纯函数（喂 HTML 文本），``fetch_links`` = ``http.get`` + ``extract_links``。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -21,7 +15,7 @@ NAV_NOISE_MAX_LEN = 20
 DEFAULT_LIMIT = 20
 ARTICLE_FORMAT = "blog"
 
-# 常见导航/功能性噪声词（中英文），仅在链接文本较短时用于剔除，避免误伤含这些词的长标题
+# 仅在链接文本较短时用于剔除，避免误伤含这些词的长标题
 _NAV_NOISE = (
     "home", "login", "sign in", "sign up", "log in", "contact", "about",
     "privacy", "terms", "cookie", "menu", "search", "subscribe", "follow",
@@ -32,8 +26,6 @@ _NAV_NOISE = (
 
 
 class _AnchorExtractor(HTMLParser):
-    """只关心 ``<a href=...>text</a>``，容忍畸形 HTML（stdlib parser 本身就很宽容）。"""
-
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.links: List[Dict[str, str]] = []
@@ -67,7 +59,6 @@ class _AnchorExtractor(HTMLParser):
 
 
 def extract_links(html_text: str, base_url: str = "", limit: int = DEFAULT_LIMIT) -> List[Dict[str, str]]:
-    """从 HTML 文本抽 ``<a>`` 链接：标题启发式（长度 ≥8、剔除短导航噪声词）+ 相对链接补全 + 去重。"""
     if not html_text:
         return []
     parser = _AnchorExtractor()
@@ -99,20 +90,13 @@ def extract_links(html_text: str, base_url: str = "", limit: int = DEFAULT_LIMIT
 
 
 def fetch_links(url: str, limit: int = DEFAULT_LIMIT, timeout: int = 15) -> List[Dict[str, str]]:
-    """GET 页面并抽取链接。"""
     resp = http.get(url, timeout=timeout)
     return extract_links(resp.text, base_url=url, limit=limit)
 
 
-# =========================================================================
-# 文章索引抽取（spec-v0.3 §13.3）：无 RSS 的官网 blog（如 Anthropic）走此路
-# =========================================================================
 _HEADING_RE = re.compile(r"h[1-6]$")
 
-#: 卡片式官网常把 <time>发布日期</time> 与标题放进同一个可点击 <a> 里（如 Anthropic
-#: News），逐文本节点拼接后日期会粘在标题最前面。按「原始文本节点」（不是拼接后的整
-#: 串）逐个匹配，命中就摘出来单独当日期，不进标题——一次只处理开头连续的日期节点，
-#: 避免误伤标题正文里恰好出现的日期。
+# 卡片式官网常把 <time> 与标题放进同一个 <a>：按原始文本节点只摘开头连续的日期，避免误伤标题里的日期
 _DATE_SEGMENT_RE = re.compile(
     r"^(?:"
     r"\d{4}-\d{2}-\d{2}"                          # 2026-08-27
@@ -123,7 +107,6 @@ _DATE_SEGMENT_RE = re.compile(
 
 
 def _split_leading_date(segments: List[str]) -> "tuple[str, str]":
-    """按原始文本节点顺序剥掉开头连续的日期节点，返回 ``(date, 剩余标题)``。"""
     date = ""
     idx = 0
     for idx, seg in enumerate(segments):
@@ -141,10 +124,7 @@ def _split_leading_date(segments: List[str]) -> "tuple[str, str]":
     return date, title
 
 
-#: "整卡可点击"站点常把真标题/日期放在锚点外的兄弟元素里，锚点本身只包一句
-#: 通用 CTA（Webflow 一类模板的典型结构：``<h2>标题</h2><div>日期</div>`` 紧邻
-#: ``<a><span class="sr-only">Read more</span></a>``）。锚点自身文本落进这份
-#: 泛词表时，改用"自上一个 </a> 结束以来"最近出现过的标题/日期兜底。
+# 整卡可点击站点的锚点常只包一句通用 CTA（Read more），此时改用锚点前最近的标题/日期
 _CTA_GENERIC_RE = re.compile(
     r"^(?:read more|learn more|continue reading|see more|view more|more|"
     r"阅读更多|查看更多|了解更多|查看详情|更多)$",
@@ -153,11 +133,6 @@ _CTA_GENERIC_RE = re.compile(
 
 
 class _ArticleExtractor(HTMLParser):
-    """抽 ``<a href>`` 及其标题：优先锚点内首个 ``<h1..h6>`` 文本，回退锚点全文；
-    两者都先剥掉开头粘连的日期文本节点（见 ``_split_leading_date``）；锚点自身文本
-    是无信息 CTA 泛词时，回退用锚点外、紧邻在前的标题/日期（见上方 ``_CTA_GENERIC_RE``）。
-    """
-
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.articles: List[Dict[str, str]] = []
@@ -166,8 +141,7 @@ class _ArticleExtractor(HTMLParser):
         self._text_buf: List[str] = []
         self._heading_buf: List[str] = []
         self._heading_depth = 0
-        # 全局标题深度追踪（不分是否在 <a> 内），配合下面的"待定标题/日期"，
-        # 记录自上一个 </a> 结束以来见过的最近一个标题/日期，见类 docstring。
+        # 记录自上一个 </a> 结束以来最近的标题/日期，供 CTA 锚点兜底
         self._global_heading_depth = 0
         self._global_heading_buf: List[str] = []
         self._pending_heading = ""
@@ -246,11 +220,6 @@ def extract_articles(
     base_url: str = "",
     limit: int = DEFAULT_LIMIT,
 ) -> List[Dict[str, Any]]:
-    """从索引页 HTML 抽符合 ``article_pattern``（对链接 **path** 匹配）的文章链接；纯函数。
-
-    每条产标准化 entry ``{title, url, summary, date, extra:{format:"blog"}}``：``title`` 优先取
-    锚点内标题（``<h1..h6>``）、回退锚点全文；相对链接以 ``base_url`` 补全；按 url 去重。
-    """
     if not html_text:
         return []
     try:
@@ -300,7 +269,6 @@ def fetch_articles(
     limit: int = DEFAULT_LIMIT,
     timeout: int = 15,
 ) -> List[Dict[str, Any]]:
-    """GET 索引页 + ``extract_articles``（网络壳）。``base_url`` 缺省用 ``index_url`` 补全相对链接。"""
     resp = http.get(index_url, timeout=timeout)
     return extract_articles(
         getattr(resp, "text", "") or "",

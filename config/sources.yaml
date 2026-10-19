@@ -1,12 +1,7 @@
-# config/sources.yaml —— 远眼(local)唯一权威信源表 + aihot/insights 段。
-# 任何模块禁止写死信源 URL；新增/调整信源只改这里。
-
-aihot:                                   # 左眼「AIHOT · 卡兹克」——走站点 RSS 出口绕过反爬
-  # 2026-09-30 上游公告：新域名 aihot.news，旧域名 aihot.virxact.com 10 月 31 日后失效；
-  # 2026-10-08 旧域名已出现一次 DNS 解析失败（当天 aihot 采到 0 条，issue #56）。
+aihot:                                   # 走站点 RSS 出口绕过反爬
   base_url: https://aihot.news
   source_name: "AIHOT · 卡兹克"
-  feeds:                                  # 通用 feed：{path, kind, weight}
+  feeds:
     - {path: /feed.xml,     kind: curated, weight: 0.85}   # AI 精选 top ~50
     - {path: /feed/all.xml, kind: all,     weight: 0.70}   # 最近 7 天全量
   category_feeds:                         # 分类 feed slug（只填真实 200 的四个）
@@ -17,8 +12,8 @@ aihot:                                   # 左眼「AIHOT · 卡兹克」——�
     "AI 产品": {slug: products, tags: [products]}
     "论文":    {slug: paper,    tags: [paper, research]}
     "行业动态": {slug: industry, tags: [industry]}
-    "技巧观点": {slug: opinion,  tags: [opinion]}            # 2026-10-09 之前的合并类，留着兼容旧 feed
-    "教程":    {slug: practices, tags: [practices, tutorial]} # 上游 2026-10-09 把「技巧观点」拆成「教程」「观点」（issue #56）
+    "技巧观点": {slug: opinion,  tags: [opinion]}            # 旧 feed 的合并类，留着兼容
+    "教程":    {slug: practices, tags: [practices, tutorial]}
     "观点":    {slug: opinion,   tags: [opinion]}
 
 insights:
@@ -26,97 +21,69 @@ insights:
   branch: main
   data_paths: [plugins/plugins-daily-insight.md]   # 7KB 日榜；严禁指向 history.json/repos.json（31MB/75MB）
 
-# sources: 真实信源目录（spec-v0.3 §14，端点均已核验为真）。每项：
-#   {name, type, weight, tags, format, category, ...type 专属字段}
-# 新增/调整信源只改此列表；backend 由 type 显式声明，engine/remote_sync 按 type 分发。
+# 每项 {name, type, weight, tags, format, category, ...type 专属字段}；type 决定走哪个抓取后端
 sources:
-  # —— 官方 blog（RSS，真实可达）——
   - {name: OpenAI News,          type: rss, url: "https://openai.com/news/rss.xml",           weight: 0.95, format: blog, category: models,     tags: [official, openai, models]}
   - {name: Google DeepMind Blog, type: rss, url: "https://deepmind.google/blog/rss.xml",      weight: 0.92, format: blog, category: models,     tags: [official, google, models]}
   - {name: HuggingFace Blog,     type: rss, url: "https://huggingface.co/blog/feed.xml",      weight: 0.85, format: blog, category: tools,      tags: [vendor, huggingface, tools]}
   - {name: Simon Willison,       type: rss, url: "https://simonwillison.net/atom/everything/", weight: 0.8, format: blog, category: practices, tags: [kol, dev, practices]}
 
-  # —— Anthropic（无 RSS，走 scrape：抽索引页里符合 article_pattern 的文章链接）——
+  # Anthropic 无 RSS：scrape 抽索引页里符合 article_pattern 的链接
   - {name: Anthropic News,        type: scrape, url: "https://www.anthropic.com/news",        article_pattern: "^/news/[a-z0-9-]+$",        weight: 0.98, format: blog, category: models,      tags: [official, anthropic, models]}
-  - {name: Anthropic Engineering, type: scrape, url: "https://www.anthropic.com/engineering", article_pattern: "^/engineering/[a-z0-9-]+$", weight: 0.90, format: blog, category: practices,  tags: [official, anthropic, practices]}   # 列表页无 <time>，真实日期取不到；weight 压到 0.95 以下避免误判"一手速报"
+  - {name: Anthropic Engineering, type: scrape, url: "https://www.anthropic.com/engineering", article_pattern: "^/engineering/[a-z0-9-]+$", weight: 0.90, format: blog, category: practices,  tags: [official, anthropic, practices]}   # 列表页无 <time> 取不到日期；weight 压到 0.95 以下避免误判"一手速报"
   - {name: Claude Blog,           type: scrape, url: "https://claude.com/blog",               article_pattern: "^/blog/[a-z0-9-]+$",        weight: 0.9,  format: blog, category: claude-code, tags: [official, claude, claude-code]}
 
-  # —— 其它模型厂商官方口径（2026-08-31 补：此前只有 OpenAI/Anthropic/DeepMind 三家，
-  #    Meta 与 Mistral 的 blog 是 JS 渲染的 SPA，服务端 HTML 里没有文章链接，scrape 抓不到，
-  #    要抓得上 CDP——和内网眼同一个问题，暂缺）——
-  #    DeepSeek 的 api-docs.deepseek.com/rss.xml 探测返回 200，但内容是 Docusaurus 文档站的
-  #    HTML 外壳（catch-all 路由），解析出 0 条——只看状态码会被骗，已撤掉。DeepSeek 暂缺。
-  #    Qwen 官方 blog 最新一篇停在 2025-09-22，收录的 44 条全是存档；留着是因为它一旦复更就能接上，
-  #    但别指望它进日报。
+  # Meta blog 是 SPA，scrape 抓不到；DeepSeek 的 api-docs rss.xml 返回 200 但是文档站外壳、解析 0 条，别加
+  # Qwen blog 已停更，留着等复更
   - {name: Qwen Blog,     type: rss, url: "https://qwenlm.github.io/blog/index.xml", weight: 0.88, format: blog, category: models, tags: [official, qwen, alibaba, models]}
-  #    Z.ai（智谱）的博客 z.ai/blog 是 SPA：无 RSS、站点地图不收博客、索引包里也没有文章列表——
-  #    09-17 那篇 RSI 披露（GLM 自建推理基础设施）就是这么漏掉的。能稳定拿到的官方口径只有
-  #    docs.z.ai 的 release notes（Mintlify changelog），每个模型上线都会记一笔；它的 <title>
-  #    只是日期，rss 引擎会拿正文第一句补标题。博客本身仍需 CDP 或 X 才抓得到。
+  # Z.ai 博客是 SPA 抓不到，只能用 release notes；其 <title> 只是日期，rss 引擎拿正文首句补标题
   - {name: Z.ai Release Notes, type: rss, url: "https://docs.z.ai/release-notes/new-released/rss.xml", weight: 0.9, format: news, category: models, tags: [official, zhipu, glm, models]}
 
-  # —— 官方 YouTube（频道 feed，真实可达）——
   - {name: Claude YouTube,          type: youtube, channel_id: UCV03SRZXJEz-hchIAogeJOg, weight: 0.92, format: video, category: talks, tags: [official, anthropic, claude, video, talks]}
   - {name: Anthropic YouTube,       type: youtube, channel_id: UCrDwWp7EBBv4NwvScIpBDOA, weight: 0.9,  format: video, category: talks, tags: [official, anthropic, video, talks]}
   - {name: OpenAI YouTube,          type: youtube, channel_id: UCXZCJLdBC09xxGZ6gcdrc6A, weight: 0.85, format: video, category: talks, tags: [official, openai, video, talks]}
   - {name: Google DeepMind YouTube, type: youtube, channel_id: UCP7jMXSY2xbc3KCAE0MHQ-A, weight: 0.82, format: video, category: talks, tags: [official, google, video, talks]}
 
-  # —— Claude 大会演讲（播放列表，2026-08-28 用 CDP 打开 @claude/playlists 页实测得到的真实 ID）——
   - {name: "Code with Claude 2026 · San Francisco", type: youtube, playlist_id: "PLmWCw1CzcFim2obQ-w3ohbULOfwp5lApR", weight: 0.95, format: talk, category: talks, tags: [official, anthropic, talk, conference, practices]}
   - {name: "Code with Claude 2026 · London",        type: youtube, playlist_id: "PLmWCw1CzcFilPJdvw6scjHjbBripZWFps", weight: 0.95, format: talk, category: talks, tags: [official, anthropic, talk, conference, practices]}
   - {name: "Code with Claude 2026 · Japan",          type: youtube, playlist_id: "PLmWCw1CzcFinrtcyN6EMIp6KqrDj8sxD7", weight: 0.95, format: talk, category: talks, tags: [official, anthropic, talk, conference, practices]}
 
-  # —— AI 播客（RSS，源自 follow-builders default-sources）——
   - {name: Latent Space,              type: rss, url: "https://www.latent.space/feed",         weight: 0.78, format: podcast, category: podcasts, tags: [kol, podcast]}
   - {name: "No Priors",               type: rss, url: "https://feeds.megaphone.fm/nopriors",   weight: 0.72, format: podcast, category: podcasts, tags: [kol, podcast]}
   - {name: "Training Data (Sequoia)", type: rss, url: "https://feeds.megaphone.fm/trainingdata", weight: 0.7, format: podcast, category: podcasts, tags: [vc, podcast]}
   - {name: "Unsupervised Learning",   type: rss, url: "https://feeds.simplecast.com/dOSE_bdP",  weight: 0.7, format: podcast, category: podcasts, tags: [kol, podcast]}
 
-  # —— GitHub Trending（scrape，真实可达）——
   - {name: GitHub Trending (Daily),  type: github-trending, since: daily,  weight: 0.68, format: repo, category: trending, tags: [github, trending, tools]}
   - {name: GitHub Trending (Weekly), type: github-trending, since: weekly, weight: 0.62, format: repo, category: trending, tags: [github, trending, tools]}
 
-  # —— AI infra（2026-08-31 补：此前零专用信源，infra 话题全靠 HuggingFace Blog 一个源带，
-  #    而它近 7 天只有 5 条、其余 845 条是陈年存档，等于日报里基本看不到 infra）——
   - {name: NVIDIA Developer Blog, type: rss, url: "https://developer.nvidia.com/blog/feed/", weight: 0.85, format: blog, category: infra, tags: [vendor, nvidia, infra, hardware]}
   - {name: PyTorch Blog,          type: rss, url: "https://pytorch.org/blog/feed.xml",       weight: 0.85, format: blog, category: infra, tags: [vendor, pytorch, infra, framework]}
   - {name: SemiAnalysis,          type: rss, url: "https://www.semianalysis.com/feed",       weight: 0.8,  format: blog, category: infra, tags: [kol, infra, hardware, analysis]}
 
-  # —— 日报分方向（issue #49）补源：算子与推理 / 训练 / Agent 实践 / 研究 各方向此前只有一两个源，
-  #    按方向分栏后这几栏常年是空的。全部 2026-09-24 实测 RSS 可达且近两周有更新 ——
-  # 算子与推理：推理引擎、kernel、编译器
   - {name: vLLM Blog,          type: rss, url: "https://vllm.ai/blog/rss.xml",           weight: 0.85, format: blog, category: infra, tags: [vendor, vllm, infra, serving]}
   - {name: Together AI Blog,   type: rss, url: "https://www.together.ai/blog/rss.xml",   weight: 0.78, format: blog, category: infra, tags: [vendor, infra, kernel, serving]}
   - {name: Modular Blog,       type: rss, url: "https://www.modular.com/blog/rss.xml",   weight: 0.75, format: blog, category: infra, tags: [vendor, infra, kernel, framework]}
   - {name: Tri Dao,            type: rss, url: "https://tridao.me/feed.xml",             weight: 0.85, format: blog, category: infra, tags: [kol, infra, kernel]}
-  # 训练：预训练 / 后训练 / RL
   - {name: Interconnects,      type: rss, url: "https://www.interconnects.ai/feed",      weight: 0.82, format: blog, category: training, tags: [kol, training, rl]}
   - {name: Sebastian Raschka,  type: rss, url: "https://magazine.sebastianraschka.com/feed", weight: 0.8, format: blog, category: training, tags: [kol, training]}
   - {name: Thinking Machines,  type: rss, url: "https://thinkingmachines.ai/blog/index.xml", weight: 0.88, format: blog, category: training, tags: [official, training, research]}
-  # Agent 实践：评测、context engineering、coding agent 工程
   - {name: Hamel Husain,       type: rss, url: "https://hamel.dev/index.xml",            weight: 0.8,  format: blog, category: practices, tags: [kol, practices, agent, eval]}
   - {name: Phil Schmid,        type: rss, url: "https://www.philschmid.de/rss",          weight: 0.75, format: blog, category: practices, tags: [kol, practices, agent]}
   - {name: GitHub Blog · AI,   type: rss, url: "https://github.blog/ai-and-ml/feed/",   weight: 0.78, format: blog, category: practices, tags: [vendor, github, practices, agent]}
-  # 研究
   - {name: Google Research Blog, type: rss, url: "https://research.google/blog/rss/",   weight: 0.82, format: blog, category: research, tags: [official, google, research]}
 
-  # —— infra 项目的 GitHub Releases（issue #59，2026-10-10 实测 releases.atom 全部 200）：
-  #    推理引擎 / 算子库 / 训练框架的版本发布是 infra 读者最硬的一手口径；type: git 走 engine.gitfeed.releases，
-  #    每条带 metrics.version 与 release 标签。不加 llama.cpp（每天多个 b 编号构建、标题无内容）和 pytorch/pytorch
-  #    （releases.atom 里全是 trunk/<sha> 夜间构建，正式版本看 PyTorch Blog 即可）。——
+  # 不加 llama.cpp（每天多个 b 编号构建、标题无内容）和 pytorch/pytorch（releases.atom 全是夜间构建）
   - {name: vLLM Releases,           type: git, url: "https://github.com/vllm-project/vllm",        weight: 0.9,  format: repo, category: infra, tags: [official, vllm, infra, serving, release]}
   - {name: SGLang Releases,         type: git, url: "https://github.com/sgl-project/sglang",       weight: 0.88, format: repo, category: infra, tags: [official, sglang, infra, serving, release]}
   - {name: TensorRT-LLM Releases,   type: git, url: "https://github.com/NVIDIA/TensorRT-LLM",      weight: 0.85, format: repo, category: infra, tags: [official, nvidia, infra, serving, release]}
   - {name: FlashInfer Releases,     type: git, url: "https://github.com/flashinfer-ai/flashinfer", weight: 0.82, format: repo, category: infra, tags: [official, infra, kernel, release]}
   - {name: FlashAttention Releases, type: git, url: "https://github.com/Dao-AILab/flash-attention", weight: 0.85, format: repo, category: infra, tags: [official, infra, kernel, release]}
 
-  # —— 官方一手补缺（issue #59）：Mistral 是此前唯一没有口径的主流模型厂商；MSR 与 BAIR 是训练/系统研究的一手 ——
   - {name: Mistral News,          type: rss, url: "https://mistral.ai/news/rss",                     weight: 0.9,  format: blog, category: models,   tags: [official, mistral, models]}
   - {name: Microsoft Research,    type: rss, url: "https://www.microsoft.com/en-us/research/feed/",  weight: 0.8,  format: blog, category: research, tags: [official, microsoft, research, training]}
   - {name: BAIR Blog,             type: rss, url: "https://bair.berkeley.edu/blog/feed.xml",         weight: 0.78, format: blog, category: research, tags: [research, berkeley]}
 
-  # —— 论文（arXiv API）——
   - {name: arXiv cs.CL, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}
   - {name: arXiv cs.AI, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}
-  - {name: arXiv cs.LG, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.LG&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}   # 机器学习主类目，此前缺席
-  - {name: arXiv cs.DC, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.DC&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv, infra]}   # 分布式/系统，infra 论文在这
+  - {name: arXiv cs.LG, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.LG&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv]}
+  - {name: arXiv cs.DC, type: arxiv, url: "http://export.arxiv.org/api/query?search_query=cat:cs.DC&sortBy=submittedDate&sortOrder=descending&max_results=20", weight: 0.7, format: paper, category: papers, tags: [research, arxiv, infra]}

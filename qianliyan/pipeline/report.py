@@ -1,20 +1,3 @@
-"""pipeline/report.py —— HTML 简报渲染（spec §9.3）。
-
-用自研 ``minitpl`` + ``templates/digest.html.jinja`` 渲染**单文件自包含**简报
-（内联 CSS/JS，零外链资源），默认写到 ``$QLY_DATA_DIR/digest.html``。
-
-产物必备（spec §9.3）：
-
-1. 版面 = 全局热榜 + 各频道分区；每条含中文优先标题、来源徽章、时间、hotness、
-   📈 重磅 / ⚡ 一手速报 标记，以及**可点击的原文 URL**（铁律 2）；
-2. 三排序按钮 🔥 热度 / 🕒 时间 / 📈 得分，vanilla JS 原地重排；
-3. Ctrl+K 命令面板，跨版面模糊过滤 + 回车跳转 + Esc 关闭；
-4. 大牛头像：``builder-avatars/{handle}.png`` 存在则 base64 内嵌，否则首字母圆形占位；
-5. 简体中文文案、浅色明快风格。
-
-本模块只做「数据 → 视图模型 → HTML」的纯加工，不出网、不调 LLM。
-"""
-
 from __future__ import annotations
 
 import base64
@@ -51,7 +34,6 @@ HERO_COUNT = 3
 SUMMARY_MAX_CHARS = 160
 MAX_AVATAR_BYTES = 512 * 1024
 
-#: personal_reasons 前缀 → 展示 chip 图标（spec-v0.3 §5 「命中兴趣的原因用 chip 展示」）
 _REASON_ICONS = {
     "tag": "🏷",
     "source": "📰",
@@ -62,23 +44,15 @@ _REASON_ICONS = {
 PAGE_TITLE = "千里眼 · AI 情报简报"
 PAGE_SUBTITLE = "多源信息采集 · 交叉验证 · 变更情报"
 
-#: badge → 页面展示文案（spec §1：heavy=📈 重磅，flash=⚡ 一手速报）
 BADGE_LABELS = (("heavy", "📈 重磅"), ("flash", "⚡ 一手速报"))
 
-#: 头像占位底色。这是**唯一允许写死色值**的地方——它不是主题色，是给没有头像的
-#: 人物/信源分配的一组稳定标识色，必须在明暗两种主题下都能压住白色首字母，所以取
-#: 设计系统四个语义色（cyan/emerald/amber/rose）的深色档并向外延展，而不是随手挑
-#: 一把饱和度很高的通用色——那样头像会比正文还抢眼。改配色时这组要跟着 _theme.css
-#: 的 accent 一起调。
+# 唯一允许写死色值处：须在明暗主题下都压住白色首字母；改配色时随 _theme.css 的 accent 一起调
 _AVATAR_COLORS = (
     "#af5233", "#4c73a5", "#579766", "#ce9042",
     "#893a1f", "#355781", "#286037", "#774a03",
 )
 
 
-# =========================================================================
-# 小工具
-# =========================================================================
 def _extra(item: Dict[str, Any]) -> Dict[str, Any]:
     extra = item.get("extra")
     return extra if isinstance(extra, dict) else {}
@@ -92,7 +66,6 @@ def _float(value: Any, default: float = 0.0) -> float:
 
 
 def _handle_of(item: Dict[str, Any]) -> str:
-    """推断大牛 handle：``extra.handle`` 优先，其次形如 ``@karpathy`` 的 source。"""
     handle = str(_extra(item).get("handle") or "").strip()
     if not handle:
         source = str(item.get("source") or "").strip()
@@ -102,7 +75,7 @@ def _handle_of(item: Dict[str, Any]) -> str:
 
 
 def _avatar_color(key: str) -> str:
-    """由 handle/source 稳定映射到一个占位底色（不依赖进程内 hash 随机化）。"""
+    """稳定映射，不依赖进程内 hash 随机化。"""
     seed = sum(ord(ch) for ch in (key or "?"))
     return _AVATAR_COLORS[seed % len(_AVATAR_COLORS)]
 
@@ -116,7 +89,6 @@ def _avatar_initial(item: Dict[str, Any]) -> str:
 
 
 def _load_avatar(handle: str, avatar_dir: Path, cache: Dict[str, str]) -> str:
-    """读 ``builder-avatars/{handle}.png`` 并内联为 data URI；不存在返回空串。"""
     if not handle:
         return ""
     if handle in cache:
@@ -134,7 +106,6 @@ def _load_avatar(handle: str, avatar_dir: Path, cache: Dict[str, str]) -> str:
 
 
 def _humanize(dt: Optional[datetime], now: datetime) -> str:
-    """相对时间中文文案：刚刚 / N 分钟前 / N 小时前 / N 天前 / 具体日期。"""
     if dt is None:
         return "时间未知"
     seconds = (now - dt).total_seconds()
@@ -165,7 +136,6 @@ def _badges_of(item: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def _personal_score(item: Dict[str, Any]) -> Optional[float]:
-    """取 ``extra.personal_score``（未个性化过则返回 None，用于判断是否渲染「为你推荐」）。"""
     raw = _extra(item).get("personal_score")
     if raw is None:
         return None
@@ -176,7 +146,6 @@ def _personal_score(item: Dict[str, Any]) -> Optional[float]:
 
 
 def _reason_chips(reasons: Any) -> List[Dict[str, str]]:
-    """把 ``extra.personal_reasons``（如 ``tag:models`` / ``source:anthropic``）渲染为 chip。"""
     chips: List[Dict[str, str]] = []
     for reason in reasons or []:
         text = str(reason or "").strip()
@@ -192,9 +161,6 @@ def _reason_chips(reasons: Any) -> List[Dict[str, str]]:
     return chips
 
 
-# =========================================================================
-# 视图模型
-# =========================================================================
 def _view_item(
     item: Dict[str, Any],
     board_name: str,
@@ -208,8 +174,7 @@ def _view_item(
     sources = [str(s) for s in (item.get("source_list") or []) if s]
     if not sources and item.get("source"):
         sources = [str(item.get("source"))]
-    # 交叉验证展示（参照 Techmeme「More: 媒体A, 媒体B...」的做法）：单源就是普通来源名，
-    # 多源单独起一行，比小灰字标签更醒目——这是这款产品最该借鉴经典日报的地方。
+    # 多源单独起一行（参照 Techmeme 的「More:」），比小灰字标签醒目
     lead_source = sources[0] if sources else ""
     other_sources = sources[1:]
 
@@ -247,7 +212,6 @@ def _persona_view(
     avatar_dir: Path,
     avatar_cache: Dict[str, str],
 ) -> Dict[str, Any]:
-    """把一条 persona（``pipeline.persona.build_personas`` 产物）整理成卡片视图模型。"""
     handle = str(persona.get("handle") or "").strip().lstrip("@")
     name = str(persona.get("name") or handle or "?")
     avatar_src = (
@@ -290,9 +254,8 @@ def _persona_view(
     }
 
 
-#: 变更卡展示上限——全池 200+ 张，全列会把简报压垮；按变动量取头部。
+# 全池 200+ 张，全列会把简报压垮；按变动量取头部
 CHANGE_CARD_LIMIT = 24
-#: extra.corroboration.verdict → 徽章文案与语义色类
 _CORROBORATION_STYLES = {
     "corroborated": ("🔬 实证", "badge-ok"),
     "unverified": ("🔬 存疑", "badge-flash"),
@@ -301,12 +264,6 @@ _CORROBORATION_STYLES = {
 
 
 def _change_card_views(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """把 ``change_intel.bind_changes`` 的版本变更卡整理成视图模型。
-
-    这批卡此前是**算了就扔**：``cli.sync`` 调 ``bind_changes`` 拿到结果后既不落盘也不
-    渲染，只有它顺带写进 item 的 corroboration 活了下来。而「哪个版本的提示词涨了多少
-    token」正是本产品自称的王牌之一，不该只存在于内存里。
-    """
     try:
         cards = change_intel.bind_changes(list(items or []))
     except Exception as exc:  # noqa: BLE001 - 变更情报失败不许拖垮简报渲染
@@ -328,10 +285,10 @@ def _change_card_views(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "subject": str(card.get("subject") or "未知主体"),
             "version": str(card.get("version") or ""),
             "delta_text": "{0:+,} tokens".format(delta) if delta else "",
-            # 涨用暖色、跌用冷色：这里没有"好坏"，只是方向，别用红绿暗示对错
+            # 涨跌只是方向不分好坏，别用红绿暗示对错
             "delta_cls": "badge-flash" if delta > 0 else ("badge-ok" if delta < 0 else ""),
             "count_text": "{0} 项改动".format(card.get("count") or 0),
-            # refs 是**关联条目的 sig 列表**不是数字，直接 format 会渲染出 "['abc'] 源"
+            # refs 是 sig 列表不是数字
             "refs_text": "{0} 条关联".format(len(card.get("refs") or [])) if card.get("refs") else "",
             "url": urls[0] if urls else "",
         })
@@ -339,7 +296,6 @@ def _change_card_views(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _corroboration_views(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """叙事↔实证映射：带 ``extra.corroboration`` 的条目——「他说的被 diff 证实了吗」。"""
     views: List[Dict[str, Any]] = []
     for item in items or []:
         corrob = _extra(item).get("corroboration")
@@ -359,14 +315,14 @@ def _corroboration_views(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]
             "claim": str(corrob.get("claim") or "").strip(),
             "evidence": str(corrob.get("evidence") or "").strip(),
         })
-    # 矛盾 > 存疑 > 实证：反常的排前面，那才是值得看的
+    # 反常的排前面
     order = {"contradicted": 0, "unverified": 1, "corroborated": 2}
     views.sort(key=lambda v: order.get(v["verdict"], 9))
     return views
 
 
 def _json_blob(rows: Sequence[Dict[str, Any]]) -> str:
-    """内联 ``<script type="application/json">`` 数据块（转义掉可能提前闭合脚本的字符）。"""
+    """转义掉可能提前闭合 <script> 的字符。"""
     text = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
     return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
@@ -377,11 +333,6 @@ def build_context(
     now: Optional[datetime] = None,
     personas: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    """把统一池 + 频道路由结果整理成模板上下文（纯函数，便于单测）。
-
-    ``personas`` 省略/为空 → 不渲染「人物画像」版面（向后兼容）；池内任一条目带
-    ``extra.personal_score`` → 追加「为你推荐」版面（按 personal_score 降序）。
-    """
     now = utils.as_utc(now or utils.now_utc())
     pool = [it for it in (items or []) if isinstance(it, dict)]
     pool_sorted = sorted(pool, key=lambda it: _float(it.get("hotness")), reverse=True)
@@ -442,7 +393,6 @@ def build_context(
             list(channel_items or []),
         )
 
-    # 「为你推荐」：池内存在 personal_score 才渲染（未个性化时保持向后兼容，不入 palette 索引）
     scored = [it for it in pool if _personal_score(it) is not None]
     personalized_views: List[Dict[str, Any]] = []
     if scored:
@@ -452,19 +402,16 @@ def build_context(
             for it in scored[:PERSONALIZED_LIMIT]
         ]
 
-    # 「人物画像」：personas 省略/为空则不渲染
     persona_views: List[Dict[str, Any]] = []
     for persona in (personas or []):
         if isinstance(persona, dict):
             persona_views.append(_persona_view(persona, now, avatar_dir, avatar_cache))
 
-    # 变更情报：版本变更卡 + 叙事↔实证映射。数据在全池这一侧最厚（200+ 张卡、
-    # 50+ 条实证核验），10 条精选的日报页里几乎没有——所以这一版面放在简报页。
+    # 变更数据在全池最厚，10 条精选的日报页里几乎没有，所以放简报页
     change_card_views = _change_card_views(pool)
     corroboration_views = _corroboration_views(pool)
 
-    # 头条区：全池热度最高的 HERO_COUNT 条，做成主体区第一屏（不是另一个"版面"，
-    # 只是热榜前几条的放大呈现——不额外进 palette 索引，避免和热榜版面重复计数）
+    # 只是热榜前几条的放大呈现，不进 palette 索引，避免重复计数
     hero_pool = pool_sorted[:HERO_COUNT]
     hero_views = [_view_item(it, "hero", now, avatar_dir, avatar_cache) for it in hero_pool]
     hero_main = hero_views[0] if hero_views else None
@@ -495,11 +442,7 @@ def build_context(
     }
 
 
-# =========================================================================
-# 渲染
-# =========================================================================
 def load_template() -> str:
-    """读 ``templates/digest.html.jinja``；缺失时抛 ``FileNotFoundError``。"""
     path = paths.templates_dir() / TEMPLATE_NAME
     if not path.is_file():
         raise FileNotFoundError("简报模板缺失: {0}".format(path))
@@ -512,13 +455,7 @@ def render_html(
     personas: Optional[Sequence[Dict[str, Any]]] = None,
     out_path: Any = None,
 ) -> str:
-    """渲染单文件自包含 HTML 简报并写盘，返回 HTML 文本。
-
-    ``channel_map`` 为 ``None`` 时自行按 channels.yaml 路由（不写频道页）；
-    ``personas`` 省略/为空则不渲染「人物画像」版面（向后兼容）；池内带
-    ``extra.personal_score`` 时追加「为你推荐」版面；
-    ``out_path`` 为 ``None`` 时写 ``$QLY_DATA_DIR/digest.html``，传入 ``False`` 表示只渲染不写盘。
-    """
+    """out_path 为 None 写 $QLY_DATA_DIR/digest.html，传 False 只渲染不写盘。"""
     context = build_context(items, channel_map, personas=personas)
     html_text = minitpl.render(load_template(), context)
 

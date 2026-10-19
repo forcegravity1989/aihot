@@ -1,15 +1,3 @@
-"""eyes/cc_prompts.py —— 变更情报源：Claude Code 系统提示词 CHANGELOG。
-
-消费 ``Piebald-AI/claude-code-system-prompts`` 的 ``CHANGELOG.md``（raw）。每个版本块
-（``#### [X.Y.Z](commit_url)`` 或 ``# [X.Y.Z](...)``）解析为一条**变更 item**：抽 token 增量
-（``_+30,636 tokens_``，可负）、逐条变更按前缀分类（``**NEW:**`` / ``**REMOVED:**`` / 无=修改），
-冒号前为组件类型。「No changes」块产 0 条。
-
-铁律：解析纯函数 ``parse_changelog(md_text)`` 与网络壳 ``fetch(cfg)`` 分离；离线/失败绝不外溢
-（由上层 sync 统一记账）。item 用合法 ``source_kind="local"`` / ``backend="git"``（原始类型
-``changelog`` 放 ``extra.format``）。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -30,16 +18,14 @@ SOURCE_NAME = "Claude Code 系统提示词"
 SUBJECT = "claude-code-prompts"
 RAW_URL_TMPL = "https://raw.githubusercontent.com/{repo}/{branch}/{path}"
 
-#: 版本块头：``#### [2.1.245](commit_url)`` 或 ``# [2.1.242](...)``
+# 版本块头：#### [2.1.245](commit_url) 或 # [2.1.242](...)
 _VERSION_RE = re.compile(r"^#+\s*\[([0-9]+(?:\.[0-9]+)+)\]\(([^)]+)\)\s*$")
-#: token 增量：``_+30,636 tokens_`` / ``_-1,911 tokens_``
+# token 增量：_+30,636 tokens_ / _-1,911 tokens_
 _TOKEN_RE = re.compile(r"_([+-]?[\d,]+)\s+tokens_")
-#: 条目行：``- ...``（去掉列表符号后再分类）
 _BULLET_RE = re.compile(r"^\s*[-*]\s+(.*\S)\s*$")
-#: 前缀分类
 _NEW_RE = re.compile(r"^\*\*NEW:\*\*\s*")
 _REMOVED_RE = re.compile(r"^\*\*REMOVED:\*\*\s*")
-#: 标题与描述以「空格 + em dash + 空格」分隔（desc 内部无空格的连字号不误切）
+# 以「空格 + em dash + 空格」分隔，desc 内部无空格的连字号不误切
 _DASH_SPLIT_RE = re.compile(r"\s+—\s+")
 
 SUMMARY_MAX_ENTRIES = 3
@@ -47,7 +33,6 @@ SUMMARY_MAX_LEN = 300
 
 
 def _parse_token_delta(block_text: str) -> Optional[int]:
-    """从版本块抽 token 增量（可负）；无则返回 None（如「No changes」块）。"""
     match = _TOKEN_RE.search(block_text)
     if not match:
         return None
@@ -59,7 +44,7 @@ def _parse_token_delta(block_text: str) -> Optional[int]:
 
 
 def _classify_entry(text: str) -> "tuple[str, str]":
-    """返回 ``(kind, rest)``：kind ∈ new/removed/modified，rest 是去掉前缀后的正文。"""
+    """kind ∈ new/removed/modified，rest 是去掉前缀后的正文。"""
     if _NEW_RE.match(text):
         return "new", _NEW_RE.sub("", text, count=1).strip()
     if _REMOVED_RE.match(text):
@@ -68,7 +53,7 @@ def _classify_entry(text: str) -> "tuple[str, str]":
 
 
 def _split_component(rest: str) -> "tuple[str, str, str]":
-    """把 ``Component: Title — Desc`` 拆成 ``(component, title, desc)``（尽力而为）。"""
+    """把 Component: Title — Desc 拆成 (component, title, desc)（尽力而为）。"""
     component = ""
     body = rest
     if ":" in rest:
@@ -88,7 +73,6 @@ def _parse_entry(text: str) -> Dict[str, str]:
 
 
 def _iter_blocks(md_text: str) -> "List[tuple[str, str, List[str]]]":
-    """切分为版本块，返回 ``[(version, commit_url, block_lines), ...]``。"""
     blocks: "List[tuple[str, str, List[str]]]" = []
     current: "Optional[tuple[str, str]]" = None
     buffer: List[str] = []
@@ -111,10 +95,6 @@ def _format_delta(token_delta: int) -> str:
 
 
 def parse_changelog(md_text: str) -> List[Dict[str, Any]]:
-    """解析 CHANGELOG.md → 每个有变更的版本块一条 item（纯函数，不出网）。
-
-    「No changes」块（无 token 增量且无条目）产 0 条。
-    """
     items: List[Dict[str, Any]] = []
     for version, commit_url, lines in _iter_blocks(md_text):
         block_text = "\n".join(lines)
@@ -127,7 +107,6 @@ def parse_changelog(md_text: str) -> List[Dict[str, Any]]:
                 entries.append(_parse_entry(bullet.group(1)))
 
         if not entries:
-            # 「No changes」块或纯占位块 —— 不产 item
             continue
 
         delta = token_delta if token_delta is not None else 0
@@ -158,7 +137,6 @@ def parse_changelog(md_text: str) -> List[Dict[str, Any]]:
 
 
 def _load_text(cfg: Dict[str, Any]) -> str:
-    """取 CHANGELOG 文本：``cfg['local_path']`` 优先（离线/mock 用），否则走 engine.http。"""
     local_path = cfg.get("local_path")
     if local_path:
         return Path(str(local_path)).read_text(encoding="utf-8")
@@ -170,7 +148,6 @@ def _load_text(cfg: Dict[str, Any]) -> str:
 
 
 def fetch(cfg: Optional[Dict[str, Any]] = None, since: Any = None) -> List[Dict[str, Any]]:
-    """网络壳：取 CHANGELOG.md → parse_changelog。异常向上抛，由 sync 统一记账。"""
     cfg = cfg or {}
     text = _load_text(cfg)
     return parse_changelog(text)

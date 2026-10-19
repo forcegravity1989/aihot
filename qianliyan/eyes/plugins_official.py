@@ -1,13 +1,3 @@
-"""eyes/plugins_official.py —— 变更情报源：官方插件市场版本 bump。
-
-消费 ``anthropics/claude-plugins-official`` 的 ``.claude-plugin/marketplace.json``
-（``{plugins:[{name, description, ...}]}``）与 ``.github/bump-tracking.json``
-（``{"releases-only":[name, ...]}``）。产出**官方插件变更 item**——近期 bump 的插件优先。
-
-铁律：解析纯函数 ``parse(marketplace, bump)`` 与网络壳 ``fetch(cfg)`` 分离；离线/失败绝不外溢。
-item 用合法 ``source_kind="local"`` / ``backend="git"``（原始类型 ``changelog`` 放 ``extra.format``）。
-"""
-
 from __future__ import annotations
 
 import json
@@ -50,7 +40,6 @@ def _bumped_names(bump: Any) -> List[str]:
 
 
 def _plugin_ref(plugin: Dict[str, Any]) -> str:
-    """从 ``source`` 抽版本标识（``ref`` 优先，否则短 ``sha``）；无则空串。"""
     source = plugin.get("source")
     if isinstance(source, dict):
         ref = source.get("ref")
@@ -63,7 +52,6 @@ def _plugin_ref(plugin: Dict[str, Any]) -> str:
 
 
 def parse(marketplace: Any, bump: Any, cfg: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    """解析 marketplace + bump → 每个近期 bump 的插件一条变更 item（纯函数，不出网）。"""
     cfg = cfg or {}
     weight = float(cfg.get("weight", DEFAULT_WEIGHT))
     plugins = _plugins_by_name(marketplace)
@@ -106,7 +94,6 @@ def parse(marketplace: Any, bump: Any, cfg: Optional[Dict[str, Any]] = None) -> 
 
 
 def _load_json(cfg: Dict[str, Any], local_key: str, path_key: str, default_path: str) -> Any:
-    """取一个 JSON 文件：``cfg[local_key]`` 优先（离线/mock 用），否则走 engine.http。"""
     local_path = cfg.get(local_key)
     if local_path:
         with Path(str(local_path)).open("r", encoding="utf-8") as fh:
@@ -119,7 +106,6 @@ def _load_json(cfg: Dict[str, Any], local_key: str, path_key: str, default_path:
 
 
 def fetch(cfg: Optional[Dict[str, Any]] = None, since: Any = None) -> List[Dict[str, Any]]:
-    """网络壳：取 marketplace.json + bump-tracking.json → parse。异常向上抛，由 sync 记账。"""
     cfg = cfg or {}
     marketplace = _load_json(cfg, "marketplace_path", "marketplace", DEFAULT_MARKETPLACE_PATH)
     bump = _load_json(cfg, "bump_path", "bump", DEFAULT_BUMP_PATH)

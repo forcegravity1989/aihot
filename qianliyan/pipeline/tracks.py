@@ -1,10 +1,3 @@
-"""日报的「方向」（``config/tracks.yaml``，issue #49）。
-
-日报按方向分栏：模型发布所有人必看，其余（Agent 实践 / 训练 / 算子与推理 / 研究 / 产品与行业）
-由读者选关注。一条条目属于哪个方向，编辑选稿时标（``entry["track"]``）；编辑没标的按
-tracks.yaml 的规则判定——规则只是兜底，判错的代价是它出现在隔壁一栏。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -17,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 CONFIG_NAME = "tracks.yaml"
 
-#: tracks.yaml 缺失或读坏时的最小可用配置——日报总得能分出「模型发布」和「其它」
 _FALLBACK_CONFIG = {
     "classify_order": ["models", "industry"],
     "fallback": "industry",
@@ -30,7 +22,6 @@ _FALLBACK_CONFIG = {
 
 
 def load() -> Dict[str, Any]:
-    """读 tracks.yaml，归一为 ``{"tracks": [...], "order": [...], "fallback": id}``。"""
     try:
         raw = paths.load_yaml_config(CONFIG_NAME)
     except Exception as exc:  # noqa: BLE001 - 配置读坏不该让日报出不来
@@ -73,7 +64,6 @@ def by_id(cfg: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
 
 
 def rule_track(item: Dict[str, Any], cfg: Dict[str, Any]) -> str:
-    """按规则判定方向：classify_order 里第一个 match 命中的；都不中给 fallback。"""
     table = by_id(cfg)
     for tid in cfg["order"]:
         row = table[tid]
@@ -85,7 +75,6 @@ def rule_track(item: Dict[str, Any], cfg: Dict[str, Any]) -> str:
 
 
 def track_of(item: Dict[str, Any], cfg: Dict[str, Any]) -> str:
-    """编辑标过（且是合法 id）就听编辑的，否则走规则。"""
     tid = str(item.get("track") or "").strip()
     if tid in by_id(cfg):
         return tid
@@ -101,7 +90,6 @@ def default_ids(cfg: Dict[str, Any]) -> List[str]:
 
 
 def describe(cfg: Dict[str, Any]) -> str:
-    """给选稿/提炼简报用的方向说明，一行一个。"""
     lines = []
     for t in cfg["tracks"]:
         tail = "（所有人必看）" if t["everyone"] else ""

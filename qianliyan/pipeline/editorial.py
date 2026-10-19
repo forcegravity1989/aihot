@@ -1,10 +1,3 @@
-"""pipeline/editorial.py —— 编辑 Agent 的口味：读 ``config/editorial.yaml``，渲染成简报里的文字（issue #61）。
-
-借 AIHOT 的做法：口味是文本资产，不是代码。选稿看什么、压什么（``selection``）接进选稿简报；
-写法与术语（``writing`` / ``glossary``）接进写要点简报。配置缺失或读坏时返回空串——日报照样出，
-只是编辑拿不到这段提示。纯函数、不出网。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -48,7 +41,6 @@ def _pairs(title: str, mapping: Any) -> List[str]:
 
 
 def selection_text(cfg: Dict[str, Any]) -> str:
-    """选稿简报里的口味段：读者是谁、什么算价值、什么是噪声、怎么判。"""
     sel = cfg.get("selection") if isinstance(cfg, dict) else None
     if not isinstance(sel, dict):
         return ""
@@ -64,7 +56,6 @@ def selection_text(cfg: Dict[str, Any]) -> str:
 
 
 def writing_text(cfg: Dict[str, Any]) -> str:
-    """写要点简报里的写法与术语段。"""
     if not isinstance(cfg, dict):
         return ""
     out: List[str] = []
