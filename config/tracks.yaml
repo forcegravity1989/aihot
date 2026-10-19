@@ -1,21 +1,12 @@
-# tracks.yaml —— 日报的「方向」（issue #49）
-#
-# 日报面向的读者关心的方向不一样：有人看算子/推理，有人看训练，有人看 Agent 实践；
-# 模型发布所有人都要看。版式参照 TLDR AI——固定栏目、每栏「标题 + 一句话」、栏尾挂快讯；
-# 它按读者群拆成多份 newsletter，我们在一页里按方向分栏，由读者选关注哪几栏。
-#
 # 字段：
 #   id        英文标识（编辑选稿 JSON 里的 track 取这里的值）
 #   title     栏目名
-#   blurb     一句话说明这一栏收什么（也写进选稿简报给编辑看）
+#   blurb     一句话说明这一栏收什么（也写进选稿简报）
 #   everyone  true = 所有人必看，不参与「关注」开关，永远展开在最前
-#   default   true = 读者还没选过时默认关注（展开）；其余方向默认收成标题列表
-#   match     规则判定（编辑没标方向时用），语法同 channels.yaml 的 match 块
-#   exclude   命中就不归这个方向（同样语法）——match 没有「非」，论文不该因为提到新模型名就进「模型发布」
-#
-# 展示顺序 = tracks 列表顺序；规则判定顺序 = classify_order（先判更具体的方向：
-# arXiv 上的 kernel 论文该进「算子与推理」而不是「研究」，Agent 评测论文该进「Agent 实践」）。
-# 都不命中的进 fallback。
+#   default   true = 读者没选过时默认关注；其余默认收成标题列表
+#   match     编辑没标方向时的规则判定，语法同 channels.yaml
+#   exclude   命中就不归这个方向（match 没有「非」）
+# 展示顺序 = tracks 顺序；判定顺序 = classify_order（先判更具体的方向）；都不命中进 fallback
 
 classify_order: [models, infra, training, agent, research, industry]
 fallback: industry

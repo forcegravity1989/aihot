@@ -1,32 +1,7 @@
-/* templates/_theme.css —— 千里眼唯一设计系统源（design tokens + 共用组件）。
- *
- * 这份文件是**代码**：三个模板（日报首页 / 详情页 / 简报）的配色、字号、间距、圆角、
- * 组件外观全部从这里取，模板里不得再出现第二套 :root 变量。改配色只改这里。
- *
- * 配色取 Claude 品牌：暖象牙底 + 赤陶强调色 + 石板蓝副色（来自用户的 Claude Design 稿，
- * 9 阶色阶在 OKLCH 同一亮度尺度上生成，同一档在明暗两主题里视觉重量一致）。语义分层
- * 沿用 aihot 站点那套（它把角色切得很清楚）：
- *   bg-*      页面底色（0 最深/最外，2 最浅/最内）
- *   surface-* 叠加层（半透明，跟随主题自动反相）与卡片实色
- *   text-0/1/2  主文 / 次要 / 弱化
- *   border-*  常规 / 加重 / 柔化 / 强调
- *   accent-*  四个语义色（cyan 主 / amber 提示 / rose 警示 / emerald 正向）
- *
- * minitpl 不支持 include 标签，所以本文件由 pipeline/theme.py 读进来，作为 theme_css
- * 变量注入各模板；样式一律内联，不引外部样式表——单文件自包含页一旦引外链，
- * 沙箱/离线环境就直接裸奔。
- *
- * ⚠️ 本文件的注释里**不得出现这些字面量**：模板标记（双花括号、花括号百分号）、
- * 外链引入关键字、外部 url()、旧配色 hex。整份 CSS 会被原样内联进每一个产物页，
- * 而测试有「产物里不许残留未渲染模板标记」「页面必须单文件自包含」「不得残留旧
- * 配色」三条断言在扫全文——那三条断言是用来抓真问题的，别让样式注释去误触发。
- */
+/* 由 pipeline/theme.py 原样内联进每个产物页，测试会扫全文：注释里不得出现模板标记、
+   外链引入关键字、外部 url()、旧配色 hex */
 
-/* =======================================================================
- * 1. Tokens —— 浅色为基准
- * ===================================================================== */
 :root {
-  /* 底色三阶：暖象牙 → 米白 → 浅砂 */
   --bg-0: #faf9f5;
   --bg-1: #f0eee6;
   --bg-2: #ebe7e1;
@@ -54,8 +29,7 @@
   --shadow-card-hover: 0 8px 24px rgba(38, 36, 33, .09);
   --shadow-soft: 0 4px 12px rgba(38, 36, 33, .06);
 
-  /* 四个语义色。**填充档与文字档分开**：赤陶 #d97757 压在象牙底上做文字只有 2.6:1，
-     远不够 WCAG AA——所以文字一律用 -fg（深两档），填充/描边才用基色。 */
+  /* 基色压在象牙底上做文字对比度不够 WCAG AA：文字一律用 -fg，填充/描边才用基色 */
   --accent-cyan: #4c73a5;
   --accent-amber: #ce9042;
   --accent-rose: #c15f4d;
@@ -121,9 +95,7 @@
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
-/* 深色：只覆盖颜色类 token，尺寸/字号/时长一律沿用上面那份，避免两套尺度漂移。
-   千里眼的产物是**单文件静态页**，会被邮件客户端、聊天内嵌预览、文件面板打开，
-   那些环境不跑 JS——所以主题只跟随系统 prefers-color-scheme，不做 JS 切换按钮。 */
+/* 产物常在不跑 JS 的环境（邮件、聊天预览）打开，所以只跟随 prefers-color-scheme；只覆盖颜色类 token */
 @media (prefers-color-scheme: dark) {
   :root {
     --bg-0: #1a1815;
@@ -184,9 +156,6 @@
   }
 }
 
-/* =======================================================================
- * 2. 基底
- * ===================================================================== */
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
@@ -202,9 +171,6 @@ a:hover { color: var(--accent-cyan-fg); }
 :focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 2px; border-radius: var(--radius-sm); }
 img { max-width: 100%; }
 
-/* =======================================================================
- * 3. 应用外壳：侧栏 + 主体
- * ===================================================================== */
 .qly-app { display: grid; grid-template-columns: var(--nav-width) 1fr; align-items: start; }
 
 .qly-sidebar {
@@ -255,17 +221,11 @@ img { max-width: 100%; }
 .qly-main { min-width: 0; padding: 26px 32px 80px; }
 .qly-main-inner { max-width: 860px; }
 
-/* =======================================================================
- * 4. 页头
- * ===================================================================== */
 .qly-page-head { display: grid; gap: 6px; }
 .qly-page-title { margin: 0; font-size: 23px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; }
 .qly-page-sub { font-size: 12.5px; color: var(--text-2-on-page); line-height: 1.5; }
 .qly-divider { height: 1px; margin: 14px 0 16px; background: var(--border); border: 0; }
 
-/* =======================================================================
- * 5. 原子组件：card / chip / badge / btn / 分段控件
- * ===================================================================== */
 .card {
   background: var(--surface-card); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow-card);
@@ -309,9 +269,6 @@ img { max-width: 100%; }
 .score-mid { color: var(--accent-cyan-fg); }
 .score-low { color: var(--text-2); }
 
-/* =======================================================================
- * 6. 热点榜（首页顶部 top-N）
- * ===================================================================== */
 .hot-topics { margin-bottom: 20px; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface-card); box-shadow: var(--shadow-card); }
 .hot-topics-head { display: flex; align-items: center; gap: 10px; padding: 11px 16px;
@@ -334,9 +291,6 @@ img { max-width: 100%; }
   font-size: var(--text-size-sm); font-weight: 600; color: var(--text-2); white-space: nowrap;
   font-variant-numeric: tabular-nums; }
 
-/* =======================================================================
- * 7. 时间轴（左时间列 + 竖轴 + 卡片）
- * ===================================================================== */
 .timeline { --tl-time-w: 64px; --tl-rail-w: 22px; --tl-dot-top: 20px; display: grid; gap: 22px; }
 .timeline-day { display: grid; gap: 10px; }
 .timeline-day-head {
@@ -393,9 +347,6 @@ img { max-width: 100%; }
 .timeline-summary { margin: 6px 0 0; font-size: 13.5px; line-height: var(--line-height-relaxed);
   color: var(--text-1); }
 
-/* =======================================================================
- * 8. 日报分节（编号 + 类目 + 条目流）
- * ===================================================================== */
 .report-section { margin-top: 30px; scroll-margin-top: 12px; }
 .report-section-head { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px;
   border-bottom: 1px solid var(--border); }
@@ -408,7 +359,6 @@ img { max-width: 100%; }
 .report-entry-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
 .report-entry-title { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.45; }
 .report-entry-title a:hover { color: var(--accent-cyan-fg); }
-/* 日报条目 = 卡片。一条一张，扫读时眼睛按卡片跳，而不是在一整屏字里找边界 */
 .report-entry {
   margin: 14px 0; padding: 16px 18px; border: 1px solid var(--border);
   border-radius: var(--radius); background: var(--surface-card); box-shadow: var(--shadow-card);
@@ -416,15 +366,12 @@ img { max-width: 100%; }
 .report-entry.is-lead { border-color: var(--theme-accent); box-shadow: 0 0 0 1px var(--theme-accent-soft), var(--shadow-soft); }
 .report-entry.is-lead .report-entry-title { font-size: 19px; }
 
-/* 原文配图（issue #52）：卡片的主视觉是原文自己的图——实验曲线、架构图、流程图。
-   图按原比例完整显示（contain），不裁；图注用原文的 figcaption，并标明图源 */
 .src-fig { margin: 12px 0 4px; }
 .src-fig img { display: block; width: 100%; max-height: 440px; object-fit: contain;
   background: var(--bg-1); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); }
 .src-fig figcaption { margin-top: 6px; font-size: 12px; line-height: 1.55; color: var(--text-2); }
 .src-fig figcaption span + span::before { content: " · "; }
 .src-credit a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-/* 原文图下的解释图注（LLM 写、只许描述图里有的元素）；提炼块的「示意」角标（ADR D3） */
 .fig-note { color: var(--text-0); font-weight: 600; }
 .synth-k { font-size: 10.5px; letter-spacing: .06em; color: var(--text-2); margin-top: 10px; text-transform: uppercase; }
 .synth-k::before { content: "◔ "; }
@@ -432,18 +379,15 @@ img { max-width: 100%; }
 .dt-figures .src-fig { margin: 0 0 18px; }
 .dt-figures .src-fig img { max-height: none; }
 
-/* 关键数字：一行排开的「数值 + 说明」。它是配图的旁注，不和原文图抢主视觉 */
 .viz-stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 2px; }
 .viz-stat { display: inline-flex; align-items: baseline; gap: 6px; }
 .viz-stat b { font-size: 15.5px; font-weight: 800; line-height: 1.3; color: var(--theme-accent-fg);
   font-variant-numeric: tabular-nums; word-break: keep-all; }
 .viz-stat span { font-size: 12.5px; line-height: 1.4; color: var(--text-2); }
 
-/* 对比条形图：宽度由代码按数值归一，主角一行用强调色 */
 .viz-chart { margin: 12px 0 4px; padding: 12px 14px; border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm); background: var(--surface-0); }
 .viz-chart figcaption { margin-bottom: 8px; font-size: 12.5px; font-weight: 700; color: var(--text-1); }
-/* SVG 对比图（pipeline/svg_charts.py 生成，画法取自 ppt-master 图表模板）：颜色全走 token */
 .viz-chart svg.qc { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--font-body); }
 .qc-grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 3; }
 .qc-axis { stroke: var(--border-emphasis); stroke-width: 1.5; stroke-linecap: round; }
@@ -464,7 +408,6 @@ img { max-width: 100%; }
 .qc-bar.is-hl, .qc-dot-to.is-hl, .qc-point.is-hl { fill: var(--theme-accent); }
 .qc-stem.is-hl { stroke: var(--theme-accent-soft); }
 
-/* 提炼：一句话结论 / 传播梗 / 逻辑链——是读原文的导引，样式刻意压轻，不跟原文配图抢眼 */
 .viz-takeaway { margin: 8px 0 0; font-size: 15.5px; font-weight: 600; line-height: 1.6; color: var(--text-0); }
 .viz-meme {
   margin: 10px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--border-strong);
@@ -492,20 +435,15 @@ img { max-width: 100%; }
   .lg-node:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -17px; transform: translateX(-50%); }
 }
 
-/* 折叠的其余要点：不跑 JS 也能展开 */
 .brief-more { margin-top: 2px; }
 .brief-more summary { cursor: pointer; font-size: 12.5px; color: var(--accent-cyan-fg); padding: 2px 0; }
 
-
-/* 要点：每条的正文。日报的信息量在这里，不在标题——字号与行距按正文排，不按注脚排 */
 .report-entry-brief { margin: 8px 0 0; padding-left: 20px; font-size: 14.5px; line-height: var(--line-height-relaxed); color: var(--text-0); }
 .report-entry-brief li { margin: 4px 0; }
 .report-entry-brief li::marker { color: var(--theme-accent); }
 .report-entry-summary { margin: 6px 0 0; font-size: 13.5px; line-height: var(--line-height-relaxed);
   color: var(--text-1); }
 
-/* 编辑短评 —— 编辑（人或 Agent）写的选稿理由。用左侧强调色竖线而不是又一张卡片：
-   它是**对正文的旁注**，视觉上应该依附在条目上，不该和条目本身抢层级。 */
 .editor-note {
   margin: 10px 0 0; padding: 2px 0 2px 12px;
   border-left: 2px solid var(--theme-accent);
@@ -513,9 +451,6 @@ img { max-width: 100%; }
 }
 .editor-note b { color: var(--text-0); }
 
-/* =======================================================================
- * 9. 详情页
- * ===================================================================== */
 .dt-page { max-width: var(--container-detail); margin: 0 auto; padding: 18px 24px 90px; }
 .dt-topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; }
 .dt-back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-1); }
@@ -548,9 +483,6 @@ img { max-width: 100%; }
 .dt-corrob-questionable { border-color: var(--accent-amber-soft); background: var(--accent-amber-soft); }
 .dt-corrob-contradicted { border-color: var(--accent-rose-soft); background: var(--accent-rose-soft); }
 
-/* =======================================================================
- * 10. 窄屏
- * ===================================================================== */
 @media (max-width: 960px) {
   .qly-app { grid-template-columns: 1fr; }
   .qly-sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--sidebar-border); }

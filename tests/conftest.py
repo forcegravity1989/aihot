@@ -1,11 +1,3 @@
-"""tests/conftest.py —— 全量测试共用 fixtures。
-
-铁律：**所有测试必须离线**。两道保险——
-  1. ``tmp_data_dir`` 把 ``QLY_OFFLINE=1`` 一并 monkeypatch 上（业务层的离线开关）；
-  2. autouse 的 ``_no_real_network`` 直接掐断 socket 连接（物理层兜底）。
-确有必要联网的用例请显式标 ``@pytest.mark.allow_network``——正常情况下不该存在。
-"""
-
 from __future__ import annotations
 
 import socket
@@ -27,17 +19,7 @@ def pytest_configure(config):
 
 @pytest.fixture(autouse=True)
 def _never_touch_the_real_data_dir(monkeypatch, tmp_path_factory):
-    """物理层护栏：测试期间数据根目录**必须**落在 pytest 的 tmp 下，否则当场炸。
-
-    为什么需要它：测试隔离本身是靠被测代码（``paths.resolve_data_dir`` 读 QLY_DATA_DIR）
-    实现的——一旦那段代码坏了或被改坏，所有测试会安静地写进用户的真实数据目录，而且
-    每个用例仍然是绿的。这不是假想：跑变异测试时把 ``candidate = os.environ.get(
-    "QLY_DATA_DIR")`` 改成 ``None`` 之后，整轮 pytest（含 run_sync(mock=True)）把真实
-    items.jsonl 的 2797 条覆盖成了 56 条 mock 数据，还在数据根留下了路径穿越用例写的
-    secret.html。变异结果显示"被抓到"，但代价是真实数据被毁。
-
-    有了这道闸，同样的情况会立刻报错而不是写盘——护栏不能建在被守护的那段代码上。
-    """
+    # 护栏不能建在被守护的代码上：resolve_data_dir 一旦被改坏，整轮测试会静默覆盖真实数据目录（变异测试时发生过）
     from qianliyan.core import paths as paths_mod
 
     basetemp = str(tmp_path_factory.getbasetemp().resolve())
@@ -58,7 +40,6 @@ def _never_touch_the_real_data_dir(monkeypatch, tmp_path_factory):
 
 @pytest.fixture(autouse=True)
 def _no_real_network(request, monkeypatch):
-    """物理层封网：除 AF_UNIX 外，任何真实 socket 连接一律报错。"""
     if request.node.get_closest_marker("allow_network"):
         return
 
@@ -80,19 +61,17 @@ def _no_real_network(request, monkeypatch):
 
 @pytest.fixture
 def fixtures_dir() -> Path:
-    """``tests/fixtures/`` 目录（各眼原始 payload 样例与 mock item 池）。"""
     return FIXTURES_DIR
 
 
 @pytest.fixture
 def tmp_data_dir(tmp_path, monkeypatch) -> Path:
-    """把数据根目录指向 tmp，并强制离线、关闭 data 目录 git 快照。"""
     data_dir = tmp_path / "qly-data"
     data_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("QLY_DATA_DIR", str(data_dir))
     monkeypatch.setenv("QLY_OFFLINE", "1")
     monkeypatch.setenv("QLY_GIT_SNAPSHOT", "0")
-    # 速读图与封面要起无头 Chrome 截图，测试只验 HTML（封面截图有专门的测试打开）
+    # 速读图与封面要起无头 Chrome 截图，测试只验 HTML；封面截图有专门的测试自己打开
     monkeypatch.setenv("QLY_SPEED_PNG", "0")
     monkeypatch.setenv("QLY_COVER_PNG", "0")
     monkeypatch.delenv("QLY_AUTH_DIR", raising=False)
@@ -103,18 +82,13 @@ def tmp_data_dir(tmp_path, monkeypatch) -> Path:
 
 @pytest.fixture
 def sample_items():
-    """≥8 条覆盖面完整的 mock item：多源同题、release、中英文、无日期、陈旧条目。
-
-    其中「Anthropic ships Claude Opus 5」由 4 个信源报道（同一 sig，标点/大小写各异），
-    合并后 ``cross_refs == 3`` 且最高 weight 0.98 又在 24h 内 —— 同时触发 heavy 与 flash。
-    """
     now = utils.now_utc()
 
     def at(**kwargs):
         return utils.iso(now - timedelta(**kwargs))
 
     return [
-        # --- 同题多源（4 源）：触发 heavy + flash ---
+        # 同题 4 源（标点/大小写各异，合并后 cross_refs == 3，最高 weight 0.98 在 24h 内）：同时触发 heavy 与 flash
         schema.make_item(
             title="Anthropic ships Claude Opus 5",
             url="https://www.anthropic.com/news/claude-opus-5",
@@ -162,7 +136,7 @@ def sample_items():
             summary="Community reaction roundup.",
             tags=["vendor", "huggingface", "models"],
         ),
-        # --- release 特例：同版本号、不同信源 → 两条独立签名 ---
+        # release：同版本号、不同信源 → 两条独立签名
         schema.make_item(
             title="v2.1.0",
             url="https://github.com/anthropics/claude-code/releases/tag/v2.1.0",
@@ -187,7 +161,6 @@ def sample_items():
             tags=["claude-code", "release"],
             metrics={"version": "v2.1.0"},
         ),
-        # --- 中文条目（内眼） ---
         schema.make_item(
             title="心声社区：公司大模型平台升级公告",
             url="https://xinsheng.internal/thread/10086",
@@ -199,7 +172,6 @@ def sample_items():
             summary="平台完成一次算力扩容与推理框架升级。",
             tags=["company", "internal"],
         ),
-        # --- 无日期条目（洞眼） ---
         schema.make_item(
             title="Mystery plugin ranking without a date",
             url="https://example.com/insights/plugins",
@@ -212,7 +184,6 @@ def sample_items():
             tags=["plugins", "insights"],
             metrics={"rank": 1},
         ),
-        # --- 陈旧条目（左眼） ---
         schema.make_item(
             title="An old AI hot take from a month ago",
             url="https://aihot.virxact.com/news/old",
@@ -225,7 +196,6 @@ def sample_items():
             tags=["llm"],
             extra={"category": "llm"},
         ),
-        # --- 右眼 X 动态 ---
         schema.make_item(
             title="karpathy: the best agent harness is the one you can debug",
             url="https://x.com/karpathy/status/1",

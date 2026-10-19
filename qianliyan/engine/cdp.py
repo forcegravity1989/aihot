@@ -1,11 +1,3 @@
-"""engine/cdp.py —— CDP 连接常驻浏览器 + 内网代理回退（内眼 company 的抓取后端）。
-
-``playwright`` 属可选依赖，惰性 import，缺失时抛 ``CDPUnavailable`` 而不让本模块 import 失败。
-本模块是 ``http.py`` 之外的**唯一**豁免——不受 ``QLY_OFFLINE`` 网关约束（企业内网 CDP/代理走独立
-通道），但测试环境下 ``tests/conftest.py`` 的物理层 socket 封锁依旧生效，任何真实连接尝试都会
-被截断为异常，不会挂起。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -20,14 +12,11 @@ PROXY_FETCH_TIMEOUT = 20
 
 
 class CDPUnavailable(Exception):
-    """CDP/playwright 或代理回退通道均不可用。"""
+    pass
 
 
 def connect(cdp_url: str = DEFAULT_CDP_URL) -> Tuple[Any, Any]:
-    """惰性 import playwright，经 ``connect_over_cdp`` 复用常驻浏览器（首次人工 SSO，此后免登录）。
-
-    返回 ``(playwright_ctx, browser)``；调用方负责 ``browser.close()`` + ``playwright_ctx.stop()``。
-    """
+    """调用方负责 browser.close() + playwright_ctx.stop()。"""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -50,7 +39,6 @@ def connect(cdp_url: str = DEFAULT_CDP_URL) -> Tuple[Any, Any]:
 
 
 def fetch_via_proxy(url: str, timeout: int = PROXY_FETCH_TIMEOUT) -> Any:
-    """经 ``WEB_ACCESS_PROXY``/``QLY_CDP_PROXY`` 代理通道 ``POST /fetch {url}``；失败抛 ``CDPUnavailable``。"""
     proxy_base = (
         os.environ.get("WEB_ACCESS_PROXY")
         or os.environ.get("QLY_CDP_PROXY")

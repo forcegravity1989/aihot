@@ -1,13 +1,3 @@
-"""engine/github_trending.py —— GitHub Trending 抓取（spec-v0.3 §13.2）。
-
-GitHub Trending 无 API/RSS，只有 HTML。页面结构为一串 ``<article class="Box-row">``，每个
-article 对应一个仓库。``fetch`` 是网络壳；``parse`` 是纯函数（不出网），单测直喂
-``tests/fixtures/real/github_trending.html``，用正则从每个 Box-row 抽 owner/repo、描述、
-star 总数、语言、fork 数、以及「X stars today/this week」增量，产出 ``schema.make_item`` item：
-``metrics = {stars, stars_period, forks}``、``extra = {format:"repo", language, since}``。
-trending 页无发布时间，``date`` 取当前 UTC。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -56,7 +46,7 @@ def _to_int(text: str) -> int:
 
 
 def _owner_repo(block: str) -> str:
-    """从 Box-row 的 ``<h2>`` 内首个仓库锚点 href 抽 ``owner/repo``（跳过 Star 按钮的 /login 链接）。"""
+    """取 <h2> 内首个仓库锚点，跳过 Star 按钮的 /login 链接。"""
     h2 = _H2_RE.search(block)
     if not h2:
         return ""
@@ -70,7 +60,6 @@ def _owner_repo(block: str) -> str:
 
 
 def parse(html_text: str, since: str = "daily") -> List[Dict[str, Any]]:
-    """解析 GitHub Trending HTML 为 item 列表；纯函数，不出网。空/无 Box-row 返回 []。"""
     if not html_text or not str(html_text).strip():
         return []
     since = str(since or "daily")
@@ -121,7 +110,7 @@ def parse(html_text: str, since: str = "daily") -> List[Dict[str, Any]]:
 
 
 def fetch(since: str = "daily", spoken_lang: Optional[str] = None, timeout: int = 15) -> List[Dict[str, Any]]:
-    """GET ``github.com/trending?since=..`` + parse（网络壳）。``spoken_lang`` 预留，暂不拼参。"""
+    """spoken_lang 预留，暂不拼参。"""
     url = TRENDING_URL_TMPL.format(since=str(since or "daily"))
     if spoken_lang:
         url = "{0}&spoken_language_code={1}".format(url, spoken_lang)

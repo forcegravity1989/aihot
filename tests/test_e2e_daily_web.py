@@ -1,15 +1,3 @@
-"""test_e2e_daily_web.py —— 日报网站的端到端：真实链路 + 真实 HTTP + 真实读者动线。
-
-刻意**不做细粒度单测**：这里一个用例覆盖一条读者走得通的路，而不是逐个私有函数断言
-返回值。判据一律取「用户实际看到的东西」——落盘的 HTML、HTTP 响应体、页面里的链接是
-不是真能点开——而不是内部数据结构长什么样。
-
-链路：``sync.run_sync(mock=True)`` → ``cmd_prepare`` 选稿 → 编辑写短评 →
-``cmd_finalize(do_html=True)`` 渲染 → ``TestClient`` 打真实端点 → 跟着页面里的链接走。
-
-全程离线（``tmp_data_dir`` 置 ``QLY_OFFLINE=1``）。
-"""
-
 from __future__ import annotations
 
 import html
@@ -40,11 +28,7 @@ def _force_offline(monkeypatch):
 
 @pytest.fixture
 def site(tmp_data_dir):
-    """把整条链路跑完，返回 (TestClient, 日期)。
-
-    走的是真实 CLI 入口——不预制假产物：sync 抓（mock）、prepare 选稿、编辑在草案里写
-    短评与中文标题、finalize 渲染出全部页面。任何一环坏了这个 fixture 就起不来。
-    """
+    """走真实 CLI 入口跑完整条链路，不预制假产物：任何一环坏了这个 fixture 就起不来。"""
     sync.run_sync(mock=True)
     date_str = utils.now_utc().strftime("%Y-%m-%d")
     assert daily.cmd_prepare(date_str) == 0, "选稿草案没生成"
@@ -53,7 +37,6 @@ def site(tmp_data_dir):
     draft = storage.read_json(draft_path, default={})
     items = draft.get("items") or []
     assert items, "草案里没有候选条目"
-    # 编辑（人或 Agent）在环：选前几条、写中文标题与选稿理由
     for idx, entry in enumerate(items):
         entry["selected"] = idx < 4
         if idx < 4:
@@ -61,8 +44,7 @@ def site(tmp_data_dir):
         if idx == 0:
             entry["title_zh"] = "编辑选中的头条"
             entry["editor_note"] = EDITOR_NOTE
-    # 真实抓取里「只到天」和「时间未知」加起来占四成，mock 数据却碰巧条条都有真实时分——
-    # 不把这两种塞进链路，时间轴那条断言就是空转的假绿灯（做过变异测试，确实抓不到回归）。
+    # 真实抓取里「只到天」「时间未知」占四成而 mock 条条有时分：不塞进链路，时间轴断言就是空转的假绿灯
     assert len(items) >= 3, "候选太少，凑不出三种时间精度"
     items[0]["date"] = "{0}T09:30:00+00:00".format(date_str)
     items[0].setdefault("extra", {})["date_precision"] = "exact"
@@ -76,22 +58,14 @@ def site(tmp_data_dir):
     return TestClient(api_server.create_app()), date_str
 
 
-# =========================================================================
-# 读者动线：首页 → 详情页 → 返回
-# =========================================================================
 def test_reader_can_walk_from_homepage_into_a_story_and_back(site):
-    """读者进首页、点开一条、再点「返回日报」——这条路必须整条走得通。
-
-    详情页的返回链接是相对路径 ``../daily.html``，走 HTTP 时会落到 ``/daily.html``；
-    这条路由缺了的话点「返回」就是 404，而单测永远发现不了。
-    """
+    """详情页的返回链接是相对路径 ``../daily.html``，走 HTTP 会落到 ``/daily.html``；缺这条路由点「返回」就是 404。"""
     client, _ = site
 
     home = client.get("/daily")
     assert home.status_code == 200
     assert "千里眼" in home.text
 
-    # 从首页真实抓一条详情页链接，而不是自己拼 sig
     hrefs = re.findall(r'href="(story/[A-Za-z0-9_.-]+\.html)"', home.text)
     assert hrefs, "首页上没有任何详情页链接"
 
@@ -106,11 +80,6 @@ def test_reader_can_walk_from_homepage_into_a_story_and_back(site):
 
 
 def test_homepage_is_three_parts_from_shallow_to_deep(site):
-    """首页 = ① 看图知今天 → ② N 秒读完今天 → ③ 正文，按读者肯花的时间从少到多排（ADR D0）。
-
-    不再有视图 tab 和右栏：三个部分本身就是三层入口。② 默认展开（不是 <details>），每行标深浅档、
-    带「看过即接收」的勾；① 只放头条与深读的图位，浅读不进图区。
-    """
     client, date_str = site
     home = client.get("/daily").text
     speed, brief, body = home.find('id="part-speed"'), home.find('id="part-brief"'), home.find('id="part-body"')
@@ -136,12 +105,7 @@ def test_homepage_is_three_parts_from_shallow_to_deep(site):
 
 
 def test_sidebar_is_a_table_of_contents_for_this_issue(site):
-    """左栏是「本期导读」：每条正文的标题都在目录里、点了能落到那一条；关注开关在侧栏里
-    （模型发布必看、不给开关）；往期压成一行。页首第二部分是「N 秒读完今天」：每条一句话、能跳。
-
-    旧版左栏是一串往期日期 + 「时间轴天数 / 重磅 0」这类统计，右栏热度榜与版面顺序重复——
-    都不帮读者找到自己要读的东西（issue #51）。
-    """
+    """旧版左栏的往期日期 + 统计与右栏热度榜，都不帮读者找到要读的东西（issue #51）。"""
     client, date_str = site
     home = client.get("/daily").text
     draft = storage.read_json(paths.data_path("archive", date_str, daily.DRAFT_NAME), default={})
@@ -163,11 +127,7 @@ def test_sidebar_is_a_table_of_contents_for_this_issue(site):
 
 
 def test_editor_note_reaches_the_reader_in_every_view(site):
-    """编辑写的选稿理由必须一路走到页面上。
-
-    ``editor_note`` 是本项目「Agent 在环」的产出——选稿这种要判断力的活由编辑做。
-    它一度被写进草案却在所有模板里丢掉：管线在生产「为什么今天选它」，页面一个字都不显示。
-    """
+    """``editor_note`` 曾被写进草案却在所有模板里丢掉，页面一个字都不显示。"""
     client, date_str = site
 
     assert EDITOR_NOTE in client.get("/daily").text
@@ -182,7 +142,6 @@ def test_editor_note_reaches_the_reader_in_every_view(site):
 
 
 def test_every_page_shares_one_design_system(site):
-    """首页 / 三个单视图 / 详情页 / 简报页吃同一份 token，且不残留旧配色。"""
     client, _ = site
 
     texts = [client.get("/daily").text, client.get("/digest").text]
@@ -195,18 +154,13 @@ def test_every_page_shares_one_design_system(site):
         assert "prefers-color-scheme: dark" in text, "缺暗色适配"
         for legacy in ("--g-brand", "--t-brand", "#2f6df6", "#135e6b"):
             assert legacy not in text, "残留旧配色 {0}".format(legacy)
-        # 产物里不许残留未渲染的模板标记，也不许引外部资源（单文件自包含）
         assert "{{" not in text and "{%" not in text
         assert re.search(r"<link[^>]+rel=[\"']?stylesheet", text) is None
         assert re.search(r"<script[^>]+\ssrc=", text) is None
 
 
 def test_timeline_never_shows_a_fabricated_clock_time(site):
-    """时间轴不许把「补出来的时刻」当真实发布时间显示。
-
-    源缺 date 时管线会补当前时刻（一批条目全撞同一秒），只给到天的源一律 00:00。
-    两种都不能画成精确到分钟的假时刻——真实抓取里这两种加起来占四成。
-    """
+    """源缺 date 时管线补当前时刻、只给到天的源一律 00:00；两种都不能画成精确到分钟的假时刻。"""
     client, _ = site
     page = client.get("/daily", params={"view": "timeline"}).text
 
@@ -252,26 +206,17 @@ def test_detail_pages_do_not_pollute_the_sync_items_directory(site):
     assert list(paths.data_path(daily.DETAIL_DIR).glob("*.html")), "story/ 下没有详情页"
 
 
-# =========================================================================
-# 铁律：这些跟版面长什么样无关，只跟「不能变成什么样」有关
-# =========================================================================
 def test_runtime_data_never_lands_inside_the_repo(site, tmp_data_dir):
-    """数据与代码隔离——运行时产物必须全部落在 QLY_DATA_DIR，结构性地在仓库之外。
-
-    这条破了，某次 git add 就会把 items.jsonl、digest.html、channels/*.md 提进仓库。
-    判据是「跑完整条链路后，仓库树里有没有多出运行时产物」，不是去问 paths 模块。
-    """
+    """判据是跑完链路后仓库树里有没有多出运行时产物（否则某次 git add 会把 items.jsonl 等提进仓库），不是去问 paths 模块。"""
     from pathlib import Path
 
     _, _ = site
     repo = Path(__file__).resolve().parent.parent
 
-    # 链路产物确实落在数据目录
     for name in ("items.jsonl", "digest.html", "daily.html", "hotlist.md", "sync_meta.json"):
         assert (tmp_data_dir / name).exists(), "{0} 没落在数据目录".format(name)
     assert (tmp_data_dir / "archive").is_dir()
 
-    # 仓库里不许出现同名运行时产物（fixtures 下的样本除外）
     for pattern in ("items.jsonl", "daily.html", "hotlist.md", "sync_meta.json"):
         strays = [p for p in repo.rglob(pattern)
                   if "fixtures" not in p.parts and ".venv" not in p.parts
@@ -280,18 +225,12 @@ def test_runtime_data_never_lands_inside_the_repo(site, tmp_data_dir):
 
 
 def test_offline_mode_lets_the_whole_pipeline_finish_without_network(site):
-    """QLY_OFFLINE=1 下整条链路必须跑完并出页面——LLM 与正文抓取是增强项不是依赖项。
-
-    这个 fixture 全程 QLY_OFFLINE=1 且没有 API key，它能起来本身就是断言：
-    深读提炼走了规则回退，没有因为网络不可用而阻断主链路；回退时页面照样有内容可读。
-    """
+    """fixture 全程 QLY_OFFLINE=1 且无 API key：深读提炼走规则回退，回退时页面照样有内容可读。"""
     client, date_str = site
     deep = client.get("/daily", params={"view": "deep"})
     assert deep.status_code == 200
     glance = client.get("/daily", params={"view": "glance"}).text
-    # 回退时每条都得有能读的内容（摘要顶上），而不是一格格「—」的空壳：
-    # 规则回退的「四段提炼」只是原文前三句 + 三个破折号，曾把英文原句和网页报错文字当成要点。
-    # 深读 tab 只列头条与深读（ADR D1），其余条目的内容在日报页上看
+    # 规则回退的「四段提炼」只是原文前三句 + 破折号，曾把英文原句和网页报错文字当成要点，所以回退时每条也得有能读的内容
     final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
     for entry in final["items"]:
         summary = daily._summary_text(entry)
@@ -303,7 +242,6 @@ def test_offline_mode_lets_the_whole_pipeline_finish_without_network(site):
 
 
 def test_every_item_on_every_page_carries_a_traceable_url(site):
-    """铁律 2：每条必带 URL，可溯源是底线。"""
     client, _ = site
     from qianliyan.core import storage
 
@@ -330,11 +268,7 @@ def test_titles_are_escaped_so_a_hostile_feed_cannot_inject_markup(site):
 
 
 def test_hot_ranking_reflects_freshness_and_cross_validation(tmp_data_dir):
-    """热度排序是产品的核心判断，必须一路走到读者看到的榜单上。
-
-    走真实打分器 ``dedup_and_score`` + 真实渲染，判据取**页面上的先后顺序**而不是
-    hotness 的具体数值——公式可以调，"新的压过旧的""多源压过单源"这两条不能反。
-    """
+    """判据取页面上的先后顺序而非 hotness 数值：公式可调，"新的压过旧的""多源压过单源"不能反。"""
     from qianliyan.core import schema, storage, utils
     from qianliyan.pipeline import report
 
@@ -351,8 +285,7 @@ def test_hot_ranking_reflects_freshness_and_cross_validation(tmp_data_dir):
         return made
 
     pool = utils.dedup_and_score([
-        # 陈旧但当初权重很高 vs 新鲜但权重平庸——衰减**量级**不够的话，上周的旧闻会一直
-        # 压在今天的新闻上面。只比"新的排在旧的前面"是分辨不出半衰期被改坏的。
+        # 陈旧但曾高权重 vs 新鲜但权重平庸：衰减量级不够的话上周旧闻会一直压着今天的新闻，只比先后分辨不出半衰期被改坏
         item("上周旧闻", 30, ["A"], weight=0.99),
         item("今天新闻", 0, ["A"], weight=0.50),
         item("今天多源", 0, ["A", "B", "C", "D"], weight=0.50),
@@ -365,12 +298,7 @@ def test_hot_ranking_reflects_freshness_and_cross_validation(tmp_data_dir):
 
 
 def test_offline_run_never_opens_a_socket(tmp_data_dir, monkeypatch):
-    """``QLY_OFFLINE=1`` 下跑完整条链路，一个字节都不许出网。
-
-    这不是靠"mock 数据碰巧不联网"来成立的：链路里深读增强会对摘要过短的条目去抓正文，
-    真的会走到 engine.http。装一个 socket 哨兵，出网就当场炸——封网开关一旦失效，
-    这个用例立刻红。
-    """
+    """不靠"mock 数据碰巧不联网"：深读增强会对摘要过短的条目抓正文，真会走到 engine.http，装 socket 哨兵出网即炸。"""
     import socket
 
     monkeypatch.setenv("QLY_OFFLINE", "1")
@@ -402,13 +330,7 @@ def test_offline_run_never_opens_a_socket(tmp_data_dir, monkeypatch):
 
 
 def test_one_source_cannot_monopolize_a_channel(tmp_data_dir):
-    """频道内单源席位上限：有得选时不许一家独占，没得选时也不许把频道饿空。
-
-    真实数据上量过：15 个非空频道里 7 个的 top10 被同一个源占满 9~10 席——practices 全是
-    Anthropic Engineering、talks 全是 OpenAI YouTube、change-intel 全是系统提示词。新加的
-    信源更是一席都排不进去,抓回来也看不见。所以上限必须是**软**的：铺不满 limit 时按热度
-    回填,否则 trending（只有 daily/weekly 两个源）这类频道会直接空掉。
-    """
+    """上限必须是软的：铺不满 limit 时按热度回填，否则 trending（只有 daily/weekly 两源）这类频道会被饿空；真实数据里 15 个频道有 7 个 top10 被同一源占满 9~10 席。"""
     from qianliyan.core import schema, utils
     from qianliyan.pipeline import channels as C
 
@@ -421,7 +343,6 @@ def test_one_source_cannot_monopolize_a_channel(tmp_data_dir):
         made["hotness"] = hotness
         return made
 
-    # 一个源霸榜（热度最高的 10 条全是它），另有 3 个源各 1 条
     pool = [item("Loud Source", "loud {0}".format(i), 0.99 - i * 0.001) for i in range(10)]
     pool += [item(name, "quiet " + name, 0.5) for name in ("Alt A", "Alt B", "Alt C")]
 
@@ -432,27 +353,19 @@ def test_one_source_cannot_monopolize_a_channel(tmp_data_dir):
     top = [str(i.get("source")) for i in routed[:6]]
     assert top.count("Loud Source") <= 3, "单源占了 {0} 席，上限没生效".format(top.count("Loud Source"))
     assert {"Alt A", "Alt B", "Alt C"} <= set(top), "被压下的其它源没能进前排"
-    # 软上限：总条数不变，超出上限的仍按热度回填在后面
     assert len(routed) == len(pool), "软上限不该让频道少收条目"
 
-    # 只有一个源的频道不许被饿空
     single = C.route(pool[:10], [channel])["t"]
     assert len(single) == 10, "频道只有一个源时，上限不该把它砍掉"
 
 
 def test_archive_nav_keeps_past_issues_when_recent_days_only_have_drafts(site):
-    """往期归档不许被「只有草案、没定稿」的日子挤掉。
-
-    真实发生过：定时任务每天只备草案、连续 19 天没人定稿，侧栏 14 天窗口被这些空目录占满，
-    之前所有出过的日报从导航里消失，读者只看得到当天。
-    """
+    """真实发生过：定时任务连续 19 天只备草案，侧栏 14 天窗口被空目录占满，往期全部从导航消失。"""
     import shutil
 
     client, date_str = site
     archive = paths.data_path("archive")
-    # 一期很早以前真出过的日报
     shutil.copytree(archive / date_str, archive / "2000-01-01")
-    # 之后 20 天只有草案
     for day in range(1, 21):
         stub = archive / "2000-02-{0:02d}".format(day)
         stub.mkdir()
@@ -465,11 +378,7 @@ def test_archive_nav_keeps_past_issues_when_recent_days_only_have_drafts(site):
 
 
 def test_an_undated_article_does_not_stay_fresh_forever(tmp_data_dir, monkeypatch):
-    """源不给日期的旧文，第二天再抓到时不许又变成「刚发布」。
-
-    真实发生过：Anthropic News 的 8 月旧文、两百多个老版本的提示词变更，每轮 sync 都被补成
-    当前时刻，永远 0 小时前、热度 0.98，把真正的新闻挤出候选池前排。
-    """
+    """真实发生过：无日期旧文每轮 sync 都被补成当前时刻，永远 0 小时前、热度 0.98，挤掉真新闻。"""
     from datetime import timedelta
 
     from qianliyan.core import schema
@@ -504,12 +413,7 @@ def test_an_undated_article_does_not_stay_fresh_forever(tmp_data_dir, monkeypatc
 
 
 def test_one_launch_takes_one_seat_and_its_other_reports_stay_reachable(tmp_data_dir, monkeypatch):
-    """同一次发布的多条报道，在选稿草案里只占一个席位；其余报道留在详情页可点。
-
-    真实发生过：GPT-6 Sol 发布在 09-23 的候选池里占了 5 席（其中两条标题只差「较/比」一个字），
-    编辑要自己认出它们是一回事。但也不能合过头——点评、下游产品更新、同系列的另一款模型
-    都是别的新闻。
-    """
+    """真实发生过：GPT-6 Sol 发布在候选池占 5 席；但点评、下游产品更新、同系列另一款模型是别的新闻，不能合过头。"""
     from qianliyan.core import schema
 
     now = utils.iso(utils.now_utc())
@@ -568,11 +472,7 @@ def test_one_launch_takes_one_seat_and_its_other_reports_stay_reachable(tmp_data
 
 
 def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
-    """编辑定的头条必须排在页面最前——不管它属于哪个方向、发布得早还是晚；同一栏里按编辑排序。
-
-    真实发生过：OpenAI 官方的 GPT-6 Sol 公告属于「博客」格式，版面固定先排「资讯」区、区内按
-    时间排，头条于是成了全页第 7 条，压在一条安全漏洞后面。
-    """
+    """真实发生过：GPT-6 Sol 公告属于「博客」格式，版面固定先排「资讯」区，头条成了全页第 7 条。"""
     sync.run_sync(mock=True)
     date_str = utils.now_utc().strftime("%Y-%m-%d")
     assert daily.cmd_prepare(date_str) == 0
@@ -588,7 +488,6 @@ def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
         if len(picked) == 5:
             break
     assert len(seen) >= 2, "候选里凑不出两种格式，断言会空转"
-    # 编辑把默认版面里最靠后的那条定为头条：倒着排
     for rank, entry in enumerate(reversed(picked), start=1):
         entry["selected"] = True
         entry["editor_rank"] = rank
@@ -596,7 +495,6 @@ def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
     storage.write_json(draft_path, draft)
     assert daily.cmd_finalize(date_str, do_html=True) == 0
 
-    # 版面按方向分栏（issue #49）：头条单独在最前；同一栏里按编辑的排序
     from qianliyan.pipeline import tracks
 
     cfg = tracks.load()
@@ -615,9 +513,6 @@ def test_the_editors_lead_story_leads_the_page(tmp_data_dir):
             assert ranked == sorted(ranked), "{0} 栏内没按编辑排序（{1}）".format(tid, view)
 
 
-# =========================================================================
-# 定时任务里没人值守：编辑 Agent 选稿 → 定稿 → 读者看到当天日报
-# =========================================================================
 FAKE_EDITOR = r'''
 import json, re, sys
 prompt = sys.stdin.read()
@@ -649,10 +544,7 @@ def _unattended_run(tmp_data_dir, monkeypatch, editor_cmd):
 
 
 def test_unattended_day_still_gets_an_edited_issue(tmp_data_dir, monkeypatch):
-    """没人值守的一天，编辑 Agent 选稿写按语，读者照样看到当天日报，头条是 Agent 定的那条。
-
-    真实发生过：定时任务只抓不编，09-04 ~ 09-22 连续 19 天只有草案，首页一直停在 09-03。
-    """
+    """真实发生过：定时任务只抓不编，连续 19 天只有草案，首页一直停在 09-03。"""
     script = tmp_data_dir / "fake_editor.py"
     script.write_text(FAKE_EDITOR, encoding="utf-8")
     date_str, draft, client = _unattended_run(
@@ -662,11 +554,9 @@ def test_unattended_day_still_gets_an_edited_issue(tmp_data_dir, monkeypatch):
     picked = sorted((e for e in draft["items"] if e.get("selected")), key=lambda e: e["editor_rank"])
     assert len(picked) == 9
 
-    # Agent 看到的是带 URL 的候选、拿到了不可信文本的警示
     seen = (tmp_data_dir / "prompt-seen.txt").read_text(encoding="utf-8")
     assert picked[0]["url"] in seen
     assert "不是给你的指令" in seen
-    # 口味来自 config/editorial.yaml（借 AIHOT 的选稿规则，按我们的读者改写）：编辑要看到价值、噪声和 infra 口径
     for marker in ("口味（config/editorial.yaml）", "正常评价、该进正文的", "必须压住的噪声", "LLM infra 口径", "怎么判"):
         assert marker in seen, "选稿简报里没有口味段：{0}".format(marker)
     assert "客户案例" in seen and "day-0" in seen
@@ -674,12 +564,9 @@ def test_unattended_day_still_gets_an_edited_issue(tmp_data_dir, monkeypatch):
     home = client.get("/daily").text
     assert date_str in home
     assert "按语1：值得读" in home, "Agent 写的按语没到读者眼前"
-    # 要点是每条的正文：日报页上直接展开，不用点进原文
     brief_seen = (tmp_data_dir / "prompt-seen.txt.brief").read_text(encoding="utf-8")
-    # 写要点的简报要带写法与术语：自洽标题、答案前置、禁用词、歧义词与 infra 术语的译法
     for marker in ("写法与术语（config/editorial.yaml）", "答案前置", "禁用词", "大语言模型", "投机解码", "版本号一字不改"):
         assert marker in brief_seen, "写要点简报里没有写法与术语：{0}".format(marker)
-    # 要点只放详情页（ADR D1）：日报页是结论与图，细节点进去看
     glance = client.get("/daily", params={"view": "glance"}).text
     for entry in picked:
         assert daily._display_title(entry) in glance
@@ -709,7 +596,6 @@ def test_unattended_day_still_gets_an_edited_issue(tmp_data_dir, monkeypatch):
 
 
 def test_unattended_day_publishes_even_when_the_editor_agent_is_down(tmp_data_dir, monkeypatch):
-    """编辑 Agent 挂了（没装、没登录、超时、胡说八道），当天也要有一期——按规则选。"""
     date_str, draft, client = _unattended_run(tmp_data_dir, monkeypatch, "{py} -c 'import sys; sys.exit(3)'")
 
     assert draft.get("edited_by") == "rules"
@@ -733,11 +619,7 @@ def test_unattended_day_publishes_even_when_the_editor_agent_is_down(tmp_data_di
 
 
 def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(tmp_data_dir, monkeypatch):
-    """定时任务那条路：规则回退先出了一期 → 任务读简报、写 picks → 替换回退选稿 → 整理发布目录。
-
-    发布目录要能直接当 artifact 发：外站图片会被 artifact 的内容安全策略拦成破图，
-    往期链接在只发当天一期时是死链——两样都不许留下；详情页的「返回日报」要能落地。
-    """
+    """发布目录要能直接当 artifact 发：外站图片会被内容安全策略拦成破图，往期链接在只发当天一期时是死链，两样都不许留下。"""
     import json
     import subprocess
     import sys
@@ -755,8 +637,7 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     ids = [int(x) for x in re.findall(r"^\[(\d+)\]", prompt_run.stdout, re.M)]
     assert len(ids) == len(draft["items"])
 
-    # 提炼里的数字必须逐字出现在原文（ADR D3）：把下面要用的数字和那句原话放进候选的摘要里，
-    # 模拟「编辑照抄原文」；没在原文里的数字会被程序丢掉
+    # 提炼里的数字必须逐字出现在原文（ADR D3）：把数字和原话放进候选摘要，没在原文里的数字会被丢掉
     draft_path = paths.data_path("archive", date_str, daily.DRAFT_NAME)
     current = storage.read_json(draft_path, default={})
     for i in ids[-9:]:
@@ -764,7 +645,6 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
             " 原文里的数字：$2/$10、-50%、33.2%、16.6、11.1×、18→33、65→73、$0.27、$3.0、26.9、10。"
             "「一句能传开的话」，某人说。")
     storage.write_json(draft_path, current)
-    # 前四条由任务定为深读（编辑给的 depth 优先于规则）——提炼全套只给头条与深读
     picks = [{"i": i, "editor_note": "任务按语{0}".format(n), "title_zh": "", "summary_zh": "",
               "depth": "lead" if n == 1 else ("deep" if n <= 4 else "glance")}
              for n, i in enumerate(ids[-9:], start=1)]
@@ -780,12 +660,10 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     assert [e["editor_note"] for e in chosen] == ["任务按语{0}".format(n) for n in range(1, 10)], \
         "规则回退的选稿没被任务的选稿干净替换"
 
-    # 编辑过的草案不许被再一次 apply 覆盖
     again = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "apply", str(picks_file), date_str],
                            capture_output=True, text=True, cwd="/")
     assert "不覆盖" in again.stdout
 
-    # 任务读原文写要点 → 写进定稿、重渲染；日报页上直接看到
     brief_prompt = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "brief-prompt", date_str],
                                   capture_output=True, text=True, cwd="/")
     assert brief_prompt.returncode == 0, brief_prompt.stderr
@@ -824,7 +702,6 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
                             capture_output=True, text=True, cwd="/").stdout
     assert "briefs={0}/{0}".format(len(sigs)) in status
 
-    # 给页面塞一张外站图，确认发布前会被剥掉
     root_page = paths.data_path("daily.html")
     root_page.write_text(root_page.read_text(encoding="utf-8").replace(
         "</body>", '<img src="https://pbs.twimg.com/x.jpg" alt="x"></body>'), encoding="utf-8")
@@ -834,14 +711,10 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     assert staged.returncode == 0, staged.stderr
     index = (out / "index.html").read_text(encoding="utf-8")
     assert "任务按语1" in index
-    # 要点只放详情页（ADR D1）：发布目录里每条的详情页都要有
     for sig in sigs:
         assert "任务要点一·" + sig in (out / "story" / "{0}.html".format(sig)).read_text(encoding="utf-8"), "要点没进发布页"
     assert "不该出现的要点" not in index
-    # 关键数字与对比图：数值原样上版、条宽按数值归一（33.2 最大 → 100%，16.6 → 50%）
     assert "$2/$10" in index and "降价幅度" in index, "关键数字没上版"
-    # 提炼是日报卡片的主体：结论、梗、逻辑链（关键一环高亮）、证据与代价；
-    # 有结论的条目，细节要点只留在详情页，日报页不再铺一屏字
     glance = index.split('id="wrap-glance"', 1)[-1]
     assert "这是一句提炼出的结论" in glance and "「一句能传开的话」——某人" in glance
     assert '<div class="lg-node is-hl">关键机制</div>' in glance, "逻辑链的关键一环没高亮"
@@ -850,15 +723,12 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     story0 = (out / "story" / "{0}.html".format(sigs[0])).read_text(encoding="utf-8")
     assert "任务要点一·" + sigs[0] in story0 and "这是一句提炼出的结论" in story0, "详情页要有结论也要有细节要点"
     assert "只有一步的链不成立" not in index, "不成链的逻辑图不该被画出来"
-    # 条形图：条长严格按数值（33.2 : 16.6 = 2 : 1），主角高亮
     assert "基准得分对比" in index and "33.2%" in index and "11.1×" in index
     hl = float(re.search(r'<rect class="qc-bar is-hl"[^>]* width="([\d.]+)"', index).group(1))
     other = float(re.search(r'<rect class="qc-bar"[^>]* width="([\d.]+)"', index).group(1))
     assert abs(hl / other - 2.0) < 0.02, "条长没按数值比例画：{0} vs {1}".format(hl, other)
     assert "坏图" not in index, "含非数字的对比图不该被画出来"
-    # 哑铃图：图例用编辑给的前后名称，右侧标变化量
     assert "前代到新版" in index and "旧版" in index and "+15" in index and "+8" in index
-    # 散点图：两个点、轴标题都在，主角点高亮
     assert "得分与成本" in index and "每任务成本" in index and 'class="qc-point is-hl"' in index
     assert "坏点" not in index, "坐标不是数字的点不该被画出来"
     assert not re.search(r'<img[^>]+src="https?://', index), "外站图片留在了发布页里"
@@ -868,9 +738,6 @@ def test_scheduled_task_can_edit_over_the_fallback_and_stage_a_publishable_page(
     assert (out / "daily.html").is_file(), "详情页的「返回日报」会落空"
 
 
-# =========================================================================
-# 按方向分栏（issue #49）：模型发布所有人必看，其余方向由读者选关注
-# =========================================================================
 TRACK_EDITOR = r'''
 import json, re, sys
 prompt = sys.stdin.read()
@@ -902,11 +769,7 @@ def _sections(page: str) -> dict:
 
 
 def test_page_is_organised_by_track_with_model_releases_for_everyone(tmp_data_dir, monkeypatch):
-    """读者关心的方向不一样：模型发布所有人都要看，其余方向默认只展开 Agent 实践，
-    别的方向收成「标题 + 一句结论」、由读者自己选关注；每栏尾挂这个方向的快讯。
-
-    编辑标的方向说了算（规则只是兜底），和正文同一条的快讯不许重复出现。
-    """
+    """模型发布所有人都要看，其余方向默认只展开 Agent 实践；编辑标的方向说了算，和正文同一条的快讯不许重复。"""
     import subprocess
     import sys
     from pathlib import Path
@@ -927,16 +790,12 @@ def test_page_is_organised_by_track_with_model_releases_for_everyone(tmp_data_di
     assert ids[0] == "lead" and "正文1" in secs["lead"][1], "编辑定的头条没单独放在最前"
     assert ids[1] == "models" and "is-everyone" in secs["models"][0], "模型发布没排在头条之后、没标必看"
     assert "正文2" in secs["models"][1] and "正文7" in secs["models"][1]
-    # 默认关注 Agent 实践：展开；没关注的方向折叠（只看标题和结论）
     assert "is-compact" not in secs["agent"][0] and "正文6" in secs["agent"][1]
     for tid in ("training", "infra", "research"):
         assert "is-compact" in secs[tid][0], "{0} 默认该折叠".format(tid)
-    # 编辑标到训练的两条（不管规则怎么判）落在训练栏
     assert "正文3" in secs["training"][1] and "正文8" in secs["training"][1]
-    # 关注开关：模型发布不在开关里（必看），Agent 默认按下
     assert re.search(r'data-follow="agent" aria-pressed="true"', glance)
     assert 'data-follow="models"' not in glance, "必看的方向不该能被取消关注"
-    # 快讯：挂在编辑标的方向栏尾，一行标题 + 一句话；和正文重复的那条被丢掉
     for n in (1, 2, 3):
         assert "快讯标题{0}".format(n) in secs["infra"][1] and "快讯一句话{0}".format(n) in secs["infra"][1]
     assert "和正文重复的快讯" not in glance
@@ -947,7 +806,6 @@ def test_page_is_organised_by_track_with_model_releases_for_everyone(tmp_data_di
     assert "tracks=models:2,agent:2,training:2,infra:2,research:1,industry:0" in status, status
     assert "empty_tracks=industry" in status and "quick=3" in status, status
 
-    # 重跑抓取 + prepare（launchd 补跑），编辑挑的快讯和方向不许丢
     sync.run_sync(mock=True)
     assert daily.main(["--prepare", "--date", date_str]) == 0
     assert daily.main(["--finalize", "--html", "--date", date_str]) == 0
@@ -959,8 +817,7 @@ def test_page_is_organised_by_track_with_model_releases_for_everyone(tmp_data_di
 
 
 def test_rule_fallback_gives_every_track_with_fresh_news_a_seat(tmp_data_dir, monkeypatch):
-    """编辑 Agent 挂了、按规则选稿时，也不许让分数最高的方向占满 12 席：
-    每个有新鲜候选的方向至少分到一席，其余新鲜候选进快讯（不和正文重复）。"""
+    """编辑 Agent 挂了按规则选稿时，每个有新鲜候选的方向至少一席，其余新鲜候选进快讯。"""
     from datetime import timedelta
 
     from qianliyan.pipeline import tracks
@@ -979,8 +836,7 @@ def test_rule_fallback_gives_every_track_with_fresh_news_a_seat(tmp_data_dir, mo
     low = [next(e for e in reversed(draft["items"]) if tracks.rule_track(e, cfg) == tid) for tid in want]
     positions = [draft["items"].index(e) for e in low]
     assert min(positions) >= daily.AUTO_PICK_TARGET, "这两条本来就排进前 12，断言会空转"
-    # 别的候选都新鲜、这两个方向只剩这两条新鲜：名额只能按方向分，
-    # 不能靠「别的都太旧」或同方向的高分条目碰巧挤进来
+    # 这两个方向只剩这两条新鲜：名额只能按方向分，不能靠「别的都太旧」或同方向高分条目碰巧挤进来
     stale_at = utils.iso(utils.now_utc() - timedelta(days=10))
     for entry in draft["items"]:
         stale = tracks.rule_track(entry, cfg) in want and entry not in low
@@ -989,8 +845,7 @@ def test_rule_fallback_gives_every_track_with_fresh_news_a_seat(tmp_data_dir, mo
 
     assert daily.main(["--auto-edit", "--date", date_str]) == 0
     draft = storage.read_json(draft_path, default={})
-    # 人工编过的旧草案没有快讯：定稿时按规则补挑，且不许和正文讲同一个发布
-    # （09-23 头条是 GPT-6 Sol，规则快讯里又挂了官方公告、Altman 的话、ChatGPT 推送三条转述）
+    # 人工编过的旧草案没有快讯：定稿时按规则补挑，且不许和正文讲同一个发布（09-23 头条 GPT-6 Sol 曾挂上三条转述）
     for entry in draft["items"]:
         entry.pop("quick", None)
     selected = [e for e in draft["items"] if e.get("selected")]
@@ -1016,10 +871,7 @@ def test_rule_fallback_gives_every_track_with_fresh_news_a_seat(tmp_data_dir, mo
     assert daily._display_title(quick[0]) in glance
 
 
-# =========================================================================
-# 原文配图（issue #52）：卡片主视觉用原文自己的图，下载到本地随页发布
-# =========================================================================
-#: 1×1 的合法 PNG——_download_image 按文件头认格式
+# 1×1 的合法 PNG（_download_image 按文件头认格式）
 _PNG = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
     "0000000d4944415478da63f8cfc0f01f0005000201a5a3a3a50000000049454e44ae426082")
@@ -1055,9 +907,7 @@ class _Resp:
 
 
 def test_article_figures_become_the_card_visual_and_ship_with_the_page(tmp_data_dir, monkeypatch):
-    """原文里的实验图、架构图才是最有信息量的东西：日报卡片的主视觉用原文配图（带原图注），
-    logo / 头像不许混进来；原文有图时，日报页不再画我们自己的对比图（详情页照留）。
-    图片下载到本地、随页发布——外站地址在 artifact 里会被拦成破图。"""
+    """主视觉用原文配图（logo / 头像不许混进来），有原文图时日报页不再画我们自己的对比图；图片下载到本地随页发布，外站地址在 artifact 里会被拦成破图。"""
     import subprocess
     from pathlib import Path
 
@@ -1119,15 +969,13 @@ def test_article_figures_become_the_card_visual_and_ship_with_the_page(tmp_data_
     assert "我们自绘的对比图" not in card(a["sig"]), "原文有图时日报页不该再画自绘对比图"
     assert "Fig A. Price per million tokens." in card(b["sig"]), "图注没用原文的 figcaption"
     assert "图源" in card(b["sig"])
-    # 推文没有正文可深读 → 浅读行，浅读行不放图（ADR D1）；推文配图在详情页
     assert 'data-depth="glance"' in card(c["sig"]) and "<img" not in card(c["sig"]), "浅读行不该有图"
     assert re.search(r'<img src="\.\./media/[0-9a-f]{16}\.png"', client.get("/story/{0}.html".format(c["sig"])).text), \
         "推文配图没到详情页"
     # Epoch 的主图是交互图表，静态版在 <noscript> 里；页面不声明 charset，图注里的「–」不能解成乱码
     assert "figure-1.png" in " ".join(fake.requested), "noscript 里的主图没收"
     assert "(2021–26)" in card(d["sig"]), "页面没按 UTF-8 解码，图注成了乱码"
-    # Substack：正文里的推文截图和两张图表要，正文外的刊物 logo、40px 头像不要；
-    # 图片地址本身带逗号（w_1456,c_limit,…），srcset 切错就会拼出不存在的地址
+    # Substack：正文里的推文截图和图表要，刊物 logo、40px 头像不要；图片地址本身带逗号，srcset 切错会拼出不存在的地址
     latent = [u for u in fake.requested if "substack" in u]
     assert "https://pbs.substack.com/media/HSxCs7wa0AANR91.jpg" in latent, "正文里的推文截图没收"
     charts = [u for u in latent if u.startswith("https://substackcdn.com/image/fetch/") and ",c_limit," in u]
@@ -1144,20 +992,17 @@ def test_article_figures_become_the_card_visual_and_ship_with_the_page(tmp_data_
     got = client.get("/" + srcs[0])
     assert got.status_code == 200 and got.headers["content-type"] == "image/png" and got.content == _PNG
     assert client.get("/media/..%2Fitems.jsonl").status_code == 404
-    (paths.data_path() / "0123456789abcdef.png").write_bytes(_PNG)   # 数据根下、media/ 外
+    (paths.data_path() / "0123456789abcdef.png").write_bytes(_PNG)
     assert client.get("/media/..%2F0123456789abcdef.png").status_code == 404, "配图路由能被路径穿越"
     assert client.get("/media/0123456789abcdef.svg").status_code == 404
 
-    # 归档页（archive/<日期>/digest.html）里的相对路径要能落到同一张图
     archive_page = paths.data_path("archive", date_str, daily.MERGED_NAME)
     rel = re.search(r'<img src="(\.\./\.\./media/[0-9a-f]{16}\.png)"', archive_page.read_text(encoding="utf-8"))
     assert rel and (archive_page.parent / rel.group(1)).resolve().is_file()
 
-    # 数据根的首页（对外入口、也是发布的来源）用 media/x
     root_page = paths.data_path("daily.html").read_text(encoding="utf-8")
     assert '<img src="{0}"'.format(srcs[0]) in root_page
 
-    # 发布目录：本地配图一起带上，<img> 保留
     repo = Path(__file__).resolve().parent.parent
     out = tmp_data_dir / "stage"
     staged = subprocess.run(["bash", str(repo / "scripts" / "qly-publish.sh"), "stage", str(out)],
@@ -1169,12 +1014,8 @@ def test_article_figures_become_the_card_visual_and_ship_with_the_page(tmp_data_
     assert '<img src="../media/' in (out / "story" / "{0}.html".format(b["sig"])).read_text(encoding="utf-8")
 
 
-# =========================================================================
-# 三档密度（docs/adr-daily-format.md）：头条 / 深读 / 浅读按条目分，原文图是证据层、提炼是导读层
-# =========================================================================
 def _issue_with_three_depths(tmp_data_dir, monkeypatch):
-    """跑完整链路，草案里造出三种原料：厚正文 + 原文图、厚正文 + 硬数字、薄正文；
-    提炼里混一个原文没有的数字。返回 (client, date, 各条 sig)。"""
+    """造三种原料：厚正文 + 原文图、厚正文 + 硬数字、薄正文；提炼里混一个原文没有的数字。返回 (client, date, 各条 sig)。"""
     import sys
 
     monkeypatch.setenv("QLY_EDITOR_CMD", "{0} -c 'import sys; sys.exit(3)'".format(sys.executable))
@@ -1207,7 +1048,7 @@ def _issue_with_three_depths(tmp_data_dir, monkeypatch):
         entry["logic"] = {"chain": ["起因", "机制", "结果"], "focus": 1, "evidence": ["延迟降到 120 ms"], "caveat": ""}
         extra = entry.setdefault("extra", {})
         extra["og_image"] = "https://example.org/og.png"
-        if idx in (0, 1):  # 头条 + 深读：厚正文 + 原文图
+        if idx in (0, 1):
             extra["fulltext"], extra["fulltext_chars"] = thick, len(thick)
             extra["article_images"] = [{"src": "https://example.org/f.png",
                                         "caption": "原文图注·{0}".format(entry["sig"]), "alt": ""}]
@@ -1231,8 +1072,7 @@ def _issue_with_three_depths(tmp_data_dir, monkeypatch):
 
 
 def test_issue_is_tiered_by_item_not_by_track(tmp_data_dir, monkeypatch):
-    """一期 = 1 头条 + 若干深读 + 其余浅读：深读只给「原料厚」的条目；浅读只有标题和一句结论；
-    og 封面永远不上日报页；原文图下有解释图注；提炼块标「示意」；深读 tab 只列头条与深读。"""
+    """深读只给「原料厚」的条目，浅读只有标题和一句结论；og 封面永远不上日报页。"""
     client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
     final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
     depth = {e["sig"]: e.get("depth") for e in final["items"]}
@@ -1243,30 +1083,23 @@ def test_issue_is_tiered_by_item_not_by_track(tmp_data_dir, monkeypatch):
     assert all(depth[s] == "glance" for s in roles["thin"]), "薄正文的条目只能浅读，排名再靠前也不行"
 
     glance = client.get("/daily", params={"view": "glance"}).text
-    # 浅读行：标题 + 一句结论 + 原文链接，没有图、逻辑链、数字卡、短评、梗
     for sig in roles["thin"]:
         row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(sig), glance, re.S).group(0)
         assert 'data-depth="glance"' in row
         assert "一句结论·" + sig in row
         assert "薄条目的图·" + sig not in row and "src-fig" not in row, "浅读行不该有图"
         assert "viz-logic" not in row and "viz-stats" not in row and "为什么重要" not in row
-    # 头条：原文图 + 解释图注 + 逻辑链 + 数字卡；封面图不出现
     row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(lead), glance, re.S).group(0)
     assert "看这里：看柱子最高那根·" + lead in row and "原文图注·" + lead in row
     assert "bbbbbbbbbbbbbbbb.png" not in glance, "og 封面不许上日报页"
     assert "viz-logic" in row and "示意 · 编辑整理" in row and "为什么重要·" + lead in row
-    # 深读（有图）：一张原文图 + 图注；逻辑链只给头条；数字卡让位给原文图
     row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(deep_fig), glance, re.S).group(0)
     assert 'data-depth="deep"' in row and "原文图注·" + deep_fig in row and "viz-logic" not in row
-    # 深读（无图）：数字卡顶上
     row = re.search(r'<article[^>]*data-sig="{0}".*?</article>'.format(roles["numbers"]), glance, re.S).group(0)
     assert "viz-stats" in row and "120 ms" in row
-    # 要点只放详情页
     assert "细节要点·" + lead not in glance
     assert "细节要点·" + lead in client.get("/story/{0}.html".format(lead)).text
-    # 页首有本期字数 / 分钟
     assert re.search(r"本期约 \d+ 字 · \d+ 分钟", glance)
-    # 深读 tab 只列头条 + 深读
     deep = client.get("/daily", params={"view": "deep"}).text
     assert "一句结论·" + lead in deep and "一句结论·" + deep_fig in deep
     for sig in roles["thin"]:
@@ -1286,9 +1119,7 @@ def test_fabricated_numbers_and_paraphrased_memes_never_reach_the_page(tmp_data_
 
 
 def test_brief_lines_carry_their_subject_and_tick_marks_received(tmp_data_dir, monkeypatch):
-    """「N 秒读完今天」每行要能脱离标题单独读：一句话结论里没有事件主体（标题里的产品 / 机构名一个都
-    没出现）就退回用标题；秒数按实际字数算、取整到 5 秒；行上的勾和正文行的「标记已读」是同一类按钮，
-    图区的块也带同一个 sig（看过即接收，三处同步置灰）。"""
+    """一句话结论里没有事件主体就退回用标题；秒数按实际字数算、取整到 5 秒；勾与正文行的「标记已读」同步置灰。"""
     import html as html_lib
 
     client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
@@ -1315,7 +1146,6 @@ def test_brief_lines_carry_their_subject_and_tick_marks_received(tmp_data_dir, m
 
     secs = int(re.search(r">(\d+) 秒读完今天", home).group(1))
     assert secs % 5 == 0 and 10 <= secs <= 300
-    # 勾、图块、正文行三处共用 sig；勾是 .gread（正文「标记已读」同一个事件链）
     assert 'class="gread rb-check" data-sig="{0}"'.format(lead) in brief
     assert re.search(r'<a class="sp-tile is-lead has-fig" href="#e-{0}" data-sig="{0}"'.format(lead), home)
     assert 'class="gread" data-sig="{0}"'.format(lead) in home.split('id="wrap-glance"', 1)[1]
@@ -1324,8 +1154,7 @@ def test_brief_lines_carry_their_subject_and_tick_marks_received(tmp_data_dir, m
 
 
 def test_codex_illustration_fills_the_slot_only_when_the_source_has_no_figure(tmp_data_dir, monkeypatch, tmp_path):
-    """示意图（Codex 按原文生成）只给没有信息图的条目补位：页面上标「示意 · Codex 生成」而不是
-    「图源：原文」，图区的块也带角标；原文有信息图的条目给了示意图也不收；示意图不算深读原料。"""
+    """示意图只给没有信息图的条目补位，原文有信息图的给了也不收；示意图不算深读原料。"""
     client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
     lead, deep_fig = roles["figured"]
     numbers = roles["numbers"]
@@ -1368,9 +1197,7 @@ def test_codex_illustration_fills_the_slot_only_when_the_source_has_no_figure(tm
 
 
 def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_dir, monkeypatch, tmp_path):
-    """公众号稿和首页同一份三部分内容：速读图 → N 秒读完（头条 / 深读加粗）→ 头条 / 深读 / 浅读；
-    qly-publish.sh wechat-article 打成发布包时，正文图全部换成包内 imgs/ 相对路径、文件真的拷进去，
-    发布脚本（baoyu-post-to-wechat）拿到的是一个自包含目录。"""
+    """正文图全部换成包内 imgs/ 相对路径、文件真的拷进去，发布脚本拿到的是自包含目录。"""
     import subprocess
     from pathlib import Path
 
@@ -1379,7 +1206,6 @@ def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_
     final = storage.read_json(paths.data_path("archive", date_str, daily.FINAL_NAME), default={})
     by_sig = {e["sig"]: e for e in final["items"]}
     md = paths.data_path("archive", date_str, daily.WECHAT_NAME).read_text(encoding="utf-8")
-    # 标题 = 「千里眼 AI 日报 MM.DD｜」+ 头条那句；超过 64 字就去掉前缀，不在词中间截断
     title = md.split("\n", 2)[1][len("title: "):]
     head = daily._display_title(by_sig[lead])
     assert len(title) <= daily.WECHAT_TITLE_MAX, title
@@ -1387,7 +1213,6 @@ def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_
     assert "coverImage: imgs/cover.png" in md
     brief, body = md.index("秒读完今天"), md.index("## 今日头条")
     assert brief < body < md.index("## 深读") < md.index("## 浅读")
-    # 这条的一句话结论里没有主体，速读退回用标题（同首页规则），且加粗
     assert "1. **{0}**".format(daily._display_title(by_sig[lead])) in md[brief:body], "速读里头条要加粗"
     for sig in roles["thin"]:
         assert "**{0}**".format(daily._display_title(by_sig[sig])) in md[md.index("## 浅读"):], "浅读只列标题"
@@ -1406,7 +1231,6 @@ def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_
     assert all((out / r).is_file() for r in refs)
     assert "../../media/" not in article
 
-    # 发布用的 HTML 正文：和首页同一套 token 与三部分结构；公众号只认行内样式，外链统一编号放文末
     html = (out / "article.html").read_text(encoding="utf-8")
     body = html.split("<body", 1)[1]
     assert "<style" not in body and "class=" not in body, "公众号会剥掉 <style> 与 class，样式必须全部行内"
@@ -1423,9 +1247,7 @@ def test_wechat_post_package_carries_the_three_parts_with_local_images(tmp_data_
 
 
 def test_wechat_newspic_package_is_speed_image_cover_and_brief_text(tmp_data_dir, monkeypatch, tmp_path):
-    """公众号默认推贴图（newspic）：--html 出标题 + 纯文本文案，qly-publish.sh wechat 配上速读图（在前）与封面（在后）
-    打成 index.html + imgs/。贴图标题 ≤20 字、正文 ≤1000 字、纯文本（没有链接、没有 Markdown 记号），
-    N 秒读完的每一句按版面顺序都在；超字数时先丢头条那段、再从末尾收行，收尾那句始终在。"""
+    """贴图标题 ≤20 字、正文 ≤1000 字、纯文本；超字数时先丢头条那段、再从末尾收行，收尾那句始终在。"""
     import subprocess
     from pathlib import Path
 
@@ -1445,7 +1267,6 @@ def test_wechat_newspic_package_is_speed_image_cover_and_brief_text(tmp_data_dir
     assert numbered == [str(i) for i in range(1, len(final["items"]) + 1)], "每条一句、按版面顺序编号"
     assert text.rstrip().endswith("见千里眼日报。")
 
-    # 打包：3:4 封面在前（贴图首图即封面）、速读图在后
     (arch / "speed.png").write_bytes(b"\x89PNG speed")
     (arch / "cover-3x4.png").write_bytes(b"\x89PNG cover")
     repo = Path(daily.__file__).resolve().parents[2]
@@ -1460,11 +1281,9 @@ def test_wechat_newspic_package_is_speed_image_cover_and_brief_text(tmp_data_dir
     assert (out / "imgs" / "01-cover.png").read_bytes() == b"\x89PNG cover"
     assert (out / "imgs" / "02-speed.png").read_bytes() == b"\x89PNG speed"
     assert "<title>{0}</title>".format(post["title"]) in page and "<a " not in page
-    # 发布脚本的纯文本化：</p> → 换行、去标签、解实体，要能还原出同一份文案
     plain = html.unescape(re.sub(r"<[^>]+>", "", page.split("<body>", 1)[1].replace("</p>", "\n")))
     assert plain.strip() == text.strip()
 
-    # 超字数：先丢头条那段，再从末尾收行并说明还剩几条；开头和收尾都留着
     monkeypatch.setattr(daily, "NEWSPIC_TEXT_MAX", 160)
     assert daily.cmd_html_only(date_str) == 0
     short = json.loads((arch / daily.NEWSPIC_NAME).read_text(encoding="utf-8"))["text"]
@@ -1473,9 +1292,7 @@ def test_wechat_newspic_package_is_speed_image_cover_and_brief_text(tmp_data_dir
 
 
 def test_cover_is_standard_base_with_overlaid_text_and_packs_when_no_manual_cover(tmp_data_dir, monkeypatch, tmp_path):
-    """封面不再每天靠 Codex 现画：--html 用入仓的无字标准底图叠上「千里眼 / AI 日报 / 日期 / 头条那句」，
-    无头 Chrome 截成 2 倍的 cover-auto.png（1880×800，2.35:1，正文用）与 cover-3x4-auto.png（1080×1440，贴图首图）；
-    打贴图包时没有手工 cover-3x4.png 就用自动的 3:4，有手工的仍然手工优先。"""
+    """有手工 cover-3x4.png 时手工优先，否则打贴图包用自动的 3:4；cover-auto.png 1880×800、cover-3x4-auto.png 1080×1440。"""
     import struct
     import subprocess
     from pathlib import Path
@@ -1526,9 +1343,7 @@ def test_cover_is_standard_base_with_overlaid_text_and_packs_when_no_manual_cove
 
 
 def test_wechat_push_saves_newspic_draft_once_per_day(tmp_data_dir, monkeypatch, tmp_path):
-    """定时任务打完贴图包紧接着 qly-publish.sh wechat-push 推进公众号草稿箱：在凭证目录下跑发布脚本、
-    --type newspic、署名千里眼；成功记 pushed.json，重跑跳过（一天只进一份草稿），--force 才重推；
-    发布脚本失败要非零退出、不留 pushed.json。用假发布器代替 npx bun wechat-api.ts。"""
+    """成功记 pushed.json，重跑跳过（一天只进一份草稿），--force 才重推；发布脚本失败要非零退出、不留 pushed.json。用假发布器代替 npx bun wechat-api.ts。"""
     import subprocess
     from pathlib import Path
 
@@ -1581,9 +1396,7 @@ def test_wechat_push_saves_newspic_draft_once_per_day(tmp_data_dir, monkeypatch,
 
 
 def test_daily_deepdive_article_is_briefed_checked_rendered_and_pushed_as_news(tmp_data_dir, monkeypatch, tmp_path):
-    """每天第二篇（正文）是一篇原文的深度解读：deepdive-prompt 自动挑原料最厚、有原文图的头条，简报带原文全文与配图；
-    编辑交回的 JSON 关键数字必须逐字出自原文、配图下标合法，否则打回；通过后渲染成公众号行内样式正文 + 「深度解读」封面，
-    wechat-deep 打正文包（图改成 imgs/、必须有封面），wechat-push 认出是正文、带封面按 news 推。"""
+    """关键数字必须逐字出自原文、配图下标合法，否则打回；wechat-push 认出正文、带封面按 news 推。"""
     import subprocess
     from pathlib import Path
 
@@ -1676,8 +1489,7 @@ def test_daily_deepdive_article_is_briefed_checked_rendered_and_pushed_as_news(t
 
 
 def test_scheduled_task_commands_cover_the_new_editing_steps(tmp_data_dir, monkeypatch, tmp_path):
-    """定时任务只能调 qly-publish.sh：status 要按密度档报提炼覆盖（浅读不要逻辑链）、报哪些头条 / 深读
-    没有信息图；figures 列出可选主图；depth 写定档并重新渲染；--synth-prompts 只挑没有信息图的头条 / 深读。"""
+    """status 按密度档报提炼覆盖（浅读不要逻辑链）；--synth-prompts 只挑没有信息图的头条 / 深读。"""
     import subprocess
     from pathlib import Path
 
@@ -1721,8 +1533,7 @@ def test_scheduled_task_commands_cover_the_new_editing_steps(tmp_data_dir, monke
 
 
 def test_editor_figure_choices_survive_a_second_finalize(tmp_data_dir, monkeypatch, tmp_path):
-    """07:30 的定时抓取会对当天再 finalize 一次、重新抓原文配图；编辑定的主图（「没有信息图」）和挂上的
-    示意图必须接回来，不能回到原文的品牌横幅。"""
+    """07:30 的定时抓取会对当天再 finalize 一次、重抓原文配图；编辑定的主图和示意图必须接回来，不能回到品牌横幅。"""
     client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
     lead, numbers = roles["figured"][0], roles["numbers"]
     synth = tmp_path / "synth.png"
@@ -1745,8 +1556,7 @@ def test_editor_figure_choices_survive_a_second_finalize(tmp_data_dir, monkeypat
 
 
 def test_reapplying_the_same_depth_file_keeps_the_same_main_figure(tmp_data_dir, monkeypatch, tmp_path):
-    """定档里的 figure 指抓取时的原始序号（qly-publish.sh figures 打印的那个），不是当前位置：同一份定档跑两遍、
-    或定稿后再定一次，主图都不能漂到别的图上。也可以直接写文件名。"""
+    """定档里的 figure 指抓取时的原始序号，不是当前位置：同一份定档跑两遍主图不能漂；也可以直接写文件名。"""
     client, date_str, roles = _issue_with_three_depths(tmp_data_dir, monkeypatch)
     lead = roles["figured"][0]
     final_path = paths.data_path("archive", date_str, daily.FINAL_NAME)

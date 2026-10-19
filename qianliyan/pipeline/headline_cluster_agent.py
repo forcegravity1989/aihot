@@ -1,17 +1,3 @@
-"""pipeline/headline_cluster_agent.py —— 同题聚合标注（spec §9.5）。
-
-原地为 item 写 ``extra.story_key``：**同一件事**的多条报道共享一个 key，
-使日报可以「一事一条 + 多源佐证」，而不是把同一事件铺满版面。
-
-注意与 ``core.utils.dedup_and_score`` 的分工：后者按标题签名做**严格去重**，
-本 agent 处理的是「标题不同但说的是同一件事」的软聚合。
-
-**回退公约（spec §5）**：LLM 不可用或任何异常 → ``story_key = sig``（各自成题），
-再叠一层**规则聚合**（:func:`rule_merge`）：同一「发布实体」的发布类标题、同一天的近重复
-标题归为一题。LLM 分批（每批 30 条）只能在批内聚合，规则层也负责把跨批的同一事件接起来。
-绝不向上抛。
-"""
-
 from __future__ import annotations
 
 import json
@@ -40,27 +26,21 @@ SYSTEM_PROMPT = (
 
 
 def fallback_story_key(item: Dict[str, Any]) -> str:
-    """规则回退：``story_key = sig``（各自成题）。"""
     return str(item.get("sig") or "")
 
 
-# ---------------------------------------------------------------------------
-# 规则聚合
-# ---------------------------------------------------------------------------
-#: 模型/产品品牌。长的在前——「claude code」要先于「claude」、「muse spark」先于「muse」被匹配。
+# 长的在前：「claude code」要先于「claude」被匹配
 _BRANDS = (
     "claude code", "gpt", "claude", "opus", "sonnet", "haiku", "fable", "mythos",
     "gemini", "gemma", "qwen", "glm", "kimi", "deepseek", "grok", "llama",
     "muse spark", "muse", "mimo", "step", "hunyuan", "hy", "doubao", "minimax",
     "mistral", "phi", "pytorch", "vllm", "sglang",
 )
-#: 版本号后常跟的型号词（GPT-6 Sol、GLM-5.3-FlashX、Qwen3.8-Max……）
 _VARIANTS = (
     "flashx", "flash", "sol", "luna", "astra", "pro", "max", "mini", "nano", "turbo",
     "preview", "cyber", "lite", "plus", "ultra", "air", "coder", "vl", "thinking",
 )
-#: 型号词两种接法：连字符紧跟的任意词（Qwen3.8-LiveTranslate、Qwen3.8-Omni 是两款模型，
-#: 不能都算成 qwen 3.8），或空格后跟的已知型号词（GPT-6 Sol；空格后的 release/发布 不算型号）
+# 连字符后任意词（Qwen3.8-Omni 是另一款模型），或空格后的已知型号词
 _ENTITY_RE = re.compile(
     r"(?<![a-z0-9])({brands})[ -]?v?(\d+(?:\.\d+)*)(?:-([a-z]+)|[ ]({variants}))?(?![a-z0-9.])".format(
         brands="|".join(re.escape(b) for b in _BRANDS),
@@ -68,15 +48,14 @@ _ENTITY_RE = re.compile(
     )
 )
 _NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)*")
-#: 标题里出现这些词，才算「在报这次发布本身」，而不是借题评论
+# 出现这些词才算在报这次发布本身，而非借题评论
 _LAUNCH_RE = re.compile(
     r"发布|上线|推出|开源|亮相|登场|introduc|launch|release|announc|unveil|debut|"
     r"now available|is here|\bmeet\b|\bships?\b"
 )
 _DASHES_RE = re.compile("[\u2010-\u2015\u2212]")
-#: 同一事件的报道最多相隔多久
 STORY_WINDOW = timedelta(hours=72)
-#: 同一天两条标题的字二元组 Jaccard 超过它就算近重复（只差「较/比」一个字的那种）
+# 只差「较/比」一个字的那种
 NEAR_DUP_JACCARD = 0.7
 
 
@@ -86,11 +65,7 @@ def _norm(text: Any) -> str:
 
 
 def release_entity(title: Any) -> str:
-    """标题里第一个「品牌 + 版本号 (+ 型号)」，如 ``gpt 6 sol`` / ``opus 5.5``；没有则空串。
-
-    取**第一个**：「Claude Code v2.1.280 发布，新增 Claude Opus 5.5」讲的是 Claude Code 的版本，
-    不是 Opus 5.5 的发布，主语在前。
-    """
+    """取第一个：主语在前（「Claude Code v2.1.280 发布，新增 Opus 5.5」讲的是 Claude Code）。"""
     match = _ENTITY_RE.search(_norm(title))
     if not match:
         return ""
@@ -119,15 +94,7 @@ def _close_in_time(a, b) -> bool:
 
 
 def rule_merge(items: Sequence[Dict[str, Any]]) -> int:
-    """原地把同一事件的条目改成同一个 ``story_key``，返回被并进别组的条目数。
-
-    两条规则，都要求 72 小时内：
-
-    * **同一发布**：标题的发布实体相同，且两条都是发布类标题（发布/上线/Introducing……）；
-    * **近重复**：同一天、标题字二元组 Jaccard ≥ 0.7（同一条快讯的两次转述）。
-
-    合并时整组取已有 key 里最小的一个——LLM 已经分好的组也会被顺带接上。
-    """
+    """72 小时内同一发布实体的发布类标题、或同天 Jaccard ≥ 0.7 的近重复归一组；LLM 只能批内聚合，跨批靠这里接上。"""
     rows = [it for it in (items or []) if isinstance(it, dict)]
     parent = list(range(len(rows)))
 
@@ -158,9 +125,7 @@ def rule_merge(items: Sequence[Dict[str, Any]]) -> int:
                 if _close_in_time(when[i], when[j]):
                     union(i, j)
 
-    # 近重复要求标题里的数字一模一样：「Claude Code 2.1.280 提示词变更 · +1,283 tokens」和
-    # 「2.1.268 … -13,613 tokens」字面几乎相同，却是两次不同的变更；只差「较/比」一个字的两条
-    # 快讯，数字则完全一致。
+    # 近重复还要求数字一致：不同版本的提示词变更标题几乎相同，只是数字不同
     numbers = [tuple(_NUMBER_RE.findall(_norm(it.get("title")))) for it in rows]
     for members in by_day.values():
         grams = {i: _bigrams(rows[i].get("title")) for i in members}
@@ -236,7 +201,6 @@ def _parse_reply(reply: Any, batch_size: int) -> Dict[int, str]:
 
 
 def annotate(items: Sequence[Dict[str, Any]]) -> None:
-    """原地写 ``extra.story_key``；先铺 sig 兜底，LLM 成功的部分再覆盖。"""
     rows = [it for it in (items or []) if isinstance(it, dict)]
     if not rows:
         return

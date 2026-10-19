@@ -6,9 +6,7 @@
 <title>{{ title }}</title>
 </head>
 <body style="margin:0;padding:0;background:#faf9f5;">
-<!-- 公众号稿：和日报首页同一份三部分内容、同一套 token（ivory #faf9f5 / 卡片 #fefdfa / 赤陶 #d97757）。
-     公众号只保留行内样式，所以全部写成 style=""；不用 flex / grid / position / 伪元素，
-     不用斜体（中文没有斜体，见 huashu-design typography 4.3），外链改成文末编号引用（公众号正文外链不可点）。 -->
+<!-- 公众号只保留行内样式：不用 class / flex / grid / position / 伪元素 / 斜体；外链不可点，改成文末编号引用 -->
 <section style="background:#faf9f5;padding:18px 14px 26px;color:#1f1e1d;font-family:-apple-system,BlinkMacSystemFont,PingFang SC,Hiragino Sans GB,Microsoft YaHei,sans-serif;font-size:15px;line-height:1.75;letter-spacing:0.02em;">
 
   <section style="padding:0 2px 14px;border-bottom:1px solid #d7d2ca;">
@@ -16,7 +14,6 @@
     <p style="margin:8px 0 0;font-size:12.5px;line-height:1.6;color:#6b6760;">正文 {{ total }} 条 · 快讯 {{ quick_total }} 条 · 头条 {{ lead_total }} · 深读 {{ deep_total }} · 浅读 {{ glance_total }} · 读完全文约 {{ issue_minutes }} 分钟</p>
   </section>
 
-  <!-- ① 看图知今天 -->
   <section style="margin-top:22px;">
     <p style="margin:0;"><span style="display:inline-block;padding:1px 9px;border-radius:999px;background:#f6e3d9;color:#af5233;font-size:12px;font-weight:700;line-height:1.6;letter-spacing:0;vertical-align:middle;">①</span><span style="font-size:19px;font-weight:800;margin-left:8px;vertical-align:middle;letter-spacing:0;">看图知今天</span></p>
     <p style="margin:6px 0 0;font-size:12.5px;line-height:1.6;color:#6b6760;">头条与深读各一张图 · 图是证据，一句话是导读 · 标 ◔ 的是按原文生成的示意图</p>
@@ -37,7 +34,6 @@
       </section>{% endfor %}</section>{% endfor %}
   </section>
 
-  <!-- ② N 秒读完今天 -->
   <section style="margin-top:26px;padding-top:20px;border-top:1px solid #ebe7e1;">
     <p style="margin:0;"><span style="display:inline-block;padding:1px 9px;border-radius:999px;background:#f6e3d9;color:#af5233;font-size:12px;font-weight:700;line-height:1.6;letter-spacing:0;vertical-align:middle;">②</span><span style="font-size:19px;font-weight:800;margin-left:8px;vertical-align:middle;letter-spacing:0;">{{ brief_secs }} 秒读完今天</span></p>
     <p style="margin:6px 0 0;font-size:12.5px;line-height:1.6;color:#6b6760;">{{ brief_total }} 条，每条一句 · 加粗的是头条与深读，值得往下翻 · 其余看过这一句就算接收</p>
@@ -47,7 +43,6 @@
     </section>{% endfor %}
   </section>
 
-  <!-- ③ 正文：按方向分栏，每条按密度档出卡片 -->
   <section style="margin-top:26px;padding-top:20px;border-top:1px solid #ebe7e1;">
     <p style="margin:0;"><span style="display:inline-block;padding:1px 9px;border-radius:999px;background:#f6e3d9;color:#af5233;font-size:12px;font-weight:700;line-height:1.6;letter-spacing:0;vertical-align:middle;">③</span><span style="font-size:19px;font-weight:800;margin-left:8px;vertical-align:middle;letter-spacing:0;">正文</span></p>
     <p style="margin:6px 0 0;font-size:12.5px;line-height:1.6;color:#6b6760;">深读 {{ deep_with_lead }} 条 · 浅读 {{ glance_total }} 条 · 快讯 {{ quick_total }} 条 · 本期约 {{ issue_chars }} 字 · {{ issue_minutes }} 分钟 · 文中 [n] 见文末原文链接</p>
@@ -81,7 +76,6 @@
     </section>{% endfor %}
   </section>
 
-  <!-- 原文链接：公众号正文外链不可点，统一放文末 -->
   <section style="margin-top:28px;padding-top:16px;border-top:1px solid #d7d2ca;">
     <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#58554f;letter-spacing:0.08em;">原文链接</p>
     {% for ref in refs %}<p style="margin:4px 0 0;font-size:11.5px;line-height:1.6;color:#75716a;word-break:break-all;">[{{ ref.no }}] {{ ref.title }}<br>{{ ref.url }}</p>{% endfor %}

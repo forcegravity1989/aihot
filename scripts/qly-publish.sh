@@ -1,32 +1,4 @@
 #!/bin/bash
-# scripts/qly-publish.sh —— 日报「编辑 + 送达」的固定命令入口（给 Claude 定时任务调用）。
-#
-# 定时任务每次都是全新会话、无人值守：让它现场拼 python 片段既容易出错，也会被权限弹窗
-# 卡住。这里把它要做的每一步收成一条固定命令，项目 .claude/settings.json 只需放行本脚本。
-# 从任意工作目录调用都行（脚本自己 cd 到仓库）。
-#
-#   status  [DAY]        当天出刊状态：草案/选稿/编辑身份/定稿/各方向条数/快讯数（key=value 行）
-#   prompt  [DAY]        打印选稿简报（候选 + 选稿标准 + picks JSON 格式）
-#   apply   FILE [DAY]   把 picks JSON 写进草案（替换规则回退的选稿）并定稿渲染
-#   brief-prompt [DAY]   打印写要点的简报（入选条目 + 原文）
-#   apply-briefs FILE [DAY]  把要点 JSON 写进定稿并重新渲染
-#   stage   OUT_DIR      把数据根的 daily.html 与它链接的详情页、原文配图整理进 OUT_DIR，供发布 artifact
-#   wechat  OUT_DIR [DAY]  公众号贴图（newspic）发布包：index.html（3:4 封面 + 速读图 + N 秒读完纯文本）+ imgs/；
-#                          封面用手工 cover-3x4.png，没有就用 --html 自动截的 cover-3x4-auto.png
-#                          交 baoyu-post-to-wechat 的 wechat-api.ts --type newspic
-#   wechat-article OUT_DIR [DAY]  公众号「文章」发布包（article.html / article.md + imgs/），旧做法留作备用
-#   deepdive-prompt [DAY] [SIG]  深度解读写作简报（自动挑原料最厚的头条 / 深读，或指定 SIG）：原文全文 + 配图 + JSON 格式
-#   deepdive FILE [DAY]  校验编辑写的解读 JSON（关键数字逐字核对原文）并渲染 deepdive.html + 「深度解读」封面
-#   wechat-deep OUT_DIR [DAY]  公众号正文（深度解读）发布包：article.html + article.md + imgs/（含 cover.png）
-#   wechat-push PKG_DIR [--force]  把发布包推进公众号**草稿箱**（不群发）：index.html → 贴图，article.html → 正文；
-#                          成功写 PKG_DIR/pushed.json，已推过就跳过，
-#                          --force 重推。凭证目录 / 运行器 / 发布脚本可用 QLY_WECHAT_CREDS_DIR / _RUNNER / _API 覆盖
-#   figures [DAY]        列出每条的密度档与原文配图（下标 / 本地绝对路径 / kind / 图注），定主图用
-#   depth   FILE [DAY]   把定档 JSON（{"depth":[{sig,depth,figure,figure_note,synth_image}]}）写进定稿并重新渲染
-#   synth   OUT_DIR [DAY] [SIG,SIG]  给头条 / 深读里没有信息图的条目用 Codex 出示意图（每张 3~5 分钟），打印 image=<sig>\t<png>
-#
-# DAY 缺省为今天（UTC，与 qly-daily.sh 一致）。
-
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,6 +9,29 @@ if [ -z "${QLY_DATA_DIR:-}" ]; then
     QLY_DATA_DIR="$("$PY" -c 'from qianliyan.core import paths; print(paths.resolve_data_dir())' 2>/dev/null)"
 fi
 export QLY_DATA_DIR
+
+usage() {
+    cat <<'EOF'
+用法: scripts/qly-publish.sh <命令> [参数]（DAY 缺省为今天 UTC）
+
+  status  [DAY]                  当天出刊状态（key=value 行）
+  prompt  [DAY]                  打印选稿简报
+  apply   FILE [DAY]             把 picks JSON 写进草案并定稿渲染
+  brief-prompt [DAY]             打印写要点的简报
+  apply-briefs FILE [DAY]        把要点 JSON 写进定稿并重新渲染
+  stage   OUT_DIR                把 daily.html 与详情页、配图整理进 OUT_DIR，供发布 artifact
+  wechat  OUT_DIR [DAY]          公众号贴图（newspic）发布包：index.html + imgs/
+  wechat-article OUT_DIR [DAY]   公众号「文章」发布包：article.html / article.md + imgs/
+  deepdive-prompt [DAY] [SIG]    深度解读写作简报（缺省自动挑头条 / 深读）
+  deepdive FILE [DAY]            校验解读 JSON（关键数字逐字核对原文）并渲染 deepdive.html + 封面
+  wechat-deep OUT_DIR [DAY]      公众号正文（深度解读）发布包：article.html + article.md + imgs/
+  wechat-push PKG_DIR [--force]  把发布包推进公众号草稿箱（不群发）；已推过就跳过，--force 重推
+                                 凭证目录 / 运行器 / 发布脚本可用 QLY_WECHAT_CREDS_DIR / _RUNNER / _API 覆盖
+  figures [DAY]                  列出每条的密度档与原文配图
+  depth   FILE [DAY]             把定档 JSON 写进定稿并重新渲染
+  synth   OUT_DIR [DAY] [SIG,SIG]  给缺信息图的头条 / 深读用 Codex 出示意图
+EOF
+}
 
 cmd="${1:-}"
 shift || true
@@ -63,7 +58,7 @@ print("edited_by={0}".format((draft or {}).get("edited_by") or ("human" if picke
 print("final={0}".format("yes" if final else "no"))
 finals = (final or {}).get("items") or []
 print("briefs={0}/{1}".format(sum(1 for e in finals if e.get("takeaway") or e.get("brief")), len(finals)))
-# 提炼按密度档算（ADR D1）：每条都要一句结论，只有头条还要逻辑链
+# 每条都要一句结论，只有头条还要逻辑链
 def _distilled(e):
     return bool(e.get("takeaway")) and (e.get("depth") != "lead" or bool(e.get("logic")))
 print("distilled={0}/{1}".format(sum(1 for e in finals if _distilled(e)), len(finals)))
@@ -143,8 +138,7 @@ def clean(html):
     html = EXTERNAL_IMG.sub("", html)
     return ARCHIVE_LINK.sub(r"<span>\1</span>", html)
 
-# 原文配图（issue #52）定稿时已下载到数据根 media/，页面里是相对路径（首页 media/x，详情页 ../media/x）；
-# 一起复制进发布目录、随页上传，才不会被当成外站图拦掉
+# 原文配图在数据根 media/，随页复制上传才不会被当成外站图拦掉
 MEDIA_REF = re.compile(r"src=\"(?:\.\./)*media/([0-9a-f]{16}\.(?:png|jpg|gif|webp))\"")
 media = set()
 
@@ -167,7 +161,6 @@ for name in sorted(media):
         (out / "media").mkdir(exist_ok=True)
         shutil.copyfile(data / "media" / name, out / "media" / name)
         copied.append("media/" + name)
-# 速读图（第一部分的独立 PNG，页首「⤓ 速读图」链到它）
 for extra in ("speed.png",):
     if (data / extra).is_file() and 'href="{0}"'.format(extra) in page:
         shutil.copyfile(data / extra, out / extra)
@@ -177,8 +170,7 @@ print("files=daily.html " + " ".join(stories + copied))
 PYEOF
         ;;
     wechat)
-        # 公众号贴图发布包：archive/<DAY>/wechat-newspic.json（--html 时出的标题 + 纯文本）配上速读图与封面。
-        # 贴图的图按 index.html 里 <img> 的顺序上传：首图是 3:4 封面，速读图在后
+        # 贴图的图按 index.html 里 <img> 的顺序上传，首图即封面
         OUT="${1:?用法: qly-publish.sh wechat OUT_DIR [DAY]}"
         DAY="${2:-$(date -u +%Y-%m-%d)}"
         "$PY" - "$QLY_DATA_DIR" "$OUT" "$DAY" <<'PYEOF2'
@@ -192,8 +184,7 @@ if not src.is_file():
     sys.exit("wechat-newspic.json 不存在：先 --html 重出 {0}".format(day))
 post = json.loads(src.read_text(encoding="utf-8"))
 (out / "imgs").mkdir(parents=True, exist_ok=True)
-# 贴图首图就是封面，公众号要求 3:4：手工 cover-3x4.png 优先，没有就用 --html 时程序截的 cover-3x4-auto.png
-# （标准底图 + 竖版叠字）；第二张是速读图。横版 2.35:1 封面留给正文，不进贴图
+# 公众号要求贴图封面 3:4：手工 cover-3x4.png 优先，没有就用 --html 自动截的；横版封面留给正文
 cover = next((n for n in ("cover-3x4.png", "cover-3x4-auto.png") if (arch / n).is_file()), "")
 imgs = []
 for name, dest in ((cover, "01-cover.png"), ("speed.png", "02-speed.png")):
@@ -230,8 +221,7 @@ PYEOF2
         exit "${PIPESTATUS[0]}"
         ;;
     wechat-deep)
-        # 深度解读发布包：archive/<DAY>/deepdive.html（图走 ../../media/）→ article.html（图改成 imgs/），
-        # article.md 给发布脚本取标题 / 摘要，封面 cover-deep.png → imgs/cover.png
+        # article.md 给发布脚本取标题 / 摘要
         OUT="${1:?用法: qly-publish.sh wechat-deep OUT_DIR [DAY]}"
         DAY="${2:-$(date -u +%Y-%m-%d)}"
         "$PY" - "$QLY_DATA_DIR" "$OUT" "$DAY" <<'PYEOF2'
@@ -269,15 +259,13 @@ print("cover=yes")
 PYEOF2
         ;;
     wechat-push)
-        # 发布包 → 公众号草稿箱（baoyu-post-to-wechat 的 wechat-api.ts，贴图 newspic / 正文 news）。只存草稿，群发永远由人在后台点。
-        # 凭证在 QLY_WECHAT_CREDS_DIR/.baoyu-skills/.env（发布脚本按 cwd 找），所以在那个目录下运行
+        # 只存草稿，群发永远由人在后台点。发布脚本按 cwd 找凭证，所以在 QLY_WECHAT_CREDS_DIR 下运行
         PKG="${1:?用法: qly-publish.sh wechat-push PKG_DIR [--force]}"
         "$PY" - "$PKG" "${2:-}" <<'PYEOF2'
 import datetime, json, os, shlex, subprocess, sys
 from pathlib import Path
 
 pkg, force = Path(sys.argv[1]).resolve(), sys.argv[2] == "--force"
-# 包里是 index.html 就是贴图（wechat 打的），article.html 就是正文（wechat-deep 打的，要带封面）
 if (pkg / "index.html").is_file():
     page, extra = pkg / "index.html", ["--type", "newspic"]
 elif (pkg / "article.html").is_file() and (pkg / "imgs" / "cover.png").is_file():
@@ -324,8 +312,6 @@ print("title={0}".format(record["title"]))
 PYEOF2
         ;;
     wechat-article)
-        # 公众号稿发布包：archive/<DAY>/wechat.md + 它引用的配图 + 速读图，图片改成包内相对路径 imgs/，
-        # 交给 baoyu-post-to-wechat（API 模式会逐张上传正文图；封面放 imgs/cover.png）
         OUT="${1:?用法: qly-publish.sh wechat-article OUT_DIR [DAY]}"
         DAY="${2:-$(date -u +%Y-%m-%d)}"
         "$PY" - "$QLY_DATA_DIR" "$OUT" "$DAY" <<'PYEOF2'
@@ -346,7 +332,7 @@ def local(match):
         return match.group(0)
     path = (src.parent / ref).resolve()
     if not path.is_file():
-        return ""  # 图丢了就不留破图
+        return ""
     shutil.copyfile(path, out / "imgs" / path.name)
     copied.append("imgs/" + path.name)
     return "![{0}](imgs/{1})".format(alt, path.name)
@@ -355,8 +341,7 @@ text = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)\)", local, text)
 (out / "article.md").write_text(text, encoding="utf-8")
 print("article={0}".format(out / "article.md"))
 
-# HTML 正文（和首页同一套样式）：<img src> 同样改成包内 imgs/；发布脚本读 article.html，
-# 标题 / 摘要从同名的 article.md frontmatter 取
+# 发布脚本读 article.html，标题 / 摘要从同名 article.md 的 frontmatter 取
 html_src = src.with_suffix(".html")
 if html_src.is_file():
     def local_img(match):
@@ -373,7 +358,6 @@ if html_src.is_file():
     (out / "article.html").write_text(html, encoding="utf-8")
     print("html={0}".format(out / "article.html"))
 print("images={0}".format(len(copied)))
-# 封面：archive/<日>/cover.png（手工）优先，没有就用程序截的 cover-auto.png
 for name in ("cover.png", "cover-auto.png"):
     if (src.parent / name).is_file():
         shutil.copyfile(src.parent / name, out / "imgs" / "cover.png")
@@ -411,7 +395,6 @@ PYEOF2
         exit $rc
         ;;
     synth)
-        # 示意图：提示词 = 风格模板 + 日报提炼 + 原文全文；Codex 出图 → 铺象牙底 → 缩到 1280 宽。
         # 出不来就跳过那条（页面退回数字卡），不阻塞出刊
         OUT="${1:?用法: qly-publish.sh synth OUT_DIR [DAY] [SIG,SIG]}"
         DAY="${2:-$(date -u +%Y-%m-%d)}"
@@ -442,7 +425,7 @@ PYEOF2
         echo "status=ok images=$n"
         ;;
     *)
-        sed -n '2,28p' "$0"
+        usage
         exit 1
         ;;
 esac

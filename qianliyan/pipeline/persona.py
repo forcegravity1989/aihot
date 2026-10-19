@@ -1,14 +1,3 @@
-"""pipeline/persona.py —— 人物画像（builders 大牛聚合，spec-v0.3 §3）。
-
-把统一池里 ``source_kind=="builders"`` 且带 ``extra.handle`` 的条目按人聚合成
-persona 卡片：影响力数字、代表作、主题、近期关注点。产物写
-``$QLY_DATA_DIR/personas.json`` 与 ``personas/<handle>.md``。
-
-**回退公约（spec §5）**：``topics`` / ``recent_focus`` 优先用 LLM 聚类/概括，
-LLM 不可用或任何异常一律走规则回退（topics=高频 tag/关键词，
-recent_focus=最高互动条目的标题），**绝不向上抛**。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -25,15 +14,10 @@ __all__ = [
     "build_person_from_news",
 ]
 
-# 聚合只认这一类条目
 BUILDERS_KIND = "builders"
-# topics 取前 N 个主题
 TOPICS_MAX = 5
-# top_items 取前 N 条代表作
 TOP_ITEMS_MAX = 3
-# topics 回退时排除的「无信息量」标签
 _GENERIC_TAGS = {"x", "builders", "twitter", "tweet"}
-# 关键词回退时的停用词（英文常见词 + 少量社媒噪声）
 _STOPWORDS = {
     "the", "a", "an", "and", "or", "but", "for", "to", "of", "in", "on", "at",
     "is", "are", "was", "were", "be", "been", "with", "that", "this", "it",
@@ -51,9 +35,6 @@ SYSTEM_PROMPT = (
 )
 
 
-# =========================================================================
-# 工具
-# =========================================================================
 def _norm_handle(handle: Any) -> str:
     return str(handle or "").strip().lstrip("@").casefold()
 
@@ -78,7 +59,6 @@ def _as_int(value: Any) -> Optional[int]:
 
 
 def item_engagement(item: Dict[str, Any]) -> int:
-    """单条 item 的互动量：``metrics.engagement`` 优先，否则 likes+retweets+replies。"""
     metrics = _metrics(item)
     direct = _as_int(metrics.get("engagement"))
     if direct is not None:
@@ -107,7 +87,6 @@ def _builders_with_handle(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any
 
 
 def _fallback_topics(items: Sequence[Dict[str, Any]]) -> List[str]:
-    """回退主题：先数 tag 词频（剔除通用标签），不足再从标题抽高频关键词。"""
     counts: Dict[str, int] = {}
     order: List[str] = []
     for item in items:
@@ -123,7 +102,6 @@ def _fallback_topics(items: Sequence[Dict[str, Any]]) -> List[str]:
     if topics:
         return topics
 
-    # tag 不够用 → 从标题里抽关键词
     kw_counts: Dict[str, int] = {}
     kw_order: List[str] = []
     for item in items:
@@ -137,7 +115,6 @@ def _fallback_topics(items: Sequence[Dict[str, Any]]) -> List[str]:
 
 
 def _avatar_path(handle: str) -> Optional[str]:
-    """``builder-avatars/<handle>.png`` 若存在则返回相对路径，否则 None。"""
     rel = "builder-avatars/{0}.png".format(handle)
     try:
         if paths.data_path("builder-avatars", "{0}.png".format(handle)).is_file():
@@ -147,24 +124,15 @@ def _avatar_path(handle: str) -> Optional[str]:
     return None
 
 
-# =========================================================================
-# 聚合
-# =========================================================================
 def build_personas(
     items: Sequence[Dict[str, Any]],
     cfg: Optional[Dict[str, Any]] = None,
     client: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
-    """把 builders 条目按 ``extra.handle`` 聚合成 persona 列表（total_engagement 降序）。
-
-    ``cfg`` 预留（当前未用到具体字段）；``client`` 可注入 LLM 客户端，缺省从
-    ``LLMClient.from_env()`` 取。LLM 只增强 ``topics`` / ``recent_focus``，不可用即回退。
-    """
     rows = _builders_with_handle(items)
     if not rows:
         return []
 
-    # 按 handle 分组（保留首见的展示形态）
     groups: Dict[str, List[Dict[str, Any]]] = {}
     display: Dict[str, str] = {}
     order: List[str] = []
@@ -181,7 +149,6 @@ def build_personas(
     for key in order:
         personas.append(_build_one(display[key], groups[key]))
 
-    # LLM 增强（可选、必有回退，绝不向上抛）
     _maybe_enhance(personas, groups, client)
 
     personas.sort(key=lambda p: p.get("total_engagement") or 0, reverse=True)
@@ -189,7 +156,6 @@ def build_personas(
 
 
 def _build_one(handle: str, group: List[Dict[str, Any]]) -> Dict[str, Any]:
-    # 按互动量降序，代表作 / 展示信息都取自高互动条目
     ranked = sorted(
         enumerate(group),
         key=lambda pair: (-item_engagement(pair[1]), pair[0]),
@@ -246,9 +212,6 @@ def _build_one(handle: str, group: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-# =========================================================================
-# LLM 增强
-# =========================================================================
 def _maybe_enhance(
     personas: List[Dict[str, Any]],
     groups: Dict[str, List[Dict[str, Any]]],
@@ -308,11 +271,7 @@ def _build_prompt(persona: Dict[str, Any], group: Sequence[Dict[str, Any]]) -> s
     )
 
 
-# =========================================================================
-# 写盘
-# =========================================================================
 def write_personas(personas: Sequence[Dict[str, Any]]) -> None:
-    """写 ``personas.json``（全量）+ ``personas/<handle>.md``（逐人卡片）。"""
     rows = [p for p in (personas or []) if isinstance(p, dict)]
     storage.write_json(paths.data_path("personas.json"), rows)
     for persona in rows:
@@ -360,18 +319,11 @@ def _render_md(persona: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-# =========================================================================
-# 预留接口壳
-# =========================================================================
 def build_person_from_news(
     items: Sequence[Dict[str, Any]],
     cfg: Optional[Dict[str, Any]] = None,
     client: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
-    """从新闻/资讯条目里抽取「新闻人物」画像的接口壳。
-
-    v0.3 未实装（仅 builders 类人物画像落地）；保留签名以便后续从 aihot/local
-    条目里做实体识别与人物聚合。当前恒返回空列表。
-    """
+    """未实装的接口壳，恒返回空列表。"""
     logger.debug("build_person_from_news 尚未实装（v0.3 仅 builders 人物画像）")
     return []

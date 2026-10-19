@@ -1,9 +1,3 @@
-"""core/storage.py —— JSONL / JSON 的原子读写与原始池按眼增量合并。
-
-原子写统一走「同目录 tmp 文件 + ``os.replace``」，保证读侧永远看不到半截文件。
-``merge_pool_by_eyes`` 是增量抓取的核心语义：**没跑的眼数据不动，跑过的眼以本次快照为准**。
-"""
-
 from __future__ import annotations
 
 import json
@@ -26,7 +20,6 @@ def _as_path(path: PathLike) -> Path:
 
 
 def _atomic_write_text(path: PathLike, text: str) -> None:
-    """原子写文本：写同目录 tmp 文件后 ``os.replace`` 覆盖目标。"""
     target = _as_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
@@ -47,7 +40,6 @@ def _atomic_write_text(path: PathLike, text: str) -> None:
 
 
 def read_jsonl(path: PathLike) -> List[Dict[str, Any]]:
-    """读 JSONL；文件不存在返回 ``[]``，坏行跳过并 warning。"""
     target = _as_path(path)
     if not target.is_file():
         logger.debug("JSONL 不存在，返回空列表: %s", target)
@@ -76,7 +68,6 @@ def read_jsonl(path: PathLike) -> List[Dict[str, Any]]:
 
 
 def write_jsonl(path: PathLike, rows: Iterable[Dict[str, Any]]) -> None:
-    """原子写 JSONL（UTF-8，不转义非 ASCII）。"""
     buffer: List[str] = []
     for row in rows or []:
         try:
@@ -89,7 +80,6 @@ def write_jsonl(path: PathLike, rows: Iterable[Dict[str, Any]]) -> None:
 
 
 def read_json(path: PathLike, default: Any = None) -> Any:
-    """读 JSON；文件缺失或损坏时返回 ``default``。"""
     target = _as_path(path)
     if not target.is_file():
         return default
@@ -102,7 +92,6 @@ def read_json(path: PathLike, default: Any = None) -> Any:
 
 
 def write_json(path: PathLike, obj: Any) -> None:
-    """原子写 JSON（缩进 2，不转义非 ASCII）。"""
     text = json.dumps(obj, ensure_ascii=False, indent=2, default=str) + "\n"
     _atomic_write_text(path, text)
 
@@ -127,13 +116,7 @@ def merge_pool_by_eyes(
     max_age_days: Any = None,
     now: Optional[datetime] = None,
 ) -> List[Dict[str, Any]]:
-    """按 ``source_kind`` 增量合并原始池。
-
-    1. 保留 ``old_raw`` 中 ``source_kind not in ran_kinds`` 的条目（没跑的眼数据不动）；
-    2. 丢弃 ``old_raw`` 中 ``source_kind in ran_kinds`` 的条目，换成 ``new_items``；
-    3. ``max_age_days`` 非空时按 ``date`` 淘汰过龄条目（时间不可解析的保留）；
-    4. 返回合并池，供 ``utils.dedup_and_score`` 消费。
-    """
+    """没跑的眼数据不动，跑过的眼以本次快照为准；max_age_days 淘汰过龄条目（时间不可解析的保留）。"""
     kinds = set(ran_kinds or [])
     merged: List[Dict[str, Any]] = []
     dropped = 0

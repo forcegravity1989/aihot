@@ -1,13 +1,3 @@
-"""pipeline/headline_fit_agent.py —— 头条适配度打分（spec §9.5）。
-
-原地为 item 写 ``extra.headline_fit``（0–1 浮点），回答「这条适不适合当日报头条」。
-hotness 衡量的是热度，headline_fit 衡量的是**可读性与叙事价值**——两者互补。
-
-**回退公约（spec §5）**：LLM 不可用或任何异常 → 规则回退
-``headline_fit = min(1.0, hotness / max_hotness)``（池内最大热度归一化；
-max_hotness 为 0 时全部记 0.0）。绝不向上抛。
-"""
-
 from __future__ import annotations
 
 import json
@@ -50,7 +40,6 @@ def _clamp(value: Any) -> float:
 
 
 def fallback_scores(items: Sequence[Dict[str, Any]]) -> List[float]:
-    """规则回退分：``min(1.0, hotness / max_hotness)``，保序返回。"""
     rows = [it for it in (items or []) if isinstance(it, dict)]
     if not rows:
         return []
@@ -113,7 +102,6 @@ def _parse_reply(reply: Any, batch_size: int) -> Dict[int, float]:
 
 
 def annotate(items: Sequence[Dict[str, Any]]) -> None:
-    """原地写 ``extra.headline_fit``；先铺规则分，LLM 成功的部分再覆盖。"""
     rows = [it for it in (items or []) if isinstance(it, dict)]
     if not rows:
         return

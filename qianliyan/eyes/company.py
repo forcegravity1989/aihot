@@ -1,12 +1,3 @@
-"""eyes/company.py —— 内眼 company：心声社区 + 稼先 两个内网信源，CDP 优先、代理兜底。
-
-所有选择器/URL 收敛在本文件头部常量块——内网联调只改这里。降级链：CDP 抓取失败 →
-``engine.cdp.fetch_via_proxy`` 兜底（走通用链接启发式，因为拿到的是原始 HTML 而非可查询 DOM）→
-单信源两条路都失败则跳过该信源、记 warning；若两个信源全灭，最终把最后一次异常向上抛出，
-由 ``cli.sync`` 统一记账（单眼故障不外溢）。不要求真实联调：本地/CI 环境下 playwright 多半缺失、
-代理多半连不上，属预期内的“全灭抛异常”路径。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -17,7 +8,7 @@ from ..engine import cdp, html_page
 
 logger = logging.getLogger(__name__)
 
-# ---- 模块头部常量块：内网联调（选择器/URL）只改这里 ------------------------
+# 内网联调（选择器/URL）只改这里
 XINSHENG_LIST_URL = "https://xinsheng.company.internal/c/ai-platform"
 XINSHENG_ITEM_SELECTOR = ".topic-list .topic-item"
 XINSHENG_TITLE_SELECTOR = ".topic-title"
@@ -49,11 +40,9 @@ INTERNAL_SOURCES: List[Dict[str, str]] = [
         "link_selector": JIAXIAN_LINK_SELECTOR,
     },
 ]
-# ---------------------------------------------------------------------------
 
 
 def parse_payload(entries: Any, cfg: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    """把已抓取的标准化条目（``{title, url, date?, summary?}``）转成标准 item；纯函数，不出网。"""
     cfg = cfg or {}
     source_name = cfg.get("source") or "内网"
     weight = float(cfg.get("weight", DEFAULT_WEIGHT))
@@ -81,7 +70,6 @@ def parse_payload(entries: Any, cfg: Optional[Dict[str, Any]] = None) -> List[Di
 
 
 def _scrape_via_cdp(source: Dict[str, str]) -> List[Dict[str, Any]]:
-    """打开列表页、等待选择器出现，用选择器抽标题与链接。调用方负责异常处理与资源释放已在此完成。"""
     playwright_ctx = browser = None
     try:
         playwright_ctx, browser = cdp.connect()
@@ -107,7 +95,7 @@ def _scrape_via_cdp(source: Dict[str, str]) -> List[Dict[str, Any]]:
 
 
 def _scrape_via_proxy(source: Dict[str, str]) -> List[Dict[str, Any]]:
-    """CDP 不可用时的兜底：走内网代理拉原始 HTML，用通用链接启发式抽取（拿不到 DOM，无法用选择器）。"""
+    """拿到的是原始 HTML 而非可查询 DOM，只能用通用链接启发式。"""
     payload = cdp.fetch_via_proxy(source["url"])
     html_text = ""
     if isinstance(payload, dict):
@@ -120,7 +108,7 @@ def _scrape_via_proxy(source: Dict[str, str]) -> List[Dict[str, Any]]:
 
 
 def fetch(cfg: Optional[Dict[str, Any]] = None, since: Any = None) -> List[Dict[str, Any]]:
-    """心声 + 稼先：CDP 优先、代理兜底；单信源双降级失败则跳过，两个信源全灭则抛出最后一次异常。"""
+    """单信源 CDP 与代理都失败则跳过；两个信源全灭才抛最后一次异常。"""
     cfg = cfg or {}
     weight = float(cfg.get("weight", DEFAULT_WEIGHT))
 

@@ -1,23 +1,3 @@
-"""pipeline/svg_charts.py —— 日报对比图：数据 → 内联 SVG。
-
-视觉语言取自 ppt-master（hugohe3/ppt-master）的图表模板：浅色网格、坐标轴刻度、数值直接
-标在图上、白描边的数据点、主角一行/一点用强调色。它的模板是写死坐标的示例 SVG，面向
-「AI 逐页改写」；日报要的是**数据进、图出、数字不经过任何生成环节**，所以这里按同样的
-画法用代码生成。
-
-颜色一律走 class（``qc-*``，定义在 ``templates/_theme.css``），不写死十六进制——
-明暗两套主题由页面 token 自动切换。
-
-三种图（``chart["type"]``）：
-
-* ``bar``：横向条形，``rows: [{label, value, note?, highlight?}]``；
-* ``dumbbell``：前代→新版，``rows: [{label, from, to, highlight?}]``，右侧标变化量；
-* ``scatter``：两个指标的关系（如分数 vs 成本），
-  ``points: [{label, x, y, highlight?}]`` + ``x_label`` / ``y_label``。
-
-输入不合格（非数字、点数不够）时 :func:`clean` 返回 None，调用方就不画——宁缺毋滥。
-"""
-
 from __future__ import annotations
 
 import html
@@ -27,18 +7,15 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 __all__ = ["TYPES", "clean", "render"]
 
 TYPES = ("bar", "dumbbell", "scatter")
-#: 条形/哑铃的行数范围，散点的点数范围
+# 条形/哑铃的行数范围，散点的点数范围
 ROWS_RANGE = (2, 8)
 POINTS_RANGE = (2, 10)
 
-#: 画布宽度（viewBox 单位；实际按容器宽度等比缩放）
+# viewBox 单位，实际按容器宽度等比缩放
 WIDTH = 640
 _CURRENCY = ("$", "¥", "￥", "€", "£")
 
 
-# ---------------------------------------------------------------------------
-# 校验
-# ---------------------------------------------------------------------------
 def _num(value: Any) -> Optional[float]:
     if isinstance(value, bool):
         return None
@@ -54,7 +31,6 @@ def _text(value: Any, limit: int = 40) -> str:
 
 
 def clean(raw: Any) -> Optional[Dict[str, Any]]:
-    """规整并校验图表数据；不合格返回 None。"""
     if not isinstance(raw, dict):
         return None
     kind = str(raw.get("type") or "bar").strip().lower()
@@ -108,9 +84,6 @@ def clean(raw: Any) -> Optional[Dict[str, Any]]:
     return out
 
 
-# ---------------------------------------------------------------------------
-# 刻度与格式
-# ---------------------------------------------------------------------------
 def _nice_ticks(lo: float, hi: float, count: int = 5) -> List[float]:
     """1/2/2.5/5×10^k 的整齐刻度，覆盖 [lo, hi]。"""
     if hi <= lo:
@@ -153,9 +126,6 @@ def _svg(height: float, body: Sequence[str], title: str) -> str:
     ).format(w=WIDTH, h=height, t=_e(title), b="".join(body))
 
 
-# ---------------------------------------------------------------------------
-# 条形
-# ---------------------------------------------------------------------------
 def _bar(chart: Dict[str, Any]) -> str:
     rows, unit = chart["rows"], chart["unit"]
     label_w, value_w, note_w = 190, 64, (56 if any(r["note"] for r in rows) else 0)
@@ -187,9 +157,6 @@ def _bar(chart: Dict[str, Any]) -> str:
     return _svg(bottom + 26, body, chart["title"])
 
 
-# ---------------------------------------------------------------------------
-# 哑铃：前代 → 新版
-# ---------------------------------------------------------------------------
 def _dumbbell(chart: Dict[str, Any]) -> str:
     rows, unit = chart["rows"], chart["unit"]
     label_w, delta_w = 170, 70
@@ -241,9 +208,6 @@ def _dumbbell(chart: Dict[str, Any]) -> str:
     return _svg(bottom + 26, body, chart["title"])
 
 
-# ---------------------------------------------------------------------------
-# 散点：两个指标的关系
-# ---------------------------------------------------------------------------
 def _scatter(chart: Dict[str, Any]) -> str:
     points = chart["points"]
     left, right, top, bottom = 64, WIDTH - 24, 16, 256
@@ -279,7 +243,7 @@ def _scatter(chart: Dict[str, Any]) -> str:
     if chart["y_label"]:
         body.append('<text class="qc-axis-title" x="14" y="{0:.1f}" text-anchor="middle" transform="rotate(-90 14 {0:.1f})">{1}</text>'.format(
             (top + bottom) / 2, _e(chart["y_label"])))
-    # 先画普通点、再画主角，主角压在最上层
+    # 主角最后画，压在最上层
     for point in sorted(points, key=lambda p: p["highlight"]):
         cx, cy = sx(point["x"]), sy(point["y"])
         hl = " is-hl" if point["highlight"] else ""
@@ -292,7 +256,6 @@ def _scatter(chart: Dict[str, Any]) -> str:
 
 
 def render(chart: Optional[Dict[str, Any]]) -> str:
-    """已校验的图表数据 → SVG 字符串；None 返回空串。"""
     if not chart:
         return ""
     kind = chart.get("type") or "bar"

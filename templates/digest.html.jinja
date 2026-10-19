@@ -7,9 +7,7 @@
 <title>{{ page_title }}</title>
 <style>{{ theme_css|safe }}</style>
 <style>
-/* 简报页沿用了一批历史类名（.card / .board / .sidebar…），它们引用的是旧变量名。
-   这里把旧名字**别名到设计系统 token** 上：颜色的唯一真值仍在 templates/_theme.css，
-   这一层只做改名映射，不再自带任何色值——所以改主题只改 _theme.css 一处。 */
+/* 旧类名用的旧变量名别名到 _theme.css 的 token；这里不放色值 */
 :root {
   --bg: var(--bg-0);
   --card: var(--surface-card);
@@ -31,10 +29,8 @@
 body { font-size: 15px; line-height: 1.6; }
 a:hover { text-decoration: underline; }
 
-/* ---------- 整体布局：侧栏 + 主体 ---------- */
 .layout { max-width: 1440px; margin: 0 auto; display: flex; align-items: flex-start; }
 
-/* ---------- 侧栏（左，粘性） ---------- */
 .sidebar {
   position: sticky; top: 0; height: 100vh; width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
   display: flex; flex-direction: column;
@@ -84,7 +80,6 @@ kbd {
   border-radius: 5px; padding: 0 5px; color: var(--text-1);
 }
 
-/* ---------- 侧栏版面导航（纵向列表，不是横向 chip） ---------- */
 .boardnav { display: flex; flex-direction: column; gap: 1px; }
 .boardnav a {
   font-size: 13.5px; color: var(--text-1); border-radius: var(--radius-sm); padding: 6px 10px;
@@ -94,9 +89,6 @@ kbd {
 .boardnav .n { color: var(--text-2); font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .sidebar-foot { margin-top: auto; padding-top: 14px; color: var(--text-2); font-size: 10.5px; }
 
-/* ---------- 变更情报版面 ----------
-   「他说的被真实的代码/提示词 diff 证实了吗」——版本变更卡（token 增减）+ 叙事↔实证
-   映射。这批数据此前算了就扔，只活在内存里。 */
 .chg-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .chg-card {
   padding: 12px 14px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm);
@@ -114,12 +106,8 @@ kbd {
 .corrob-claim { margin: 6px 0 0; font-size: 13px; line-height: 1.7; color: var(--text-1); }
 .corrob-ev { margin: 4px 0 0; font-size: 12.5px; color: var(--text-2); }
 
-/* ---------- 主体 ---------- */
 .main-col { flex: 1; min-width: 0; padding: 28px 32px 72px; }
 
-/* ---------- 头条区：日报主体开场 ----------
-   参照 TLDR AI 的做法：不放配图，头条条目就是加粗大字标题 + 完整摘要段落，
-   排版层级靠字号/字重/留白做出来，不是靠图片和卡片阴影。 */
 .hero { margin-bottom: 36px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
 .hero-label {
   font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
@@ -133,15 +121,12 @@ kbd {
 .hero-row:first-child { border-top: 0; padding-top: 0; }
 .hero-row .card-title { font-size: 16px; }
 
-/* ---------- 版面 ---------- */
 .board { margin-top: 30px; scroll-margin-top: 20px; }
 .board-head { display: flex; align-items: baseline; gap: 10px; border-bottom: 2px solid var(--ink); padding-bottom: 8px; }
 .board-head h2 { font-size: 17px; margin: 0; }
 .board-head .n { color: var(--faint); font-size: 13px; }
 .board-head .desc { color: var(--muted); font-size: 13px; margin-left: auto; }
 .cards { list-style: none; margin: 0; padding: 0; }
-/* 参照 Techmeme/Hacker News 的信息密度：条目是列表行，不是带阴影的独立卡片——
-   视觉层级靠字重/留白/分隔线做，不靠圆角+阴影的"产品卡片"堆叠。 */
 .card {
   display: flex; gap: 12px; padding: 13px 2px; border-top: 1px solid var(--line);
   scroll-margin-top: 20px;
@@ -166,8 +151,6 @@ kbd {
   margin: 5px 0 0; color: var(--muted); font-size: 13.5px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-/* 「更多信源」——照 Techmeme「More: A, B, C」的做法做成醒目正文行，
-   不是角落里的小灰字标签：交叉验证是这款产品的核心主张，值得被看见。 */
 .more-sources {
   margin: 6px 0 0; padding-left: 10px; border-left: 2px solid var(--brand);
   color: var(--ink); font-size: 13px; line-height: 1.5;
@@ -179,7 +162,6 @@ kbd {
 .card-meta .go { color: var(--brand); margin-left: auto; }
 .empty { color: var(--faint); font-size: 13.5px; padding: 18px 4px; }
 
-/* ---------- 特别版面：为你推荐 / 人物画像 ---------- */
 .special-board { margin-top: 34px; scroll-margin-top: 20px; }
 .special-board .board-head { border-bottom-color: var(--brand); }
 .reasons { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
@@ -215,7 +197,6 @@ kbd {
 }
 .persona-stats b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* ---------- 命令面板 ---------- */
 .palette-mask {
   display: none; position: fixed; inset: 0; z-index: 90;
   background: rgba(23, 26, 33, .35); backdrop-filter: blur(2px);
@@ -514,7 +495,6 @@ footer { margin-top: 46px; padding-top: 16px; border-top: 1px solid var(--line);
 (function () {
   "use strict";
 
-  /* ---------- 数据 ---------- */
   var INDEX = [];
   try {
     var node = document.getElementById("qly-data");
@@ -528,7 +508,6 @@ footer { margin-top: 46px; padding-top: 16px; border-top: 1px solid var(--line);
     return isNaN(v) ? 0 : v;
   }
 
-  /* ---------- 三排序按钮：原地重排 ---------- */
   var COMPARATORS = {
     hot: function (a, b) { return num(b, "hotness") - num(a, "hotness"); },
     time: function (a, b) { return num(b, "ts") - num(a, "ts"); },
@@ -557,7 +536,6 @@ footer { margin-top: 46px; padding-top: 16px; border-top: 1px solid var(--line);
     });
   }
 
-  /* ---------- Ctrl+K 命令面板：跨版面模糊过滤 ---------- */
   var mask = document.getElementById("qly-palette");
   var input = document.getElementById("qly-palette-input");
   var list = document.getElementById("qly-palette-results");

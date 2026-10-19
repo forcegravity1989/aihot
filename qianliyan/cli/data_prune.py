@@ -1,15 +1,3 @@
-"""cli/data_prune.py —— 数据目录清理（spec §10.5）。
-
-```
-python -m qianliyan.cli.data_prune [--dry-run|--yes] [--keep-items-days N]
-                                    [--clear-ephemeral] [--git-gc]
-```
-
-``--dry-run`` 默认开启（只打印将删除的内容），传 ``--yes`` 才真删。
-``$QLY_DATA_DIR/repos/`` 是长期缓存（insights clone），**不属于**临时文件——
-``--clear-ephemeral`` 只清 ``cache/`` 与 ``mirrors/``。
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -25,7 +13,7 @@ from ..core import paths, utils
 
 logger = logging.getLogger("qianliyan.cli.data_prune")
 
-#: --clear-ephemeral 清理的目录（不含 repos/ —— 那是长期缓存）
+# 不含 repos/：那是 insights 的长期 clone 缓存
 EPHEMERAL_DIRS = ("cache", "mirrors")
 DATE_ROOTS = ("items", "archive")
 
@@ -64,9 +52,6 @@ def _remove_dir(path: Path) -> None:
         logger.warning("删除目录失败 %s: %s", path, exc)
 
 
-# =========================================================================
-# 主逻辑
-# =========================================================================
 def cmd_prune(
     keep_items_days: Optional[float],
     clear_ephemeral: bool,
@@ -125,9 +110,6 @@ def cmd_prune(
     return 0
 
 
-# =========================================================================
-# CLI
-# =========================================================================
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m qianliyan.cli.data_prune", description="千里眼数据目录清理",

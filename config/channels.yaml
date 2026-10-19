@@ -1,38 +1,19 @@
-# channels.yaml —— 频道 match 规则（spec §8.2 + spec-v0.3 §15 唯一权威）
-#
-# 规则语义：
-#   * 一个频道一个 match 块，**块内字段之间是 AND**；
-#   * 可用字段：
-#       tags_any        item.tags 命中任一（大小写不敏感）
-#       tags_all        item.tags 命中全部
-#       sources_include 对 source_list 任一元素做大小写不敏感「子串」匹配
-#       keywords_any    title + summary casefold 后的子串匹配
-#       aihot_category  extra.category 命中任一
-#       categories      extra.category / extra.source_category 命中任一（源类目，spec-v0.3 §15）
-#       formats         extra.format 命中任一（news/blog/video/talk/podcast/repo/paper/x，§12/§15）
-#       platforms       extra.platform 命中任一
-#       source_kinds    item.source_kind 命中任一
-#   * 需要 OR 时用 any_of: [块, 块, ...]，任一子块整体命中即算命中。
-#
-# 频道字段：name（英文标识，同时是 channels/<name>.md 的文件名）、
-#           title（中文显示名）、limit（默认取 defaults.limit）。
-#
-# 一条 item 可同时进入多个频道；频道内按 hotness 降序并截断 limit。
-#
-# spec-v0.3 §15 重构：以 format + tag 收敛、凸显用户关切（头条 / models / claude-code /
-# practices / talks / podcasts / trending / papers / builders-live / company-internal）；
-# 同时保留 model-dev / plugins / x-watch / releases / research 等既有频道（向后兼容）。
+# match 块内字段之间是 AND；要 OR 用 any_of: [块, 块, ...]。可用字段：
+#   tags_any / tags_all  item.tags 命中任一 / 全部（大小写不敏感）
+#   sources_include      对 source_list 做大小写不敏感子串匹配
+#   keywords_any         title + summary casefold 后子串匹配
+#   aihot_category       extra.category 命中任一
+#   categories           extra.category / extra.source_category 命中任一
+#   formats              extra.format 命中任一（news/blog/video/talk/podcast/repo/paper/x）
+#   platforms            extra.platform 命中任一
+#   source_kinds         item.source_kind 命中任一
+# name 同时是 channels/<name>.md 的文件名；一条 item 可进多个频道，频道内按 hotness 降序截断 limit
 
 defaults:
   limit: 30
-  # 同一信源在单个频道内最多占几席（频道级可用 max_per_source 覆盖，0 = 不限）。
-  # 软上限：铺不满 limit 时按热度回填被压下的条目，所以天生只有一两个源的频道
-  # （trending / change-intel）不会因此变空。
+  # 同一信源在单个频道内最多占几席（频道级可覆盖，0 = 不限）；软上限，铺不满 limit 时按热度回填
   max_per_source: 3
-  # 组织级归并：同一家的多个信源算作一个，否则「模型发布」频道 top5 会全是
-  # Anthropic News + Anthropic Engineering + Claude Blog——三个 source，一家公司，
-  # 而这个频道存在的意义正是让你看到不同厂商。
-  # 匹配同 model-sources.yaml：对 source 名做大小写不敏感子串匹配，命中多条取最长 key。
+  # 同一家的多个信源在 max_per_source 里算一个；匹配规则同 model-sources.yaml（子串、取最长 key）
   source_groups:
     anthropic:  ["anthropic", "claude blog", "claude code", "claude 官方"]
     openai:     ["openai"]
@@ -42,7 +23,6 @@ defaults:
     huggingface: ["huggingface"]
 
 channels:
-  # —— 头条：跨源热榜（热度 + 交叉验证），聚官方/模型/大会/blog 的高信号条目 ——
   - name: headlines
     title: 头条
     limit: 20
@@ -52,7 +32,6 @@ channels:
         - formats: [news, blog, video, talk]
         - categories: [models, industry, claude-code]
 
-  # —— 模型发布 ——
   - name: models
     title: 模型发布
     limit: 30
@@ -65,7 +44,6 @@ channels:
             ["claude", "gpt-", "chatgpt", "gemini", "llama", "qwen", "deepseek",
              "mistral", "grok", "kimi", "glm", "大模型"]
 
-  # —— Claude Code 动态 ——
   - name: claude-code
     title: Claude Code 动态
     limit: 30
@@ -75,7 +53,6 @@ channels:
         - categories: [claude-code]
         - keywords_any: ["claude code", "claude-code", "claude cli", "cc plugin"]
 
-  # —— 方法论 / 工程实践（loop、AI-native SDLC、agent harness…）——
   - name: practices
     title: 方法论
     limit: 30
@@ -85,28 +62,24 @@ channels:
         - categories: [practices]
         - keywords_any: [loop, sdlc, eval, harness, workflow, agent]
 
-  # —— 演讲 / 大会（Claude 大会、官方频道演讲）——
   - name: talks
     title: 演讲大会
     limit: 30
     match:
       formats: [video, talk]
 
-  # —— 播客 ——
   - name: podcasts
     title: 播客
     limit: 30
     match:
       formats: [podcast]
 
-  # —— GitHub Trending / 业界资产演进 ——
   - name: trending
     title: 趋势项目
     limit: 30
     match:
       formats: [repo]
 
-  # —— 变更情报（spec-v0.3 §19）：提示词 changelog + 官方插件 bump ——
   - name: change-intel
     title: 变更情报
     limit: 30
@@ -115,7 +88,6 @@ channels:
         - formats: [changelog]
         - tags_any: [changelog]
 
-  # —— 论文前沿（format=paper）——
   - name: papers
     title: 论文
     limit: 30
@@ -124,7 +96,6 @@ channels:
         - formats: [paper]
         - categories: [papers]
 
-  # —— 模型研发（既有频道，向后兼容）——
   - name: model-dev
     title: 模型研发
     limit: 30
@@ -136,18 +107,11 @@ channels:
             ["pretrain", "post-train", "fine-tune", "finetune", "rlhf", "benchmark",
              "scaling law", "distill", "quantization", "推理优化", "强化学习"]
 
-  # —— AI infra（2026-08-31 新增）——
-  # 为什么要单开一个频道而不是靠 tags 蹭进 models/model-dev：频道内按 hotness 降序截断
-  # limit，而 Anthropic/Claude 生态的条目权重高又新鲜，把 infra 条目全挤出前 30。
-  # 加了源却排不进去 = 抓回来也看不见。给 infra 一个只跟同类竞争的位置，
-  # cmd_prepare 的「各频道 top 5」才会把它们带进选稿草案。
   - name: infra
     title: AI 基础设施
     limit: 30
     match:
-      # 只认信源级信号 + 极具体的技术词。第一版用了 inference/gpu/quantization 这类
-      # 宽泛词，结果被「Claude Code 系统提示词」灌满——那个源 204 条全新鲜、权重又高，
-      # changelog 正文里这些词满地都是。宽 keyword 规则会静默劫持整个频道。
+      # 只用极具体的技术词：inference/gpu 这类宽泛词会让高权重的 changelog 源劫持整个频道
       any_of:
         - tags_any: [infra, hardware, framework, serving]
         - categories: [infra]
@@ -155,7 +119,6 @@ channels:
             ["vllm", "sglang", "tensorrt", "trainium", "kv cache", "kv-cache",
              "cuda kernel", "推理引擎", "显存占用"]
 
-  # —— 插件生态（既有频道，向后兼容）——
   - name: plugins
     title: 插件生态
     limit: 30
@@ -165,7 +128,6 @@ channels:
         - source_kinds: [insights]
         - keywords_any: ["plugin", "mcp server", "marketplace", "skill", "插件"]
 
-  # —— 大牛动态（builders）——
   - name: builders-live
     title: 大牛动态
     limit: 40
@@ -174,7 +136,6 @@ channels:
         - source_kinds: [builders]
         - tags_any: [builders]
 
-  # —— X 观察（既有频道，向后兼容）——
   - name: x-watch
     title: X 观察
     limit: 40
@@ -183,14 +144,12 @@ channels:
         - platforms: [x, twitter]
         - tags_any: [x, twitter]
 
-  # —— 版本发布（既有频道，向后兼容）——
   - name: releases
     title: 版本发布
     limit: 20
     match:
       tags_any: [release]
 
-  # —— 论文（既有频道 research，向后兼容 sources_include: arxiv）——
   - name: research
     title: 论文前沿
     limit: 20
@@ -199,7 +158,6 @@ channels:
         - tags_any: [arxiv, paper]
         - sources_include: [arxiv]
 
-  # —— 公司内网（保留槽位，company 眼未联调）——
   - name: company-internal
     title: 公司内网
     limit: 30

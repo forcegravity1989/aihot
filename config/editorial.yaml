@@ -1,12 +1,4 @@
-# config/editorial.yaml —— 编辑 Agent 的「口味」：选稿看什么、压什么，写要点怎么写、术语怎么译（issue #61）。
-#
-# 这是代码（见 CLAUDE.md「数据与代码隔离」）：改了要 review、要进 git。pipeline/editorial.py 读它，
-# 渲染成文字接进两份简报——选稿简报（daily_digest_all.EDITOR_BRIEF）接 selection，
-# 写要点简报（BRIEF_BRIEF）接 writing + glossary。
-#
-# 来源：借鉴卡兹克开源的 AIHOT（KKKKhazix/AIHOT，MIT）industry/prompts 里的 selection-score、
-# content-understanding、rules-anti-hallucination、rules-self-contained-title、rules-domain，按千里眼的
-# 读者（通用 AI + LLM infra）改写。上游怎么说不重要，这里写的是我们要的口味。
+# selection 接进选稿简报；writing + glossary 接进写要点简报
 
 selection:
   intro: >-

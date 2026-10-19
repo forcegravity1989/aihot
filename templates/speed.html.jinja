@@ -5,9 +5,7 @@
 <meta name="generator" content="qianliyan speed">
 <title>{{ page_title }} · {{ date }} · 速读图</title>
 <style>
-/* 速读图（docs/adr-daily-format.md D0 的第一部分，独立可分享版）：定宽 1080、每块定高，
-   页高由 daily_digest_all._speed_height 算好写进 body，无头 Chrome 按同一个高度截图。
-   不引主题 CSS：这是一张要被转发的图，白天黑夜都得长一个样。 */
+/* 每块定高须与 daily_digest_all._speed_height 一致；不引主题 CSS：转发的图白天黑夜都得一个样 */
 :root { --ink: #1c1917; --ink-2: #57534e; --ink-3: #8a847c; --line: #e7e2da; --paper: #fffaf0; --card: #ffffff;
   --accent: #b45309; --accent-soft: #fdebd3; --shade: #f5f0e8;
   --font: -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -33,7 +31,6 @@ body { width: {{ page_width }}px; height: {{ page_height }}px; overflow: hidden;
 .x { color: var(--ink-2); line-height: 1.5; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 .num { font-family: var(--mono); font-weight: 800; color: var(--accent); text-align: center; line-height: 1.1; padding: 0 20px; }
 .num small { display: block; font-family: var(--font); font-weight: 500; color: var(--ink-2); margin-top: 10px; }
-/* 头条：横幅图 + 文案，整块 600 高 */
 .lead { height: 600px; box-sizing: border-box; margin-top: 40px; display: flex; flex-direction: column; background: var(--card);
   border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
 .lead .img { height: 420px; flex: 0 0 420px; border-bottom: 1px solid var(--line); }
@@ -42,7 +39,6 @@ body { width: {{ page_width }}px; height: {{ page_height }}px; overflow: hidden;
 .lead .txt { padding: 18px 24px; display: flex; flex-direction: column; gap: 6px; }
 .lead .t { font-size: 26px; -webkit-line-clamp: 2; }
 .lead .x { font-size: 17px; -webkit-line-clamp: 2; }
-/* 深读：两列，每格 368 高 */
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 32px; }
 .tile { height: 368px; box-sizing: border-box; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
   overflow: hidden; display: flex; flex-direction: column; }
@@ -52,7 +48,6 @@ body { width: {{ page_width }}px; height: {{ page_height }}px; overflow: hidden;
 .tile .txt { padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; }
 .tile .t { font-size: 18px; -webkit-line-clamp: 2; }
 .tile .x { font-size: 14px; -webkit-line-clamp: 2; }
-/* 浅读：标题一行，看过就算接收 */
 .glance { margin-top: 40px; }
 .glance .k { height: 44px; box-sizing: border-box; display: flex; align-items: center; border-bottom: 1px solid var(--line); }
 .glance ol { list-style: none; margin: 0; padding: 0; }

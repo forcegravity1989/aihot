@@ -1,16 +1,3 @@
-"""eyes/insights.py —— 洞眼 insights：``claude-code-insights`` 仓库插件排行（业界资产）。
-
-v0.3 改指真实仓 ``zhoux77899/claude-code-insights``，消费 ``plugins/plugins-daily-insight.md``
-（7KB Markdown 榜单表，**严禁整取 31MB/75MB 的 history/repos.json**）。按 data_path 后缀分派：
-``.md`` → :func:`parse_daily`（Markdown 表格）；其余（``.json``）→ :func:`parse_payload`
-（向后兼容旧 JSON 排行）。
-
-``QLY_INSIGHTS_PREFER_RAW=1`` 时直接走 raw.githubusercontent 拉取 cfg 指定的 data 文件；否则
-``git clone``/``pull`` 到 ``$QLY_DATA_DIR/repos/claude-code-insights`` 本地读取（clone 失败自动
-回退 raw）。离线模式下（``QLY_OFFLINE=1``）直接跳过 clone（避免子进程真实出网），走 raw 分支
-自然触发 ``engine.http.OfflineError``。
-"""
-
 from __future__ import annotations
 
 import json
@@ -35,7 +22,7 @@ RAW_URL_TMPL = "https://raw.githubusercontent.com/{repo}/{branch}/{path}"
 REPO_DIR_PARTS = ("repos", "claude-code-insights")
 GIT_TIMEOUT = 30
 
-#: daily-insight.md 表格行：``| 3 | [repo](url) | ⭐206576 | 🍴21092 | 2026-04-20 | desc |``
+# daily-insight.md 表格行：| 3 | [repo](url) | ⭐206576 | 🍴21092 | 2026-04-20 | desc |
 _DAILY_ROW_RE = re.compile(
     r"^\|\s*(\d+)\s*\|\s*\[([^\]]+)\]\(([^)]+)\)\s*\|"
     r"\s*[^\d|]*([\d,]+)\s*\|\s*[^\d|]*([\d,]+)\s*\|\s*([^|]*)\|\s*([^|]*)\|\s*$"
@@ -54,10 +41,6 @@ def _extract_list(payload: Any) -> List[Any]:
 
 
 def parse_payload(payload: Any, cfg: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    """解析插件排行 JSON（尽力而为：list 内 dict 找 ``name``、``installs|count|downloads``、``description``）。
-
-    排名（原始顺序，1 起）存 ``metrics.rank``（若条目自带 ``rank`` 则优先用它）；纯函数，不出网。
-    """
     cfg = cfg or {}
     weight = float(cfg.get("weight", DEFAULT_WEIGHT))
     source_name = cfg.get("source") or DEFAULT_SOURCE_NAME
@@ -107,10 +90,6 @@ def _parse_int(raw: Any) -> Optional[int]:
 
 
 def parse_daily(md_text: str, cfg: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    """解析 ``plugins-daily-insight.md`` 的 Top 榜 Markdown 表格 → 每行一条 item（纯函数）。
-
-    行形如 ``| # | [repo](url) | ⭐stars | 🍴forks | date | desc |``；表头/分隔行自动跳过。
-    """
     cfg = cfg or {}
     weight = float(cfg.get("weight", DEFAULT_WEIGHT))
     source_name = cfg.get("source") or DAILY_SOURCE_NAME
@@ -171,7 +150,7 @@ def _is_markdown(data_path: str) -> bool:
 
 
 def _fetch_raw(repo: str, branch: str, data_path: str) -> Any:
-    """取 raw 内容：``.md`` 走 get_text（带量级保护），否则 get_json。"""
+    """.md 走 get_text 带量级保护：严禁整取 31MB/75MB 的 json。"""
     url = _raw_url(repo, branch, data_path)
     if _is_markdown(data_path):
         return http.get_text(url, max_bytes=http.DEFAULT_MAX_BYTES)
@@ -195,7 +174,7 @@ def _clone_or_pull(repo: str, branch: str):
 
 def _fetch_via_clone(repo: str, branch: str, data_path: str) -> Any:
     if os.environ.get("QLY_OFFLINE") == "1":
-        # 离线模式下不许尝试真实 git 子进程出网（子进程网络不受 engine.http 的 OfflineError 网关约束）
+        # 子进程网络不受 engine.http 的 OfflineError 网关约束
         raise http.OfflineError("QLY_OFFLINE=1，跳过 git clone")
     repo_dir = _clone_or_pull(repo, branch)
     file_path = repo_dir / data_path
@@ -208,14 +187,12 @@ def _fetch_via_clone(repo: str, branch: str, data_path: str) -> Any:
 
 
 def _parse_data(data_path: str, payload: Any, cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """按 data_path 后缀分派解析器：``.md`` → parse_daily，其余 → parse_payload。"""
     if _is_markdown(data_path):
         return parse_daily(payload, cfg)
     return parse_payload(payload, cfg)
 
 
 def fetch(cfg: Optional[Dict[str, Any]] = None, since: Any = None) -> List[Dict[str, Any]]:
-    """逐 data_path 取插件排行数据；clone 失败自动回退 raw；单 data_path 彻底失败则跳过、记 warning。"""
     cfg = cfg or {}
     repo = cfg.get("repo") or DEFAULT_REPO
     branch = cfg.get("branch") or DEFAULT_BRANCH

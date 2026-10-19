@@ -1,12 +1,3 @@
-"""cli/api_server.py —— FastAPI 服务（可选依赖，spec §10.3）。
-
-``fastapi``/``uvicorn`` 属可选依赖（``pip install "qianliyan[api]"``），惰性导入——
-缺失时本模块 import 仍然成功，只是 ``create_app()`` 会抛出带安装提示的 ``RuntimeError``，
-``main()`` 打印安装提示后返回非 0（不得让核心链路 ImportError）。
-
-鉴权：env ``QLY_API_KEY`` 非空时，所有端点要求请求头 ``X-API-Key`` 与之一致，否则 401。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -25,8 +16,6 @@ DEFAULT_ITEMS_LIMIT = 50
 DEFAULT_PROFILE_ITEMS = 20
 FEEDBACK_ACTIONS = ("up", "down", "hide")
 
-#: 单视图归档文件名（daily_digest_all 定稿产物）。缺省不给 ``view`` 时走**合并首页**，
-#: 那才是带侧栏 / 热点榜 / 三视图切换的完整版面；单视图页留给要嵌进别处的场景。
 DAILY_VIEWS = {
     "glance": "glance.html",
     "timeline": "timeline.html",
@@ -34,15 +23,14 @@ DAILY_VIEWS = {
 }
 DAILY_MERGED_NAME = "digest.html"
 DAILY_ROOT_NAME = "daily.html"
-#: 详情页目录（与 cli.daily_digest_all.DETAIL_DIR 一致）
 DETAIL_DIR = "story"
-#: 详情页文件名白名单——只允许 sig 那种字符集，挡掉 ../ 之类的路径穿越
+# 只允许 sig 字符集，挡掉 ../ 之类的路径穿越
 DETAIL_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
-#: 原文配图文件名：daily_digest_all._download_image 的命名规则（sha1 前 16 位 + 扩展名）
+# 与 daily_digest_all._download_image 的命名一致（sha1 前 16 位 + 扩展名）
 MEDIA_NAME_RE = re.compile(r"^[0-9a-f]{16}\.(png|jpg|gif|webp)$")
 MEDIA_TYPES = {"png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
 
-try:  # fastapi/uvicorn 属可选依赖，缺失时降级而不拖垮 import（spec §10.3）
+try:  # fastapi/uvicorn 是可选依赖，缺失时降级而不拖垮 import
     from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
     from fastapi.responses import HTMLResponse, PlainTextResponse, Response
     from pydantic import BaseModel
@@ -56,47 +44,33 @@ except ImportError:  # pragma: no cover - 依赖缺失属部署问题
 if FASTAPI_AVAILABLE:
 
     class FeedbackBody(BaseModel):  # type: ignore[misc]
-        """``POST /feedback`` 请求体：``{sig, action: up|down|hide, note?}``。"""
-
         sig: str
         action: str
         note: Optional[str] = None
 
     class HistoryBody(BaseModel):  # type: ignore[misc]
-        """``POST /history`` 请求体：``{sig, action, title?, url?}``（spec-v0.3 §8）。
-
-        ``action ∈ {seen, open, deepread, received}``（``received`` = 浅读「看过标题即已接收」）。
-        """
-
         sig: str
         action: str
         title: Optional[str] = None
         url: Optional[str] = None
 
 
-# =========================================================================
-# 鉴权
-# =========================================================================
 if FASTAPI_AVAILABLE:
 
     def _verify_api_key(
         x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
     ) -> None:
-        """env ``QLY_API_KEY`` 非空时校验请求头 ``X-API-Key``；不一致抛 401。"""
         expected = os.environ.get("QLY_API_KEY")
         if expected and x_api_key != expected:
             raise HTTPException(status_code=401, detail="缺少或错误的 X-API-Key")
 
 
-# =========================================================================
-# 数据读取小工具（与 cli.deliver 同源逻辑，避免循环 import 就地内联）
-# =========================================================================
+# 与 cli.deliver 同源的读取逻辑，为避免循环 import 就地内联
 def _load_items() -> List[Dict[str, Any]]:
     return storage.read_jsonl(paths.data_path("items.jsonl"))
 
 
 def _personal_score(item: Dict[str, Any]) -> float:
-    """取 ``extra.personal_score``（缺失/非数值按 0 计），供 ``sort=personal`` 与 /profile 用。"""
     extra = item.get("extra")
     raw = extra.get("personal_score") if isinstance(extra, dict) else None
     try:
@@ -136,11 +110,7 @@ def _filter_items(
     return rows
 
 
-# =========================================================================
-# App 工厂
-# =========================================================================
 def create_app() -> FastAPI:  # type: ignore[name-defined]
-    """构造 FastAPI app；供 uvicorn 挂载，也供测试用 ``TestClient`` 直接 import。"""
     if not FASTAPI_AVAILABLE:
         raise RuntimeError(
             '缺少 fastapi/uvicorn 依赖，请先执行 pip install "qianliyan[api]"'
@@ -180,22 +150,16 @@ def create_app() -> FastAPI:  # type: ignore[name-defined]
 
     @app.get("/personas")
     def get_personas() -> List[Dict[str, Any]]:
-        """人物画像列表（``personas.json``，spec-v0.3 §8）。缺失时返回空列表。"""
         data = storage.read_json(paths.data_path("personas.json"), default=[])
         return data if isinstance(data, list) else []
 
     @app.get("/profile")
     def get_profile() -> Dict[str, Any]:
-        """读者画像（reader.yaml + 派生偏好）+ 前 N 条按 personal_score 排序的 items。"""
         reader_profile = profile.load_reader_profile()
         top = _filter_items(_load_items(), None, DEFAULT_PROFILE_ITEMS, None, "personal")
         return {"profile": reader_profile, "items": top}
 
     def _daily_html(view: Optional[str]) -> HTMLResponse:  # type: ignore[name-defined]
-        """当日日报 HTML。``view`` 省略 → 合并首页；给了则取对应单视图页。
-
-        优先读 ``archive/<今日>/…``；无当日产物则回退数据根 ``daily.html``；再无则 404。
-        """
         key = str(view or "").casefold()
         name = DAILY_VIEWS.get(key) or DAILY_MERGED_NAME
         date_str = utils.now_utc().strftime("%Y-%m-%d")
@@ -208,22 +172,16 @@ def create_app() -> FastAPI:  # type: ignore[name-defined]
 
     @app.get("/daily")
     def get_daily(view: Optional[str] = None) -> HTMLResponse:  # type: ignore[name-defined]
-        """当日日报（``view=glance|timeline|deep`` 取单视图，缺省是三视图合并首页）。"""
         return _daily_html(view)
 
     @app.get("/daily.html")
     def get_daily_html(view: Optional[str] = None) -> HTMLResponse:  # type: ignore[name-defined]
-        """``/daily`` 的别名。详情页里的返回链接是相对路径 ``../daily.html``，
-        走 HTTP 时会落到这个地址上——没有这条路由，从详情页点「返回日报」就是 404。"""
+        """详情页的返回链接是相对路径 ../daily.html，走 HTTP 时落到这里；缺了这条路由就 404。"""
         return _daily_html(view)
 
     @app.get("/" + DETAIL_DIR + "/{name}")
     def get_detail(name: str) -> HTMLResponse:  # type: ignore[name-defined]
-        """单条详情页（``/story/<sig>`` 或 ``/story/<sig>.html``）。
-
-        文件名过白名单再拼路径：这是唯一一处把 URL 片段拼进文件路径的地方，
-        不校验就等于把数据目录整个开放给路径穿越。
-        """
+        """文件名先过白名单：这是唯一把 URL 片段拼进文件路径的地方。"""
         clean = str(name or "").strip()
         if not clean.endswith(".html"):
             clean = "{0}.html".format(clean)
@@ -236,10 +194,6 @@ def create_app() -> FastAPI:  # type: ignore[name-defined]
 
     @app.get("/media/{name}")
     def get_media(name: str):  # type: ignore[no-untyped-def]
-        """原文配图（issue #52）：定稿时下载到数据根 ``media/`` 的图片。
-
-        同详情页一样先过白名单：只认 ``<十六进制>.<图片扩展名>``，不许带目录、不许 ``..``。
-        """
         match = MEDIA_NAME_RE.match(str(name or ""))
         if not match:
             raise HTTPException(status_code=404, detail="配图不存在")
@@ -250,7 +204,6 @@ def create_app() -> FastAPI:  # type: ignore[name-defined]
 
     @app.post("/history")
     def post_history(body: HistoryBody) -> Dict[str, bool]:  # type: ignore[name-defined]
-        """记录一条阅读历史（seen/open/deepread/received），追加 ``history.jsonl``。"""
         profile.log_history([{
             "sig": body.sig,
             "action": body.action,
@@ -261,7 +214,7 @@ def create_app() -> FastAPI:  # type: ignore[name-defined]
 
     @app.post("/sync")
     def post_sync(background_tasks: BackgroundTasks) -> Dict[str, bool]:  # type: ignore[name-defined]
-        from . import sync as sync_module  # 延迟 import，避免无谓的顶层耦合
+        from . import sync as sync_module
 
         background_tasks.add_task(sync_module.run_sync, quick=True)
         return {"started": True}
@@ -288,9 +241,6 @@ def create_app() -> FastAPI:  # type: ignore[name-defined]
     return app
 
 
-# =========================================================================
-# CLI
-# =========================================================================
 def main(argv: Optional[Sequence[str]] = None) -> int:
     if not FASTAPI_AVAILABLE:
         print('缺少 fastapi/uvicorn 依赖，请先执行：pip install "qianliyan[api]"')
